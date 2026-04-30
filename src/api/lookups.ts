@@ -4,6 +4,7 @@ export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
   getCategories: () => client.get('/lookups/categories'),
   getGroups: () => client.get('/lookups/groups'),
+  getGroupsFull: () => client.get('/lookups/groups/full'),
   getLocations: () => client.get('/lookups/locations'),
   getLocationDetails: (locationId?: number) =>
     client.get('/lookups/location-details', { params: locationId ? { locationId } : {} }),
@@ -14,8 +15,8 @@ export const lookupsApi = {
   getBanks: () => client.get('/lookups/banks'),
   getAtSettings: () => client.get('/lookups/settings/at'),
   getGSetSettings: () => client.get('/lookups/settings/gset'),
-  getAssetCode: (companyId: number, groupId: number) =>
-    client.get('/lookups/asset-code', { params: { companyId, groupId } }),
+  getAssetCode: (generate: boolean) =>
+    client.get('/lookups/asset-code', { params: { generate } }),
 
   // Groups
   createGroup: (data: object) => client.post('/lookups/groups', data),
@@ -29,7 +30,7 @@ export const lookupsApi = {
 
   // Locations
   createLocation: (data: object) => client.post('/lookups/locations', data),
-  updateLocation: (id: number, location: string) => client.put(`/lookups/locations/${id}`, location),
+  updateLocation: (id: number, location: string) => client.put(`/lookups/locations/${id}`, { location }),
   deleteLocation: (id: number) => client.delete(`/lookups/locations/${id}`),
 
   // Location Details
