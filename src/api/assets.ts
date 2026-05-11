@@ -1,8 +1,10 @@
 import client from './client';
-import type { AssetCreateRequest, AssetReportFilter } from '../types';
+import type { AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem } from '../types';
 
 export const assetsApi = {
   getList: () => client.get('/assets'),
+  getListPaginated: (pageNumber: number = 1, pageSize: number = 25) =>
+    client.get<PaginatedResponse<AssetListItem>>('/assets/paginated', { params: { pageNumber, pageSize } }),
   get: (id: number) => client.get(`/assets/${id}`),
   getReport: (filter: AssetReportFilter) => client.post('/assets/report', filter),
   getNotDepreciated: () => client.get('/assets/not-depreciated'),

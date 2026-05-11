@@ -17,6 +17,17 @@ export interface LoginResponse {
   contact: boolean;
 }
 
+// Pagination
+export interface PaginatedResponse<T> {
+  data: T[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 // Assets
 export interface AssetListItem {
   assetID: number;
