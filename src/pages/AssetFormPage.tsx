@@ -3,20 +3,28 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
-import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact } from '../types';
+import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country } from '../types';
 import { contactsApi } from '../api/contacts';
+import Select from '../components/ui/Select';
+import { useAuth } from '../contexts/AuthContext';
+
+const inputCls = 'border border-[#ddd] rounded-md px-2.5 py-2 text-sm outline-none focus:border-accent transition-colors w-full';
+
+type ModalType = 'group' | 'category' | 'location' | 'locDetail' | 'currency' | 'company' | null;
 
 export default function AssetFormPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const isEdit = Boolean(id);
   const assetId = Number(id);
+  const { activeCompanyId: ctxCompanyId } = useAuth();
 
   const [form, setForm] = useState<Partial<Asset>>({
     purchasePrice: 0,
     donation: false,
     inServiceDate: new Date().toISOString().slice(0, 10),
     purchaseCurCode: 'USD',
+    ...(ctxCompanyId != null && !isEdit ? { companyID: ctxCompanyId } : {}),
   });
 
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -26,18 +34,31 @@ export default function AssetFormPage() {
   const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [countries, setCountries] = useState<Country[]>([]);
   const [saving, setSaving] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+
+  // ── Quick-add modal state ───────────────────────────────────────────────────
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const [modalSaving, setModalSaving] = useState(false);
+  const [groupForm, setGroupForm] = useState({ countryID: '', groupName: '', acronym: '', depreciationRate: 20, accountNo: '', accountingExclusion: false });
+  const [catForm, setCatForm] = useState({ category: '', groupID: 0 });
+  const [locForm, setLocForm] = useState({ location: '', companyID: 0 });
+  const [locDetailForm, setLocDetailForm] = useState({ locationID: 0, floor: '', zone: '', room: '' });
+  const [curForm, setCurForm] = useState({ curCode: '', curName: '' });
+  const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '' });
 
   useEffect(() => {
     Promise.all([
       lookupsApi.getCompanies(),
-      lookupsApi.getGroups(),
+      lookupsApi.getGroupsFull(),
       lookupsApi.getCategories(),
       lookupsApi.getLocations(),
       lookupsApi.getLocationDetails(),
       lookupsApi.getCurrencies(),
       contactsApi.getLookup(),
-    ]).then(([c, g, cat, l, ld, cur, con]) => {
+      lookupsApi.getCountries(),
+    ]).then(([c, g, cat, l, ld, cur, con, cty]) => {
       setCompanies(c.data as Company[]);
       setGroups(g.data as GroupType[]);
       setCategories(cat.data as CategoryType[]);
@@ -45,14 +66,31 @@ export default function AssetFormPage() {
       setLocDetails(ld.data as LocationDetail[]);
       setCurrencies(cur.data as Currency[]);
       setContacts(con.data as Contact[]);
+      setCountries(cty.data as Country[]);
     });
     if (isEdit) {
       assetsApi.get(assetId).then((r) => setForm(r.data as Asset));
+    } else {
+      lookupsApi.getAssetCode(false).then((r) =>
+        setForm((prev) => ({ ...prev, assetCode: (r.data as { assetCode: string }).assetCode }))
+      );
     }
   }, [isEdit, assetId]);
 
   function set<K extends keyof Asset>(key: K, value: Asset[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+  function reset(...keys: (keyof Asset)[]) {
+    setForm((prev) => { const next = { ...prev }; keys.forEach((k) => delete next[k]); return next; });
+  }
+
+  async function generateCode() {
+    setGeneratingCode(true);
+    try {
+      const r = await lookupsApi.getAssetCode(false);
+      set('assetCode', (r.data as { assetCode: string }).assetCode);
+    } catch { toast.error('Failed to generate code'); }
+    finally { setGeneratingCode(false); }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -64,7 +102,9 @@ export default function AssetFormPage() {
         toast.success('Asset updated');
         navigate(`/assets/${assetId}`);
       } else {
-        const r = await assetsApi.create(form as Asset);
+        const codeRes = await lookupsApi.getAssetCode(true);
+        const assetCode = (codeRes.data as { assetCode: string }).assetCode;
+        const r = await assetsApi.create({ ...form, assetCode } as Asset);
         toast.success('Asset created');
         navigate(`/assets/${(r.data as { assetID: number }).assetID}`);
       }
@@ -75,119 +115,420 @@ export default function AssetFormPage() {
     }
   }
 
-  const filteredCategories = form.groupID
-    ? categories.filter((c) => c.groupID === form.groupID)
-    : categories;
+  // ── Open modal helpers (pre-fill contextual defaults) ──────────────────────
+  function openModal(type: ModalType) {
+    if (type === 'category') {
+      setCatForm({ category: '', groupID: form.groupID ?? 0 });
+    } else if (type === 'location') {
+      setLocForm({ location: '', companyID: form.companyID ?? 0 });
+    } else if (type === 'locDetail') {
+      setLocDetailForm({ locationID: form.locationID ?? 0, floor: '', zone: '', room: '' });
+    } else if (type === 'group') {
+      setGroupForm({ countryID: selectedCompany?.countryID?.trim() ?? '', groupName: '', acronym: '', depreciationRate: 20, accountNo: '', accountingExclusion: false });
+    } else if (type === 'currency') {
+      setCurForm({ curCode: '', curName: '' });
+    } else if (type === 'company') {
+      setCompForm({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '' });
+    }
+    setActiveModal(type);
+  }
 
-  const filteredLocDetails = form.locationID
-    ? locDetails.filter((d) => d.locationID === form.locationID)
-    : locDetails;
+  // ── Quick-add save handlers ────────────────────────────────────────────────
+  async function saveGroup(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createGroup(groupForm);
+      const newGroup = r.data as GroupType;
+      setGroups((prev) => [...prev, newGroup]);
+      set('groupID', newGroup.groupID);
+      reset('categoryID');
+      setActiveModal(null);
+      toast.success(`Group "${newGroup.groupName}" created`);
+    } catch { toast.error('Failed to create group'); }
+    finally { setModalSaving(false); }
+  }
+
+  async function saveCategory(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createCategory(catForm);
+      const newCat = r.data as CategoryType;
+      setCategories((prev) => [...prev, newCat]);
+      if (!form.groupID) set('groupID', newCat.groupID);
+      set('categoryID', newCat.categoryID);
+      setActiveModal(null);
+      toast.success(`Category "${newCat.category}" created`);
+    } catch { toast.error('Failed to create category'); }
+    finally { setModalSaving(false); }
+  }
+
+  async function saveLocation(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createLocation(locForm);
+      const returned = r.data as Partial<LocationType>;
+      const newLoc: LocationType = {
+        locationID: returned.locationID ?? (returned as { id?: number }).id ?? 0,
+        location: locForm.location,
+        companyID: locForm.companyID,
+      };
+      setLocations((prev) => [...prev, newLoc]);
+      set('locationID', newLoc.locationID);
+      reset('locDetailID');
+      setActiveModal(null);
+      toast.success(`Location "${newLoc.location}" created`);
+    } catch { toast.error('Failed to create location'); }
+    finally { setModalSaving(false); }
+  }
+
+  async function saveLocDetail(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createLocationDetail(locDetailForm);
+      const returned = r.data as Partial<LocationDetail>;
+      const newDet: LocationDetail = {
+        locDetailID: returned.locDetailID ?? (returned as { id?: number }).id ?? 0,
+        locationID: locDetailForm.locationID,
+        floor: locDetailForm.floor,
+        zone: locDetailForm.zone || undefined,
+        room: locDetailForm.room || undefined,
+      };
+      setLocDetails((prev) => [...prev, newDet]);
+      set('locDetailID', newDet.locDetailID);
+      setActiveModal(null);
+      toast.success('Location detail created');
+    } catch { toast.error('Failed to create location detail'); }
+    finally { setModalSaving(false); }
+  }
+
+  async function saveCurrency(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createCurrency({ curCode: curForm.curCode.toUpperCase(), curName: curForm.curName });
+      const newCur = r.data as Currency;
+      setCurrencies((prev) => [...prev, newCur]);
+      set('purchaseCurCode', newCur.curCode);
+      setActiveModal(null);
+      toast.success(`Currency "${newCur.curCode}" created`);
+    } catch { toast.error('Failed to create currency'); }
+    finally { setModalSaving(false); }
+  }
+
+  async function saveCompany(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createCompany(compForm);
+      const newComp = r.data as Company;
+      setCompanies((prev) => [...prev, newComp]);
+      set('companyID', newComp.companyID);
+      reset('groupID', 'categoryID', 'locationID', 'locDetailID');
+      setActiveModal(null);
+      toast.success(`Company "${newComp.companyName}" created`);
+    } catch { toast.error('Failed to create company'); }
+    finally { setModalSaving(false); }
+  }
+
+  const selectedCompany = companies.find((c) => c.companyID === form.companyID);
+  const filteredGroups = selectedCompany ? groups.filter((g) => g.countryID?.trim() === selectedCompany.countryID?.trim()) : groups;
+  const filteredCategories = form.groupID ? categories.filter((c) => c.groupID === form.groupID) : categories;
+  const filteredLocations = form.companyID ? locations.filter((l) => l.companyID === form.companyID) : locations;
+  const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 900 }}>
-      <Link to={isEdit ? `/assets/${assetId}` : '/assets'} style={{ color: '#1a73e8', textDecoration: 'none', fontSize: 13 }}>
-        ← Back
-      </Link>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e3a5f', margin: '8px 0 24px' }}>
+    <div className="px-8 py-6 max-w-[900px]">
+      {/* ── Quick-add modals ── */}
+      {activeModal === 'group' && (
+        <QuickAddModal title="New Group" onClose={() => setActiveModal(null)} onSubmit={saveGroup} saving={modalSaving}>
+          <MField label={selectedCompany ? `Country (${selectedCompany.countryID?.trim()})` : 'Country *'}>
+            <Select value={groupForm.countryID} onChange={(e) => setGroupForm((p) => ({ ...p, countryID: e.target.value }))} required disabled={!!selectedCompany}>
+              <option value="">Select country…</option>
+              {countries.filter((c) => c.workingCountry || c.countryID?.trim() === groupForm.countryID).map((c) => <option key={c.countryID} value={c.countryID?.trim()}>{c.country}</option>)}
+            </Select>
+          </MField>
+          <MField label="Group Name *">
+            <input className={inputCls} value={groupForm.groupName} onChange={(e) => setGroupForm((p) => ({ ...p, groupName: e.target.value }))} required maxLength={50} placeholder="e.g. IT Equipment" />
+          </MField>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Acronym *">
+              <input className={inputCls} value={groupForm.acronym} onChange={(e) => setGroupForm((p) => ({ ...p, acronym: e.target.value }))} required maxLength={10} placeholder="e.g. IT" />
+            </MField>
+            <MField label="Depreciation Rate % *">
+              <input className={inputCls} type="number" min={0} max={100} step={0.01} value={groupForm.depreciationRate} onChange={(e) => setGroupForm((p) => ({ ...p, depreciationRate: Number(e.target.value) }))} required />
+            </MField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Account No">
+              <input className={inputCls} value={groupForm.accountNo} onChange={(e) => setGroupForm((p) => ({ ...p, accountNo: e.target.value }))} maxLength={20} placeholder="Optional" />
+            </MField>
+            <MField label="Accounting Exclusion *">
+              <Select value={groupForm.accountingExclusion ? 'true' : 'false'} onChange={(e) => setGroupForm((p) => ({ ...p, accountingExclusion: e.target.value === 'true' }))}>
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+              </Select>
+            </MField>
+          </div>
+        </QuickAddModal>
+      )}
+
+      {activeModal === 'category' && (
+        <QuickAddModal title="New Category" onClose={() => setActiveModal(null)} onSubmit={saveCategory} saving={modalSaving}>
+          <MField label="Category Name *">
+            <input className={inputCls} value={catForm.category} onChange={(e) => setCatForm((p) => ({ ...p, category: e.target.value }))} required maxLength={50} placeholder="e.g. Laptops" autoFocus />
+          </MField>
+          <MField label="Group *">
+            <Select value={catForm.groupID || ''} onChange={(e) => setCatForm((p) => ({ ...p, groupID: Number(e.target.value) }))} required>
+              <option value="">Select group…</option>
+              {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
+            </Select>
+          </MField>
+        </QuickAddModal>
+      )}
+
+      {activeModal === 'location' && (
+        <QuickAddModal title="New Location" onClose={() => setActiveModal(null)} onSubmit={saveLocation} saving={modalSaving}>
+          <MField label="Location Name *">
+            <input className={inputCls} value={locForm.location} onChange={(e) => setLocForm((p) => ({ ...p, location: e.target.value }))} required maxLength={50} placeholder="e.g. Head Office" autoFocus />
+          </MField>
+          <MField label="Company *">
+            <Select value={locForm.companyID || ''} onChange={(e) => setLocForm((p) => ({ ...p, companyID: Number(e.target.value) }))} required>
+              <option value="">Select company…</option>
+              {companies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
+            </Select>
+          </MField>
+        </QuickAddModal>
+      )}
+
+      {activeModal === 'locDetail' && (
+        <QuickAddModal title="New Location Detail" onClose={() => setActiveModal(null)} onSubmit={saveLocDetail} saving={modalSaving}>
+          <MField label="Location *">
+            <Select value={locDetailForm.locationID || ''} onChange={(e) => setLocDetailForm((p) => ({ ...p, locationID: Number(e.target.value) }))} required>
+              <option value="">Select location…</option>
+              {(filteredLocations.length > 0 ? filteredLocations : locations).map((l) => <option key={l.locationID} value={l.locationID}>{l.location}</option>)}
+            </Select>
+          </MField>
+          <div className="grid grid-cols-3 gap-3">
+            <MField label="Floor *">
+              <input className={inputCls} value={locDetailForm.floor} onChange={(e) => setLocDetailForm((p) => ({ ...p, floor: e.target.value }))} required maxLength={10} placeholder="e.g. 3" autoFocus />
+            </MField>
+            <MField label="Zone">
+              <input className={inputCls} value={locDetailForm.zone} onChange={(e) => setLocDetailForm((p) => ({ ...p, zone: e.target.value }))} maxLength={10} placeholder="Optional" />
+            </MField>
+            <MField label="Room">
+              <input className={inputCls} value={locDetailForm.room} onChange={(e) => setLocDetailForm((p) => ({ ...p, room: e.target.value }))} maxLength={10} placeholder="Optional" />
+            </MField>
+          </div>
+        </QuickAddModal>
+      )}
+
+      {activeModal === 'currency' && (
+        <QuickAddModal title="New Currency" onClose={() => setActiveModal(null)} onSubmit={saveCurrency} saving={modalSaving}>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Code *">
+              <input className={inputCls} value={curForm.curCode} onChange={(e) => setCurForm((p) => ({ ...p, curCode: e.target.value.toUpperCase() }))} required maxLength={3} placeholder="e.g. EUR" autoFocus />
+            </MField>
+            <MField label="Currency Name *">
+              <input className={inputCls} value={curForm.curName} onChange={(e) => setCurForm((p) => ({ ...p, curName: e.target.value }))} required maxLength={50} placeholder="e.g. Euro" />
+            </MField>
+          </div>
+        </QuickAddModal>
+      )}
+
+      {activeModal === 'company' && (
+        <QuickAddModal title="New Company" onClose={() => setActiveModal(null)} onSubmit={saveCompany} saving={modalSaving}>
+          <MField label="Company Name *">
+            <input className={inputCls} value={compForm.companyName} onChange={(e) => setCompForm((p) => ({ ...p, companyName: e.target.value }))} required maxLength={100} placeholder="e.g. Gezairi Trading" autoFocus />
+          </MField>
+          <MField label="Abbreviation *">
+            <input className={inputCls} value={compForm.companyAbbreviation} onChange={(e) => setCompForm((p) => ({ ...p, companyAbbreviation: e.target.value }))} required maxLength={10} placeholder="e.g. GT" />
+          </MField>
+          <MField label="Country *">
+            <Select value={compForm.countryID} onChange={(e) => setCompForm((p) => ({ ...p, countryID: e.target.value }))} required>
+              <option value="">Select country…</option>
+              {countries.filter((c) => c.workingCountry).map((c) => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
+            </Select>
+          </MField>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Primary Currency *">
+              <Select value={compForm.companyPrmCurCode} onChange={(e) => setCompForm((p) => ({ ...p, companyPrmCurCode: e.target.value }))} required>
+                <option value="">Select…</option>
+                {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+              </Select>
+            </MField>
+            <MField label="Secondary Currency *">
+              <Select value={compForm.companyScdCurCode} onChange={(e) => setCompForm((p) => ({ ...p, companyScdCurCode: e.target.value }))} required>
+                <option value="">Select…</option>
+                {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+              </Select>
+            </MField>
+          </div>
+        </QuickAddModal>
+      )}
+
+      {/* ── Page header ── */}
+      <div className="flex items-center gap-2 mb-5">
+        <Link
+          to={isEdit ? `/assets/${assetId}` : '/assets'}
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6b7280] bg-white border border-[#e5e7eb] rounded-lg px-3 py-1.5 no-underline hover:border-brand hover:text-brand transition-colors shadow-sm"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+          {isEdit ? 'Back to Asset' : 'Back to Assets'}
+        </Link>
+      </div>
+      <h2 className="text-[22px] font-bold text-brand mb-6">
         {isEdit ? 'Edit Asset' : 'New Asset'}
       </h2>
+
       <form onSubmit={handleSubmit}>
-        <div style={gridStyle}>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 bg-white p-6 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+
+          {/* Company */}
           <Field label="Company *">
-            <select style={inputStyle} value={form.companyID ?? ''} onChange={(e) => set('companyID', Number(e.target.value))} required>
-              <option value="">Select…</option>
-              {companies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
-            </select>
+            <DropWithAdd onAdd={() => openModal('company')}>
+              <Select value={form.companyID ?? ''} onChange={(e) => { set('companyID', Number(e.target.value)); reset('groupID', 'categoryID', 'locationID', 'locDetailID'); }} required>
+                <option value="">Select…</option>
+                {companies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
+              </Select>
+            </DropWithAdd>
           </Field>
+
+          {/* Asset Code */}
           <Field label="Asset Code *">
-            <input style={inputStyle} value={form.assetCode ?? ''} onChange={(e) => set('assetCode', e.target.value)} required maxLength={15} />
+            <div className="flex gap-2">
+              <input className={inputCls} value={form.assetCode ?? ''} onChange={(e) => set('assetCode', e.target.value)} required maxLength={15} />
+              {!isEdit && (
+                <button
+                  type="button"
+                  onClick={generateCode}
+                  disabled={generatingCode}
+                  className="shrink-0 bg-[#9a7c4b] text-white border-none rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70 whitespace-nowrap"
+                >
+                  {generatingCode ? '…' : form.assetCode ? 'Regenerate' : 'Generate'}
+                </button>
+              )}
+            </div>
           </Field>
+
+          {/* Description */}
           <Field label="Description *">
-            <input style={inputStyle} value={form.assetDesc ?? ''} onChange={(e) => set('assetDesc', e.target.value)} required maxLength={50} />
+            <input className={inputCls} value={form.assetDesc ?? ''} onChange={(e) => set('assetDesc', e.target.value)} required maxLength={50} />
           </Field>
+
+          {/* Group */}
           <Field label="Group *">
-            <select style={inputStyle} value={form.groupID ?? ''} onChange={(e) => { set('groupID', Number(e.target.value)); set('categoryID', 0); }} required>
-              <option value="">Select…</option>
-              {groups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
-            </select>
+            <DropWithAdd onAdd={() => openModal('group')}>
+              <Select value={form.groupID ?? ''} onChange={(e) => { set('groupID', Number(e.target.value)); reset('categoryID'); }} required>
+                <option value="">Select…</option>
+                {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
+              </Select>
+            </DropWithAdd>
           </Field>
+
+          {/* Category */}
           <Field label="Category *">
-            <select style={inputStyle} value={form.categoryID ?? ''} onChange={(e) => set('categoryID', Number(e.target.value))} required>
-              <option value="">Select…</option>
-              {filteredCategories.map((c) => <option key={c.categoryID} value={c.categoryID}>{c.category}</option>)}
-            </select>
+            <DropWithAdd onAdd={() => openModal('category')}>
+              <Select value={form.categoryID ?? ''} onChange={(e) => set('categoryID', Number(e.target.value))} required>
+                <option value="">Select…</option>
+                {filteredCategories.map((c) => <option key={c.categoryID} value={c.categoryID}>{c.category}</option>)}
+              </Select>
+            </DropWithAdd>
           </Field>
+
+          {/* Location */}
           <Field label="Location *">
-            <select style={inputStyle} value={form.locationID ?? ''} onChange={(e) => { set('locationID', Number(e.target.value)); set('locDetailID', 0); }} required>
-              <option value="">Select…</option>
-              {locations.map((l) => <option key={l.locationID} value={l.locationID}>{l.location}</option>)}
-            </select>
+            <DropWithAdd onAdd={() => openModal('location')}>
+              <Select value={form.locationID ?? ''} onChange={(e) => { set('locationID', Number(e.target.value)); reset('locDetailID'); }} required>
+                <option value="">Select…</option>
+                {filteredLocations.map((l) => <option key={l.locationID} value={l.locationID}>{l.location}</option>)}
+              </Select>
+            </DropWithAdd>
           </Field>
+
+          {/* Location Detail */}
           <Field label="Location Detail *">
-            <select style={inputStyle} value={form.locDetailID ?? ''} onChange={(e) => set('locDetailID', Number(e.target.value))} required>
-              <option value="">Select…</option>
-              {filteredLocDetails.map((d) => <option key={d.locDetailID} value={d.locDetailID}>Floor {d.floor}{d.zone ? ` / ${d.zone}` : ''}{d.room ? ` / ${d.room}` : ''}</option>)}
-            </select>
+            <DropWithAdd onAdd={() => openModal('locDetail')}>
+              <Select value={form.locDetailID ?? ''} onChange={(e) => set('locDetailID', Number(e.target.value))} required>
+                <option value="">Select…</option>
+                {filteredLocDetails.map((d) => <option key={d.locDetailID} value={d.locDetailID}>Floor {d.floor}{d.zone ? ` / ${d.zone}` : ''}{d.room ? ` / ${d.room}` : ''}</option>)}
+              </Select>
+            </DropWithAdd>
           </Field>
+
+          {/* In Service Date */}
           <Field label="In Service Date *">
-            <input style={inputStyle} type="date" value={form.inServiceDate ?? ''} onChange={(e) => set('inServiceDate', e.target.value)} required />
+            <input className={inputCls} type="date" value={form.inServiceDate ?? ''} onChange={(e) => set('inServiceDate', e.target.value)} required />
           </Field>
+
+          {/* Purchase Price */}
           <Field label="Purchase Price">
-            <input style={inputStyle} type="number" step="0.01" value={form.purchasePrice ?? 0} onChange={(e) => set('purchasePrice', Number(e.target.value))} />
+            <input className={inputCls} type="number" step="0.01" value={form.purchasePrice ?? 0} onChange={(e) => set('purchasePrice', Number(e.target.value))} />
           </Field>
+
+          {/* Currency */}
           <Field label="Currency *">
-            <select style={inputStyle} value={form.purchaseCurCode ?? ''} onChange={(e) => set('purchaseCurCode', e.target.value)} required>
-              {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode} – {c.curName}</option>)}
-            </select>
+            <DropWithAdd onAdd={() => openModal('currency')}>
+              <Select value={form.purchaseCurCode ?? ''} onChange={(e) => set('purchaseCurCode', e.target.value)} required>
+                {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode} – {c.curName}</option>)}
+              </Select>
+            </DropWithAdd>
           </Field>
+
           <Field label="Purchase Date">
-            <input style={inputStyle} type="date" value={form.purchaseDate ?? ''} onChange={(e) => set('purchaseDate', e.target.value)} />
+            <input className={inputCls} type="date" value={form.purchaseDate ?? ''} onChange={(e) => set('purchaseDate', e.target.value)} />
           </Field>
           <Field label="Purchase Order No">
-            <input style={inputStyle} value={form.purchaseOrderNo ?? ''} onChange={(e) => set('purchaseOrderNo', e.target.value)} maxLength={10} />
+            <input className={inputCls} value={form.purchaseOrderNo ?? ''} onChange={(e) => set('purchaseOrderNo', e.target.value)} maxLength={10} />
           </Field>
           <Field label="Invoice No">
-            <input style={inputStyle} value={form.invoiceNo ?? ''} onChange={(e) => set('invoiceNo', e.target.value)} maxLength={10} />
+            <input className={inputCls} value={form.invoiceNo ?? ''} onChange={(e) => set('invoiceNo', e.target.value)} maxLength={10} />
           </Field>
           <Field label="Invoice Date">
-            <input style={inputStyle} type="date" value={form.invoiceDate ?? ''} onChange={(e) => set('invoiceDate', e.target.value)} />
+            <input className={inputCls} type="date" value={form.invoiceDate ?? ''} onChange={(e) => set('invoiceDate', e.target.value)} />
           </Field>
           <Field label="Accounting Entry Date">
-            <input style={inputStyle} type="date" value={form.accountingEntryDate ?? ''} onChange={(e) => set('accountingEntryDate', e.target.value)} />
+            <input className={inputCls} type="date" value={form.accountingEntryDate ?? ''} onChange={(e) => set('accountingEntryDate', e.target.value)} />
           </Field>
           <Field label="Accounting JV No">
-            <input style={inputStyle} value={form.accountingEntryJVNo ?? ''} onChange={(e) => set('accountingEntryJVNo', e.target.value)} maxLength={10} />
+            <input className={inputCls} value={form.accountingEntryJVNo ?? ''} onChange={(e) => set('accountingEntryJVNo', e.target.value)} maxLength={10} />
           </Field>
           <Field label="Barcode Number">
-            <input style={inputStyle} value={form.barcodeNumber ?? ''} onChange={(e) => set('barcodeNumber', e.target.value)} maxLength={20} />
+            <input className={inputCls} value={form.barcodeNumber ?? ''} onChange={(e) => set('barcodeNumber', e.target.value)} maxLength={20} />
           </Field>
           <Field label="Serial Number">
-            <input style={inputStyle} value={form.serialNumber ?? ''} onChange={(e) => set('serialNumber', e.target.value)} maxLength={50} />
+            <input className={inputCls} value={form.serialNumber ?? ''} onChange={(e) => set('serialNumber', e.target.value)} maxLength={50} />
           </Field>
           <Field label="Contact / Supplier">
-            <select style={inputStyle} value={form.contactID ?? ''} onChange={(e) => set('contactID', e.target.value ? Number(e.target.value) : undefined)}>
+            <Select value={form.contactID ?? ''} onChange={(e) => set('contactID', e.target.value ? Number(e.target.value) : undefined)}>
               <option value="">None</option>
               {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Installed At">
-            <input style={inputStyle} value={form.installedAt ?? ''} onChange={(e) => set('installedAt', e.target.value)} maxLength={50} />
+            <input className={inputCls} value={form.installedAt ?? ''} onChange={(e) => set('installedAt', e.target.value)} maxLength={50} />
           </Field>
           <Field label="Donation">
-            <select style={inputStyle} value={form.donation ? 'true' : 'false'} onChange={(e) => set('donation', e.target.value === 'true')}>
+            <Select value={form.donation ? 'true' : 'false'} onChange={(e) => set('donation', e.target.value === 'true')}>
               <option value="false">No</option>
               <option value="true">Yes</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Remark">
-            <input style={inputStyle} value={form.remark ?? ''} onChange={(e) => set('remark', e.target.value)} maxLength={100} />
+            <input className={inputCls} value={form.remark ?? ''} onChange={(e) => set('remark', e.target.value)} maxLength={100} />
           </Field>
         </div>
-        <div style={{ marginTop: 28, display: 'flex', gap: 12 }}>
-          <button type="submit" disabled={saving} style={{ background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 28px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+
+        <div className="mt-7 flex gap-3">
+          <button type="submit" disabled={saving} className="bg-[#9a7c4b] text-white border-none rounded-lg px-7 py-2.5 text-sm font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70">
             {saving ? 'Saving…' : isEdit ? 'Update Asset' : 'Create Asset'}
           </button>
-          <Link to={isEdit ? `/assets/${assetId}` : '/assets'} style={{ padding: '10px 20px', borderRadius: 8, border: '1.5px solid #ccc', color: '#555', textDecoration: 'none', fontSize: 14 }}>
+          <Link to={isEdit ? `/assets/${assetId}` : '/assets'} className="px-5 py-2.5 rounded-lg border border-[#ccc] text-[#555] no-underline text-sm hover:bg-surface-2">
             Cancel
           </Link>
         </div>
@@ -196,20 +537,93 @@ export default function AssetFormPage() {
   );
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label style={{ fontSize: 12, fontWeight: 700, color: '#555', textTransform: 'uppercase' }}>{label}</label>
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-bold text-[#555] uppercase">{label}</label>
       {children}
     </div>
   );
 }
 
-const gridStyle: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px',
-  background: '#fff', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-};
+function MField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">{label}</label>
+      {children}
+    </div>
+  );
+}
 
-const inputStyle: React.CSSProperties = {
-  border: '1.5px solid #ddd', borderRadius: 6, padding: '8px 10px', fontSize: 14, outline: 'none',
-};
+function DropWithAdd({ children, onAdd }: { children: React.ReactNode; onAdd: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex-1 min-w-0">{children}</div>
+      <button
+        type="button"
+        onClick={onAdd}
+        title="Add new"
+        className="shrink-0 w-8 h-[38px] flex items-center justify-center rounded-lg border border-pearl-200 bg-white text-navy-600 hover:bg-navy-50 hover:border-navy-300 transition-colors cursor-pointer"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function QuickAddModal({ title, onClose, onSubmit, saving, children }: {
+  title: string;
+  onClose: () => void;
+  onSubmit: (e: FormEvent) => void;
+  saving: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-navy-900/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-md bg-white rounded-2xl border border-pearl-200 shadow-card-lg overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-pearl-200">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-md bg-navy-50 border border-navy-100 flex items-center justify-center shrink-0">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1f2b7b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </div>
+            <h3 className="text-[15px] font-bold text-ink-800">{title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-300 hover:bg-pearl-100 hover:text-ink-600 transition-colors cursor-pointer border-none bg-transparent"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit}>
+          <div className="px-6 py-5 flex flex-col gap-4">
+            {children}
+          </div>
+          <div className="px-6 py-4 border-t border-pearl-200 flex items-center justify-between">
+            <p className="text-[11px] text-ink-300">New entry will be auto-selected after saving.</p>
+            <div className="flex gap-2.5">
+              <button type="button" onClick={onClose} className="btn-secondary px-4 py-2 text-[13px]">Cancel</button>
+              <button type="submit" disabled={saving} className="btn-primary px-5 py-2 text-[13px]">
+                {saving ? 'Saving…' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

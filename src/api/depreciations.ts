@@ -1,10 +1,10 @@
 import client from './client';
 
 export const depreciationsApi = {
-  getAll: () => client.get('/depreciations'),
+  getAll: (companyId: number) => client.get('/depreciations', { params: { companyId } }),
   getReport: (id: number) => client.get(`/depreciations/${id}/report`),
-  getLastDate: () => client.get('/depreciations/last-date'),
+  getLastDate: (companyId: number) => client.get('/depreciations/last-date', { params: { companyId } }),
   getNotDepreciated: () => client.get('/depreciations/not-depreciated'),
   run: (data: object) => client.post('/depreciations/run', data),
-  deleteLast: () => client.delete('/depreciations/last'),
+  deleteLast: (companyId: number) => client.delete('/depreciations/last', { params: { companyId } }),
 };

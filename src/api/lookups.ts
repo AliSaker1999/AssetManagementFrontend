@@ -5,7 +5,8 @@ export const lookupsApi = {
   getCategories: () => client.get('/lookups/categories'),
   getGroups: () => client.get('/lookups/groups'),
   getGroupsFull: () => client.get('/lookups/groups/full'),
-  getLocations: () => client.get('/lookups/locations'),
+  getLocations: (companyId?: number) =>
+    client.get('/lookups/locations', { params: companyId != null ? { companyId } : {} }),
   getLocationDetails: (locationId?: number) =>
     client.get('/lookups/location-details', { params: locationId ? { locationId } : {} }),
   getStatuses: () => client.get('/lookups/statuses'),
@@ -15,8 +16,21 @@ export const lookupsApi = {
   getBanks: () => client.get('/lookups/banks'),
   getAtSettings: () => client.get('/lookups/settings/at'),
   getGSetSettings: () => client.get('/lookups/settings/gset'),
+  updateAtSetting: (id: number, value: string) =>
+    client.put(`/lookups/settings/at/${id}`, JSON.stringify(value), {
+      headers: { 'Content-Type': 'application/json' },
+    }),
   getAssetCode: (generate: boolean) =>
     client.get('/lookups/asset-code', { params: { generate } }),
+
+  // Countries
+  createCountry: (data: object) => client.post('/lookups/countries', data),
+  updateCountry: (id: string, data: object) => client.put(`/lookups/countries/${id}`, data),
+
+  // Companies
+  createCompany: (data: object) => client.post('/lookups/companies', data),
+  updateCompany: (id: number, data: object) => client.put(`/lookups/companies/${id}`, data),
+  deleteCompany: (id: number) => client.delete(`/lookups/companies/${id}`),
 
   // Groups
   createGroup: (data: object) => client.post('/lookups/groups', data),
@@ -30,11 +44,19 @@ export const lookupsApi = {
 
   // Locations
   createLocation: (data: object) => client.post('/lookups/locations', data),
-  updateLocation: (id: number, location: string) => client.put(`/lookups/locations/${id}`, { location }),
+  updateLocation: (id: number, data: object) => client.put(`/lookups/locations/${id}`, data),
   deleteLocation: (id: number) => client.delete(`/lookups/locations/${id}`),
 
   // Location Details
   createLocationDetail: (data: object) => client.post('/lookups/location-details', data),
   updateLocationDetail: (id: number, data: object) => client.put(`/lookups/location-details/${id}`, data),
   deleteLocationDetail: (id: number) => client.delete(`/lookups/location-details/${id}`),
+
+  // Currencies
+  createCurrency: (data: { curCode: string; curName: string }) => client.post('/lookups/currencies', data),
+  updateCurrency: (code: string, data: { curName: string }) => client.put(`/lookups/currencies/${code}`, data),
+  deleteCurrency: (code: string) => client.delete(`/lookups/currencies/${code}`),
+
+  // Countries (toggle)
+  toggleCountryActive: (id: string, active: boolean) => client.patch(`/lookups/countries/${id}/active`, active),
 };

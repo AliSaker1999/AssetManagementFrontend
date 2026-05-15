@@ -2,9 +2,8 @@ export interface User {
   userId: number;
   userName: string;
   fullName: string;
-  hr: boolean;
-  asset: boolean;
-  contact: boolean;
+  roleId: number;
+  permissions?: UserPermission[];
 }
 
 export interface LoginResponse {
@@ -12,9 +11,7 @@ export interface LoginResponse {
   userId: number;
   userName: string;
   fullName: string;
-  hr: boolean;
-  asset: boolean;
-  contact: boolean;
+  roleId: number;
 }
 
 // Pagination
@@ -164,8 +161,10 @@ export interface InventoryHistoryItem {
 export interface StatusHistoryItem {
   statusHistID: number;
   statusID: number;
+  statusName?: string;
   statusDate: string;
   statusDesc?: string;
+  contactName?: string;
   statusSalePrice: number;
   statusSaleCurCode?: string;
   createdByFullName: string;
@@ -202,6 +201,7 @@ export interface Depreciation {
   createdByUserID: number;
   createdByFullName: string;
   createdByDateTime: string;
+  companyID: number;
 }
 
 export interface DepreciationReportItem {
@@ -217,6 +217,16 @@ export interface DepreciationReportItem {
   netBookValue: number;
   accountingEntryDate?: string;
   accountingEntryJVNo?: string;
+}
+
+// Attachments
+export interface Attachment {
+  attID: number;
+  assetID: number;
+  attDesc: string;
+  attFileName: string;
+  attFileExt: string;
+  remark?: string;
 }
 
 // Maintenances
@@ -246,12 +256,19 @@ export interface Contact {
   contactID: number;
   contactName: string;
   contactTypeID: number;
+  country?: string;
   contactPerson?: string;
-  address: string;
-  countryID: string;
+  contactPersonEmail?: string;
+  financialContact?: string;
+  financialContactEmail?: string;
+  address?: string;
+  countryID?: string;
   telephone1: string;
   telephone2?: string;
   mobile1?: string;
+  mobile2?: string;
+  fax1?: string;
+  fax2?: string;
   remark?: string;
 }
 
@@ -261,6 +278,8 @@ export interface Company {
   companyName: string;
   companyAbbreviation: string;
   companyPrmCurCode: string;
+  companyScdCurCode: string;
+  countryID: string;
 }
 
 export interface CategoryType {
@@ -276,11 +295,13 @@ export interface GroupType {
   depreciationRate: number;
   accountNo?: string;
   accountingExclusion: boolean;
+  countryID: string;
 }
 
 export interface LocationType {
   locationID: number;
   location: string;
+  companyID: number;
 }
 
 export interface LocationDetail {
@@ -304,7 +325,27 @@ export interface Currency {
 export interface Country {
   countryID: string;
   country: string;
+  nationality: string;
+  zipCode?: string;
   workingCountry: boolean;
+  activeCountry: boolean;
+}
+
+// Users & Permissions
+export interface UserListItem {
+  userID: number;
+  userName: string;
+  fullName: string;
+  roleID: number;
+  roleName: string;
+}
+
+export interface UserPermission {
+  userID: number;
+  countryID: string;
+  country: string;
+  companyID: number;
+  companyName: string;
 }
 
 export interface Setting {

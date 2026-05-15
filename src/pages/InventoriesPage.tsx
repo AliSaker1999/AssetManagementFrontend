@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import clsx from 'clsx';
 import { inventoriesApi } from '../api/inventories';
+import { useAuth } from '../contexts/AuthContext';
 import type { InventoryDetail } from '../types';
 
 interface InventoryMode {
@@ -9,13 +11,14 @@ interface InventoryMode {
 }
 
 export default function InventoriesPage() {
+  const { activeCompanyId } = useAuth();
   const [mode, setMode] = useState<InventoryMode | null>(null);
   const [details, setDetails] = useState<InventoryDetail[]>([]);
   const [lastDate, setLastDate] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
-  async function loadData() {
+  async function loadData(companyFilter: number) {
     try {
       const [modeRes, lastDateRes] = await Promise.all([
         inventoriesApi.getMode(),
@@ -27,7 +30,7 @@ export default function InventoriesPage() {
       if (m?.isActive && m.inventoryID) {
         const dRes = await inventoriesApi.getDetails({
           inventoryID: m.inventoryID,
-          locationID: -1, companyID: -1, categoryID: -1, groupID: -1,
+          locationID: -1, companyID: companyFilter, categoryID: -1, groupID: -1,
           locationDetailID: -1, accountingExclusion: false,
         });
         setDetails(dRes.data as InventoryDetail[]);
@@ -39,7 +42,7 @@ export default function InventoriesPage() {
     }
   }
 
-  useEffect(() => { void loadData(); }, []);
+  useEffect(() => { void loadData(activeCompanyId ?? -1); }, [activeCompanyId]);
 
   async function startInventory() {
     const dateStr = prompt('Start date (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
@@ -47,7 +50,7 @@ export default function InventoriesPage() {
     try {
       await inventoriesApi.start({ inventoryStartDate: dateStr });
       toast.success('Inventory started');
-      void loadData();
+      void loadData(activeCompanyId ?? -1);
     } catch { toast.error('Failed to start inventory'); }
   }
 
@@ -58,7 +61,7 @@ export default function InventoriesPage() {
     try {
       await inventoriesApi.end(mode.inventoryID, { inventoryEndDate: dateStr });
       toast.success('Inventory ended');
-      void loadData();
+      void loadData(activeCompanyId ?? -1);
     } catch { toast.error('Failed to end inventory'); }
   }
 
@@ -75,63 +78,68 @@ export default function InventoriesPage() {
       d.assetDesc.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (loading) return <p style={{ padding: 32 }}>Loading…</p>;
+  if (loading) return <p className="p-8">Loading…</p>;
 
   return (
-    <div style={{ padding: '24px 32px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+    <div className="px-8 py-6">
+      <div className="flex justify-between items-center mb-5">
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e3a5f' }}>Inventory</h2>
-          {lastDate && <p style={{ fontSize: 13, color: '#888', marginTop: 4 }}>Last completed: {lastDate}</p>}
+          <h2 className="text-[22px] font-bold text-brand">Inventory</h2>
+          {lastDate && <p className="text-[13px] text-[#888] mt-1">Last completed: {lastDate}</p>}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-2">
           {mode?.isActive ? (
-            <button onClick={endInventory} style={btn('#27ae60')}>End Inventory</button>
+            <button onClick={endInventory} className="bg-[#27ae60] text-white border-none px-[18px] py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-[#219a52] transition-colors">
+              End Inventory
+            </button>
           ) : (
-            <button onClick={startInventory} style={btn('#1e3a5f')}>Start Inventory</button>
+            <button onClick={startInventory} className="bg-[#9a7c4b] text-white border-none px-[18px] py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors">
+              Start Inventory
+            </button>
           )}
         </div>
       </div>
 
       {mode?.isActive ? (
         <>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+          <div className="flex gap-3 mb-4 items-center">
             <input
-              style={{ border: '1.5px solid #ddd', borderRadius: 8, padding: '8px 12px', fontSize: 14, flex: 1, maxWidth: 360 }}
+              className="border border-[#ddd] rounded-lg px-3 py-2 text-sm flex-1 max-w-[360px] outline-none focus:border-accent transition-colors"
               placeholder="Search by code or description…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <span style={{ fontSize: 13, color: '#666' }}>
+            <span className="text-[13px] text-[#666]">
               {filtered.filter((d) => d.isAvailable).length} / {filtered.length} found
             </span>
           </div>
-          <div style={{ overflowX: 'auto', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
+
+          <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
+            <table className="w-full border-collapse">
               <thead>
                 <tr>
                   {['Code', 'Description', 'Group', 'Location', 'Available', 'Relocated', 'Action'].map((h) => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#666', background: '#f8f9fa', borderBottom: '1px solid #eee' }}>{h}</th>
+                    <th key={h} className="px-3.5 py-2.5 text-left text-xs font-bold text-[#666] bg-surface-2 border-b border-[#eee]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((d) => (
-                  <tr key={d.invDetailID} style={{ borderBottom: '1px solid #f0f0f0', background: d.isAvailable ? '#f0fff4' : '#fff8f8' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}><strong>{d.assetCode}</strong></td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{d.assetDesc}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{d.groupName}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{d.location} {d.floor}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>
-                      <span style={{ color: d.isAvailable ? '#27ae60' : '#e74c3c', fontWeight: 700 }}>
+                  <tr key={d.invDetailID} className={clsx('border-b border-[#f0f0f0]', d.isAvailable ? 'bg-[#f0fff4]' : 'bg-[#fff8f8]')}>
+                    <td className="px-3.5 py-2.5 text-[13px]"><strong>{d.assetCode}</strong></td>
+                    <td className="px-3.5 py-2.5 text-[13px]">{d.assetDesc}</td>
+                    <td className="px-3.5 py-2.5 text-[13px]">{d.groupName}</td>
+                    <td className="px-3.5 py-2.5 text-[13px]">{d.location} {d.floor}</td>
+                    <td className="px-3.5 py-2.5 text-[13px]">
+                      <span className={clsx('font-bold', d.isAvailable ? 'text-[#27ae60]' : 'text-[#e74c3c]')}>
                         {d.isAvailable ? '✓ Found' : '✗ Missing'}
                       </span>
                     </td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{d.relocated ? '↩ Yes' : '—'}</td>
-                    <td style={{ padding: '10px 14px' }}>
+                    <td className="px-3.5 py-2.5 text-[13px]">{d.relocated ? '↩ Yes' : '—'}</td>
+                    <td className="px-3.5 py-2.5">
                       <button
                         onClick={() => toggleAvailable(d)}
-                        style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #ccc', cursor: 'pointer', background: '#fff' }}
+                        className="text-xs px-2.5 py-1 rounded-md border border-[#ccc] cursor-pointer bg-white hover:bg-surface-2"
                       >
                         {d.isAvailable ? 'Mark Missing' : 'Mark Found'}
                       </button>
@@ -143,16 +151,13 @@ export default function InventoriesPage() {
           </div>
         </>
       ) : (
-        <div style={{ textAlign: 'center', marginTop: 80, color: '#999' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
-          <p style={{ fontSize: 16 }}>No active inventory session.</p>
-          <p style={{ fontSize: 13, marginTop: 8 }}>Click "Start Inventory" to begin a new session.</p>
+        <div className="text-center mt-20 text-[#999]">
+          <div className="text-5xl mb-4">📋</div>
+          <p className="text-base">No active inventory session.</p>
+          <p className="text-[13px] mt-2">Click "Start Inventory" to begin a new session.</p>
         </div>
       )}
     </div>
   );
 }
 
-function btn(bg: string): React.CSSProperties {
-  return { background: bg, color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' };
-}

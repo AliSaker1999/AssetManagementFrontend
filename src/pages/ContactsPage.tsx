@@ -1,73 +1,312 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
 import { contactsApi } from '../api/contacts';
-import type { Contact } from '../types';
+import { lookupsApi } from '../api/lookups';
+import Modal from '../components/Modal';
+import { useConfirm } from '../hooks/useConfirm';
+import type { Contact, Country } from '../types';
+import Select from '../components/ui/Select';
+
+interface ContactType {
+  contactTypeID: number;
+  contactType: string;
+}
+
+const emptyForm = {
+  contactName: '',
+  contactTypeID: 0,
+  contactPerson: '',
+  contactPersonEmail: '',
+  financialContact: '',
+  financialContactEmail: '',
+  address: '',
+  countryID: '',
+  telephone1: '',
+  telephone2: '',
+  mobile1: '',
+  mobile2: '',
+  fax1: '',
+  fax2: '',
+  remark: '',
+};
+
+const inp = 'w-full px-2.5 py-[7px] border border-[#ddd] rounded-md text-sm outline-none focus:border-accent transition-colors box-border';
+const lbl = 'text-xs font-semibold text-[#555] mb-1 block';
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
+  const [countries, setCountries] = useState<Country[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<'add' | 'edit' | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
-    contactsApi.getList()
-      .then((r) => setContacts(r.data as Contact[]))
+    Promise.all([
+      contactsApi.getList(),
+      lookupsApi.getContactTypes(),
+      lookupsApi.getCountries(),
+    ])
+      .then(([c, ct, co]) => {
+        setContacts(c.data as Contact[]);
+        setContactTypes(ct.data as ContactType[]);
+        setCountries(co.data as Country[]);
+      })
       .catch(() => toast.error('Failed to load contacts'))
       .finally(() => setLoading(false));
   }, []);
 
+  async function reload() {
+    const r = await contactsApi.getList();
+    setContacts(r.data as Contact[]);
+  }
+
+  function startAdd() {
+    setForm(emptyForm);
+    setEditId(null);
+    setMode('add');
+  }
+
+  async function startEdit(id: number) {
+    try {
+      const r = await contactsApi.get(id);
+      const c = r.data as Contact;
+      setForm({
+        contactName: c.contactName,
+        contactTypeID: c.contactTypeID,
+        contactPerson: c.contactPerson ?? '',
+        contactPersonEmail: c.contactPersonEmail ?? '',
+        financialContact: c.financialContact ?? '',
+        financialContactEmail: c.financialContactEmail ?? '',
+        address: c.address ?? '',
+        countryID: c.countryID ?? '',
+        telephone1: c.telephone1,
+        telephone2: c.telephone2 ?? '',
+        mobile1: c.mobile1 ?? '',
+        mobile2: c.mobile2 ?? '',
+        fax1: c.fax1 ?? '',
+        fax2: c.fax2 ?? '',
+        remark: c.remark ?? '',
+      });
+      setEditId(id);
+      setMode('edit');
+    } catch { toast.error('Failed to load contact'); }
+  }
+
+  function cancel() { setMode(null); setEditId(null); }
+
+  async function handleSave(e: FormEvent) {
+    e.preventDefault();
+    if (!form.contactTypeID) { toast.error('Please select a contact type'); return; }
+    setSaving(true);
+    const payload = {
+      ...form,
+      contactPerson: form.contactPerson || null,
+      contactPersonEmail: form.contactPersonEmail || null,
+      financialContact: form.financialContact || null,
+      financialContactEmail: form.financialContactEmail || null,
+      telephone2: form.telephone2 || null,
+      mobile1: form.mobile1 || null,
+      mobile2: form.mobile2 || null,
+      fax1: form.fax1 || null,
+      fax2: form.fax2 || null,
+      remark: form.remark || null,
+    };
+    try {
+      if (mode === 'edit' && editId !== null) {
+        await contactsApi.update(editId, payload);
+        toast.success('Contact updated');
+      } else {
+        await contactsApi.create(payload);
+        toast.success('Contact created');
+      }
+      cancel();
+      await reload();
+    } catch { toast.error('Save failed'); }
+    finally { setSaving(false); }
+  }
+
   async function handleDelete(id: number) {
-    if (!confirm('Delete this contact?')) return;
+    const ok = await confirm('Delete this contact?', { title: 'Delete Contact' });
+    if (!ok) return;
     try {
       await contactsApi.delete(id);
-      setContacts((prev) => prev.filter((c) => c.contactID !== id));
+      setContacts(prev => prev.filter(c => c.contactID !== id));
       toast.success('Contact deleted');
     } catch { toast.error('Delete failed — contact may be in use'); }
   }
 
-  const filtered = contacts.filter(
-    (c) =>
-      c.contactName.toLowerCase().includes(search.toLowerCase()) ||
-      c.telephone1.includes(search)
+  const filtered = contacts.filter(c =>
+    c.contactName.toLowerCase().includes(search.toLowerCase()) ||
+    c.telephone1.includes(search)
   );
 
+  function typeName(id: number) {
+    return contactTypes.find(t => t.contactTypeID === id)?.contactType ?? '—';
+  }
+
   return (
-    <div style={{ padding: '24px 32px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1e3a5f' }}>Contacts</h2>
+    <div className="px-8 py-6">
+      {dialog}
+      <div className="flex justify-between items-center mb-5">
+        <h2 className="text-[22px] font-bold text-brand">Contacts</h2>
+        <button
+          onClick={startAdd}
+          className="bg-[#9a7c4b] text-white border-none rounded-md px-4 py-[7px] text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors"
+        >
+          + Add Contact
+        </button>
       </div>
+
       <input
-        style={{ width: '100%', maxWidth: 400, padding: '9px 14px', border: '1.5px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 20, outline: 'none' }}
+        className="w-full max-w-[400px] px-3.5 py-[9px] border border-[#ddd] rounded-lg text-sm outline-none focus:border-accent transition-colors mb-5"
         placeholder="Search by name or phone…"
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={e => setSearch(e.target.value)}
       />
+
+      {/* Add / Edit Modal */}
+      {mode !== null && (
+        <Modal title={mode === 'edit' ? 'Edit Contact' : 'New Contact'} onClose={cancel} width="max-w-[700px]">
+          <form onSubmit={handleSave}>
+            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(190px,1fr))]">
+              <div className="col-span-full">
+                <label className={lbl}>Contact Name *</label>
+                <input className={inp} value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} required maxLength={100} autoFocus />
+              </div>
+
+              <div>
+                <label className={lbl}>Contact Type *</label>
+                <Select value={form.contactTypeID || ''} onChange={e => setForm(f => ({ ...f, contactTypeID: Number(e.target.value) }))} required>
+                  <option value="">Select type…</option>
+                  {contactTypes.map(t => <option key={t.contactTypeID} value={t.contactTypeID}>{t.contactType}</option>)}
+                </Select>
+              </div>
+
+              <div>
+                <label className={lbl}>Country</label>
+                <Select value={form.countryID} onChange={e => setForm(f => ({ ...f, countryID: e.target.value }))}>
+                  <option value="">Select country…</option>
+                  {countries.filter(c => c.activeCountry).map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
+                </Select>
+              </div>
+
+              <div>
+                <label className={lbl}>Address</label>
+                <input className={inp} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} maxLength={200} />
+              </div>
+
+              <div>
+                <label className={lbl}>Contact Person</label>
+                <input className={inp} value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))} maxLength={100} />
+              </div>
+
+              <div>
+                <label className={lbl}>Contact Person Email</label>
+                <input className={inp} type="email" value={form.contactPersonEmail} onChange={e => setForm(f => ({ ...f, contactPersonEmail: e.target.value }))} maxLength={50} />
+              </div>
+
+              <div>
+                <label className={lbl}>Financial Contact</label>
+                <input className={inp} value={form.financialContact} onChange={e => setForm(f => ({ ...f, financialContact: e.target.value }))} maxLength={100} />
+              </div>
+
+              <div>
+                <label className={lbl}>Financial Contact Email</label>
+                <input className={inp} type="email" value={form.financialContactEmail} onChange={e => setForm(f => ({ ...f, financialContactEmail: e.target.value }))} maxLength={50} />
+              </div>
+
+              <div>
+                <label className={lbl}>Telephone 1 *</label>
+                <input className={inp} value={form.telephone1} onChange={e => setForm(f => ({ ...f, telephone1: e.target.value }))} required maxLength={16} />
+              </div>
+
+              <div>
+                <label className={lbl}>Telephone 2</label>
+                <input className={inp} value={form.telephone2} onChange={e => setForm(f => ({ ...f, telephone2: e.target.value }))} maxLength={16} />
+              </div>
+
+              <div>
+                <label className={lbl}>Mobile 1</label>
+                <input className={inp} value={form.mobile1} onChange={e => setForm(f => ({ ...f, mobile1: e.target.value }))} maxLength={16} />
+              </div>
+
+              <div>
+                <label className={lbl}>Mobile 2</label>
+                <input className={inp} value={form.mobile2} onChange={e => setForm(f => ({ ...f, mobile2: e.target.value }))} maxLength={16} />
+              </div>
+
+              <div>
+                <label className={lbl}>Fax 1</label>
+                <input className={inp} value={form.fax1} onChange={e => setForm(f => ({ ...f, fax1: e.target.value }))} maxLength={16} />
+              </div>
+
+              <div>
+                <label className={lbl}>Fax 2</label>
+                <input className={inp} value={form.fax2} onChange={e => setForm(f => ({ ...f, fax2: e.target.value }))} maxLength={16} />
+              </div>
+
+              <div className="col-span-full">
+                <label className={lbl}>Remark</label>
+                <textarea className={inp + ' resize-none'} rows={2} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))} maxLength={500} />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button type="submit" disabled={saving} className="bg-[#9a7c4b] text-white border-none rounded-md px-5 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70">
+                {saving ? 'Saving…' : mode === 'edit' ? 'Update' : 'Create'}
+              </button>
+              <button type="button" onClick={cancel} className="bg-white text-[#555] border border-[#ccc] rounded-md px-4 py-2 text-[13px] cursor-pointer hover:bg-surface">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {loading ? (
-        <p style={{ color: '#999' }}>Loading…</p>
+        <p className="text-[#999]">Loading…</p>
       ) : (
-        <div style={{ overflowX: 'auto', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
+        <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
+          <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Name', 'Contact Person', 'Address', 'Telephone', 'Mobile', ''].map((h) => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#666', background: '#f8f9fa', borderBottom: '1px solid #eee' }}>{h}</th>
+                {['Name', 'Contact Type', 'Contact Person', 'Country', 'Telephone', 'Mobile', ''].map(h => (
+                  <th key={h} className="px-3.5 py-2.5 text-left text-xs font-bold text-[#666] bg-surface-2 border-b border-[#eee]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#bbb' }}>No contacts found.</td></tr>
+                <tr><td colSpan={7} className="p-5 text-center text-[#bbb]">No contacts found.</td></tr>
               ) : (
-                filtered.map((c) => (
-                  <tr key={c.contactID} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}><strong>{c.contactName}</strong></td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{c.contactPerson ?? '—'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{c.address}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{c.telephone1}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 13 }}>{c.mobile1 ?? '—'}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <button onClick={() => handleDelete(c.contactID)} style={{ background: '#fee', color: '#c0392b', border: '1px solid #fcc', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-                        Delete
-                      </button>
+                filtered.map(c => (
+                  <tr key={c.contactID} className="border-b border-[#f0f0f0] hover:bg-[#fafbff]">
+                    <td className="px-3.5 py-2.5 text-[13px] font-semibold text-[#333]">{c.contactName}</td>
+                    <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{typeName(c.contactTypeID)}</td>
+                    <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.contactPerson ?? '—'}</td>
+                    <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.country ?? '—'}</td>
+                    <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.telephone1}</td>
+                    <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.mobile1 ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => startEdit(c.contactID)}
+                          className="bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(c.contactID)}
+                          className="bg-[#c0392b] text-white border-none rounded-md px-2.5 py-1 text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -79,3 +318,4 @@ export default function ContactsPage() {
     </div>
   );
 }
+

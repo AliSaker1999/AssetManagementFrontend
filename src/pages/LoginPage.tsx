@@ -3,6 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+function IconDiamond() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 22 9 18 20 6 20 2 9" fill="#d4a928" stroke="#d4a928" strokeWidth="1"/>
+    </svg>
+  );
+}
+
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -25,89 +33,74 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Asset Management</h1>
-        <p style={styles.subtitle}>Sign in to your account</p>
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Username</label>
-            <input
-              style={styles.input}
-              type="text"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              placeholder="Enter your username"
-              autoFocus
-              autoComplete="username"
-              disabled={loading}
-              required
-            />
+    <div className="min-h-screen flex items-center justify-center bg-navy-800 relative overflow-hidden">
+      {/* Decorative background rings */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full border border-navy-700 opacity-40" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full border border-navy-600 opacity-30" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] rounded-full border border-navy-500 opacity-20" />
+        {/* Gold accent glow */}
+        <div className="absolute top-1/4 right-1/3 w-64 h-64 rounded-full bg-gold-400/5 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-sm mx-4">
+        {/* Logo mark above card */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <IconDiamond />
+          <div>
+            <div className="text-white font-bold text-[20px] leading-none tracking-tight">Asset Management</div>
           </div>
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Password</label>
-            <input
-              style={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              autoComplete="current-password"
+        </div>
+
+        {/* Card */}
+        <div className="bg-pearl-50 rounded-2xl border border-pearl-200 shadow-card-lg px-8 py-8">
+          <h2 className="text-[20px] font-extrabold text-ink-800 mb-1">Welcome back</h2>
+          <p className="text-[13px] text-ink-300 mb-7">Sign in to your account to continue</p>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Username</label>
+              <input
+                className="input-base"
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                placeholder="Enter your username"
+                autoFocus
+                autoComplete="username"
+                disabled={loading}
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Password</label>
+              <input
+                className="input-base"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                disabled={loading}
+                required
+              />
+            </div>
+
+            <button
+              className="btn-primary w-full justify-center py-2.5 mt-1 text-[14px]"
+              type="submit"
               disabled={loading}
-              required
-            />
-          </div>
-          <button
-            style={{ ...styles.button, opacity: loading ? 0.7 : 1 }}
-            type="submit"
-            disabled={loading}
-          >
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-        </form>
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-[11px] text-navy-400 mt-6">
+          Asset Management System · Gezairi Group
+        </p>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%)',
-  },
-  card: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: '48px 40px',
-    width: '100%',
-    maxWidth: 400,
-    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-  },
-  title: { fontSize: 24, fontWeight: 700, color: '#1e3a5f', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#666', marginBottom: 32 },
-  form: { display: 'flex', flexDirection: 'column', gap: 20 },
-  fieldGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
-  label: { fontSize: 13, fontWeight: 600, color: '#333' },
-  input: {
-    border: '1.5px solid #ddd',
-    borderRadius: 8,
-    padding: '10px 14px',
-    fontSize: 15,
-    outline: 'none',
-    transition: 'border-color 0.2s',
-  },
-  button: {
-    background: '#1e3a5f',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    padding: '12px',
-    fontSize: 15,
-    fontWeight: 600,
-    cursor: 'pointer',
-    marginTop: 4,
-  },
-};

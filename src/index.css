@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Royal Navy */
+    --navy-50:  #f0f3ff;
+    --navy-100: #d9dfff;
+    --navy-200: #b3bfff;
+    --navy-600: #1f2b7b;
+    --navy-700: #162060;
+    --navy-800: #0e1540;
+
+    /* Royal Gold */
+    --gold-400: #d4a928;
+    --gold-500: #b8891f;
+    --gold-600: #9a6e14;
+
+    /* Pearl */
+    --pearl-50:  #fdfcf7;
+    --pearl-100: #f7f5ed;
+    --pearl-200: #ece8d9;
+
+    /* Ink */
+    --ink-300: #9a9585;
+    --ink-500: #5a544e;
+    --ink-800: #1f1b16;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background-color: var(--pearl-50);
+    color: var(--ink-800);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tabular numerals on all table cells — critical for financial data */
+  td, th {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Mono for codes, barcodes, financial values */
+  .font-code {
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-feature-settings: "zero", "ss01";
+  }
+
+  /* Standard card */
+  .card {
+    @apply bg-white rounded-xl border border-pearl-200 shadow-card;
+  }
+
+  /* Input base */
+  .input-base {
+    @apply w-full px-3.5 py-2.5 text-sm bg-pearl-50 border border-pearl-200 rounded-lg
+           text-ink-800 placeholder:text-ink-200
+           focus:outline-none focus:border-navy-600 focus:ring-1 focus:ring-navy-600/20
+           transition-colors duration-150;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-navy-600 text-white text-sm font-semibold
+           rounded-lg shadow-sm hover:bg-navy-700 active:bg-navy-800
+           transition-colors duration-150 cursor-pointer;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-white text-ink-600 text-sm font-medium
+           rounded-lg border border-pearl-200 shadow-sm hover:bg-pearl-50
+           transition-colors duration-150 cursor-pointer;
+  }
+
+  /* Gold outline button */
+  .btn-gold {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-white text-gold-600 text-sm font-medium
+           rounded-lg border border-gold-400 hover:bg-gold-50
+           transition-colors duration-150 cursor-pointer;
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-danger-bg text-danger text-sm font-medium
+           rounded-lg border border-danger-light hover:bg-danger-light
+           transition-colors duration-150 cursor-pointer;
+  }
+}
+
+@layer utilities {
+  /* Financial number formatting */
+  .num {
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  /* Navy colored financial value */
+  .num-value {
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    color: var(--navy-600);
+  }
+  /* Gold colored cost/depreciation value */
+  .num-cost {
+    font-family: 'Fira Code', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    color: var(--gold-500);
+  }
+}

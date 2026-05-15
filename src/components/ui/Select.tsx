@@ -1,0 +1,136 @@
+import React, { useState, useRef, useEffect } from 'react';
+import clsx from 'clsx';
+
+interface OptionItem {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+function parseOptions(children: React.ReactNode): OptionItem[] {
+  const options: OptionItem[] = [];
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child) && child.type === 'option') {
+      const props = child.props as { value?: string | number; children?: React.ReactNode; disabled?: boolean };
+      options.push({
+        value: String(props.value ?? ''),
+        label: String(props.children ?? ''),
+        disabled: props.disabled,
+      });
+    }
+  });
+  return options;
+}
+
+interface SelectProps {
+  value?: string | number;
+  onChange?: React.ChangeEventHandler<HTMLSelectElement>;
+  children: React.ReactNode;
+  required?: boolean;
+  disabled?: boolean;
+  className?: string;
+}
+
+export default function Select({ value, onChange, children, required, disabled, className }: SelectProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const options = parseOptions(children);
+  const selectedOption = options.find((o) => o.value === String(value ?? ''));
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  function handleSelect(optValue: string) {
+    onChange?.({ target: { value: optValue } } as React.ChangeEvent<HTMLSelectElement>);
+    setOpen(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') setOpen(false);
+    if ((e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') && !open) {
+      e.preventDefault();
+      setOpen(true);
+    }
+  }
+
+  return (
+    <div ref={containerRef} className={clsx('relative w-full', className)}>
+      {/* Hidden native select keeps form validation working */}
+      <select
+        value={String(value ?? '')}
+        required={required}
+        disabled={disabled}
+        onChange={onChange}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="absolute inset-0 w-full opacity-0 pointer-events-none"
+      >
+        {children}
+      </select>
+
+      {/* Trigger */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        onKeyDown={handleKeyDown}
+        className={clsx(
+          'w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-left',
+          'bg-white border shadow-[0_1px_3px_rgba(0,0,0,0.07)]',
+          'outline-none transition-all duration-150',
+          open
+            ? 'border-brand ring-2 ring-[rgba(31,43,123,0.15)]'
+            : 'border-[#d1d5db] hover:border-[#9ca3af] focus:border-brand focus:ring-2 focus:ring-[rgba(31,43,123,0.15)]',
+          disabled ? 'opacity-50 cursor-not-allowed bg-[#f9fafb]' : 'cursor-pointer',
+        )}
+      >
+        <span className={clsx('truncate', !selectedOption || selectedOption.value === '' ? 'text-[#9ca3af]' : 'text-[#1f2937]')}>
+          {selectedOption?.label ?? ''}
+        </span>
+        <svg
+          width="15" height="15" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5"
+          strokeLinecap="round" strokeLinejoin="round"
+          className={clsx('shrink-0 text-brand transition-transform duration-200', open && 'rotate-180')}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {/* Dropdown list */}
+      {open && (
+        <div className="absolute z-50 w-full mt-1.5 bg-white border border-[#e5e7eb] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.13)] overflow-hidden">
+          <div className="max-h-[220px] overflow-y-auto py-1">
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={opt.disabled}
+                onClick={() => !opt.disabled && handleSelect(opt.value)}
+                className={clsx(
+                  'w-full text-left px-3 py-2.5 text-sm transition-colors',
+                  String(value ?? '') === opt.value
+                    ? 'bg-[rgba(31,43,123,0.09)] text-brand font-semibold'
+                    : opt.value === ''
+                      ? 'text-[#9ca3af] hover:bg-[#f9fafb]'
+                      : 'text-[#374151] hover:bg-[#f5f7fa]',
+                  opt.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

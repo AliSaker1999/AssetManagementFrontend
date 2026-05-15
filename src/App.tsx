@@ -11,6 +11,8 @@ import InventoriesPage from './pages/InventoriesPage';
 import DepreciationsPage from './pages/DepreciationsPage';
 import ContactsPage from './pages/ContactsPage';
 import SettingsPage from './pages/SettingsPage';
+import UsersPage from './pages/UsersPage';
+import CompaniesPage from './pages/CompaniesPage';
 
 export default function App() {
   return (
@@ -36,6 +38,8 @@ export default function App() {
             <Route path="depreciations" element={<DepreciationsPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="companies" element={<CompaniesPage />} />
+            <Route path="users" element={<UsersPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -43,3 +47,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+
