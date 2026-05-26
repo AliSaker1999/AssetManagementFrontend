@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationProvider } from '../contexts/NotificationContext';
 import clsx from 'clsx';
 import CommandPalette from './CommandPalette';
+import NotificationBell from './NotificationBell';
 
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
 
@@ -181,6 +183,7 @@ export default function Layout() {
   const colorClass = avatarColor(user?.fullName ?? '');
 
   return (
+    <NotificationProvider>
     <div className="flex flex-col min-h-screen">
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
@@ -207,6 +210,9 @@ export default function Layout() {
         </div>
 
         <div className="flex-1" />
+
+        {/* Notification bell */}
+        <NotificationBell />
 
         {/* User */}
         <div className="flex items-center gap-2">
@@ -318,5 +324,6 @@ export default function Layout() {
         </main>
       </div>
     </div>
+    </NotificationProvider>
   );
 }

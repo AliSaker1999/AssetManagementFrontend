@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { usersApi } from '../api/users';
 import { lookupsApi } from '../api/lookups';
@@ -41,7 +42,7 @@ export default function UsersPage() {
       .then(([usersRes, companiesRes]) => {
         setUsers(usersRes.data);
         setCompanies(companiesRes.data);
-      }).catch(() => toast.error('Failed to load data'))
+      }).catch((err) => handleApiError(err, 'Failed to load data'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -50,8 +51,8 @@ export default function UsersPage() {
     try {
       const res = await usersApi.getPermissions(user.userID);
       setPermissions(res.data);
-    } catch {
-      toast.error('Failed to load permissions');
+    } catch (err) {
+      handleApiError(err, 'Failed to load permissions');
     }
   }
 
@@ -121,8 +122,8 @@ export default function UsersPage() {
         setPermissions(permsRes.data);
       }
       setShowForm(false);
-    } catch {
-      toast.error('Failed to save user');
+    } catch (err) {
+      handleApiError(err, 'Failed to save user');
     } finally {
       setFormSaving(false);
     }
@@ -136,8 +137,8 @@ export default function UsersPage() {
       setUsers(u => u.filter(x => x.userID !== id));
       if (selectedUser?.userID === id) setSelectedUser(null);
       toast.success('User deleted');
-    } catch {
-      toast.error('Failed to delete user');
+    } catch (err) {
+      handleApiError(err, 'Failed to delete user');
     }
   }
 
@@ -151,8 +152,8 @@ export default function UsersPage() {
       setPermissions(res.data);
       setGrantCompanyID('');
       toast.success('Access granted');
-    } catch {
-      toast.error('Failed to grant access');
+    } catch (err) {
+      handleApiError(err, 'Failed to grant access');
     }
   }
 
@@ -162,8 +163,8 @@ export default function UsersPage() {
       await usersApi.revokePermission(selectedUser.userID, p.countryID, p.companyID);
       setPermissions(prev => prev.filter(x => !(x.companyID === p.companyID && x.countryID === p.countryID)));
       toast.success('Access revoked');
-    } catch {
-      toast.error('Failed to revoke access');
+    } catch (err) {
+      handleApiError(err, 'Failed to revoke access');
     }
   }
 

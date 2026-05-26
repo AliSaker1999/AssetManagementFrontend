@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
+import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
+import { maintenancesApi } from '../api/maintenances';
 import type { AssetListItem, PaginatedResponse } from '../types';
-import StatusBadge from '../components/ui/StatusBadge';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,10 +39,12 @@ function IconChevronRight() {
     </svg>
   );
 }
-function IconArrowRight() {
+
+function IconBarcode() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5v14M7 5v14M13 5v14M17 5v14M21 5v14"/>
+      <rect x="1" y="3" width="22" height="18" rx="2"/>
     </svg>
   );
 }
@@ -65,13 +67,21 @@ function TableSkeleton() {
 
 export default function AssetsPage() {
   const { activeCompanyId } = useAuth();
+  const navigate = useNavigate();
   const [assets, setAssets] = useState<AssetListItem[]>([]);
+  const [maintCount, setMaintCount] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [pageNumber, setPageNumber] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
+
+  useEffect(() => {
+    maintenancesApi.getActiveCount()
+      .then((r) => setMaintCount(r.data as number))
+      .catch(() => {});
+  }, []);
 
   // Reset to page 1 and clear cache when search or active company changes
   useEffect(() => { setPageNumber(1); setAllAssetsCache(null); }, [search, activeCompanyId]);
@@ -113,7 +123,7 @@ export default function AssetsPage() {
         }
       } catch (error) {
         if ((error as any).name !== 'AbortError') {
-          toast.error('Failed to load assets');
+          handleApiError(error, 'Failed to load assets');
           setAssets([]);
         }
       } finally {
@@ -128,9 +138,7 @@ export default function AssetsPage() {
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
 
-  // Derive quick stats from current full dataset
-  const activeCount = assets.filter((a) => !a.status || a.status.toLowerCase().includes('activ')).length;
-  const maintCount = assets.filter((a) => (a.status ?? '').toLowerCase().includes('maint')).length;
+  const activeCount = totalCount - maintCount;
 
   return (
     <div>
@@ -139,7 +147,7 @@ export default function AssetsPage() {
         subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} assets across your organization` : undefined}
         breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Assets' }]}
         actions={
-          <Link to="/assets/new" className="btn-primary no-underline">
+          <Link to="/assets/new" className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
             <IconPlus />
             Add Asset
           </Link>
@@ -157,7 +165,7 @@ export default function AssetsPage() {
         <MetricCard
           label="Active"
           value={loading ? '—' : activeCount.toLocaleString()}
-          sub={`of ${assets.length} on this page`}
+          sub="not in maintenance"
           accent="none"
         />
         <MetricCard
@@ -202,8 +210,8 @@ export default function AssetsPage() {
         {/* Table */}
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_3fr_2fr_2fr_1.5fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-            {['Code', 'Description', 'Category', 'Location', 'Status', ''].map((h) => (
+          <div className="grid grid-cols-[2fr_3fr_2fr_2fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+            {['Code', 'Description', 'Category', 'Location', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
@@ -229,8 +237,9 @@ export default function AssetsPage() {
               {assets.map((a, idx) => (
                 <div
                   key={a.assetID}
+                  onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[2fr_3fr_2fr_2fr_1.5fr_auto] gap-0 px-5 py-3.5 items-center',
+                    'grid grid-cols-[2fr_3fr_2fr_2fr_auto] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
@@ -251,19 +260,18 @@ export default function AssetsPage() {
                     {a.room ? ` · ${a.room}` : ''}
                   </div>
 
-                  {/* Status */}
-                  <div>
-                    <StatusBadge status={a.status} />
-                  </div>
-
-                  {/* Action */}
-                  <div>
-                    <Link
-                      to={`/assets/${a.assetID}`}
-                      className="flex items-center gap-1 text-[11px] text-navy-500 hover:text-navy-700 no-underline font-medium transition-colors"
-                    >
-                      View <IconArrowRight />
-                    </Link>
+                  {/* Barcode action */}
+                  <div className="flex items-center">
+                    {a.barcodeNumber && (
+                      <Link
+                        to={`/assets/${a.assetID}?print=1`}
+                        title="Print barcode"
+                        className="text-ink-300 hover:text-navy-600 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <IconBarcode />
+                      </Link>
+                    )}
                   </div>
                 </div>
               ))}

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
 import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country } from '../types';
@@ -59,7 +60,8 @@ export default function AssetFormPage() {
       contactsApi.getLookup(),
       lookupsApi.getCountries(),
     ]).then(([c, g, cat, l, ld, cur, con, cty]) => {
-      setCompanies(c.data as Company[]);
+      const companiesData = c.data as Company[];
+      setCompanies(companiesData);
       setGroups(g.data as GroupType[]);
       setCategories(cat.data as CategoryType[]);
       setLocations(l.data as LocationType[]);
@@ -67,13 +69,17 @@ export default function AssetFormPage() {
       setCurrencies(cur.data as Currency[]);
       setContacts(con.data as Contact[]);
       setCountries(cty.data as Country[]);
+      if (!isEdit && ctxCompanyId != null) {
+        const ctxCountry = companiesData.find((co) => co.companyID === ctxCompanyId)?.countryID?.trim();
+        if (ctxCountry) {
+          lookupsApi.getAssetCode(false, ctxCountry).then((r) =>
+            setForm((prev) => ({ ...prev, assetCode: (r.data as { assetCode: string }).assetCode }))
+          );
+        }
+      }
     });
     if (isEdit) {
       assetsApi.get(assetId).then((r) => setForm(r.data as Asset));
-    } else {
-      lookupsApi.getAssetCode(false).then((r) =>
-        setForm((prev) => ({ ...prev, assetCode: (r.data as { assetCode: string }).assetCode }))
-      );
     }
   }, [isEdit, assetId]);
 
@@ -85,11 +91,13 @@ export default function AssetFormPage() {
   }
 
   async function generateCode() {
+    const countryId = selectedCompany?.countryID?.trim();
+    if (!countryId) { toast.error('Select a company first'); return; }
     setGeneratingCode(true);
     try {
-      const r = await lookupsApi.getAssetCode(false);
+      const r = await lookupsApi.getAssetCode(false, countryId);
       set('assetCode', (r.data as { assetCode: string }).assetCode);
-    } catch { toast.error('Failed to generate code'); }
+    } catch (err) { handleApiError(err, 'Failed to generate code'); }
     finally { setGeneratingCode(false); }
   }
 
@@ -102,14 +110,15 @@ export default function AssetFormPage() {
         toast.success('Asset updated');
         navigate(`/assets/${assetId}`);
       } else {
-        const codeRes = await lookupsApi.getAssetCode(true);
+        const countryId = selectedCompany?.countryID?.trim() ?? '';
+        const codeRes = await lookupsApi.getAssetCode(true, countryId);
         const assetCode = (codeRes.data as { assetCode: string }).assetCode;
         const r = await assetsApi.create({ ...form, assetCode } as Asset);
         toast.success('Asset created');
         navigate(`/assets/${(r.data as { assetID: number }).assetID}`);
       }
-    } catch {
-      toast.error('Save failed');
+    } catch (err) {
+      handleApiError(err, 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -145,7 +154,7 @@ export default function AssetFormPage() {
       reset('categoryID');
       setActiveModal(null);
       toast.success(`Group "${newGroup.groupName}" created`);
-    } catch { toast.error('Failed to create group'); }
+    } catch (err) { handleApiError(err, 'Failed to create group'); }
     finally { setModalSaving(false); }
   }
 
@@ -160,7 +169,7 @@ export default function AssetFormPage() {
       set('categoryID', newCat.categoryID);
       setActiveModal(null);
       toast.success(`Category "${newCat.category}" created`);
-    } catch { toast.error('Failed to create category'); }
+    } catch (err) { handleApiError(err, 'Failed to create category'); }
     finally { setModalSaving(false); }
   }
 
@@ -180,7 +189,7 @@ export default function AssetFormPage() {
       reset('locDetailID');
       setActiveModal(null);
       toast.success(`Location "${newLoc.location}" created`);
-    } catch { toast.error('Failed to create location'); }
+    } catch (err) { handleApiError(err, 'Failed to create location'); }
     finally { setModalSaving(false); }
   }
 
@@ -201,7 +210,7 @@ export default function AssetFormPage() {
       set('locDetailID', newDet.locDetailID);
       setActiveModal(null);
       toast.success('Location detail created');
-    } catch { toast.error('Failed to create location detail'); }
+    } catch (err) { handleApiError(err, 'Failed to create location detail'); }
     finally { setModalSaving(false); }
   }
 
@@ -215,7 +224,7 @@ export default function AssetFormPage() {
       set('purchaseCurCode', newCur.curCode);
       setActiveModal(null);
       toast.success(`Currency "${newCur.curCode}" created`);
-    } catch { toast.error('Failed to create currency'); }
+    } catch (err) { handleApiError(err, 'Failed to create currency'); }
     finally { setModalSaving(false); }
   }
 
@@ -230,7 +239,7 @@ export default function AssetFormPage() {
       reset('groupID', 'categoryID', 'locationID', 'locDetailID');
       setActiveModal(null);
       toast.success(`Company "${newComp.companyName}" created`);
-    } catch { toast.error('Failed to create company'); }
+    } catch (err) { handleApiError(err, 'Failed to create company'); }
     finally { setModalSaving(false); }
   }
 
@@ -392,7 +401,20 @@ export default function AssetFormPage() {
           {/* Company */}
           <Field label="Company *">
             <DropWithAdd onAdd={() => openModal('company')}>
-              <Select value={form.companyID ?? ''} onChange={(e) => { set('companyID', Number(e.target.value)); reset('groupID', 'categoryID', 'locationID', 'locDetailID'); }} required>
+              <Select value={form.companyID ?? ''} onChange={(e) => {
+                const newCompanyId = Number(e.target.value);
+                set('companyID', newCompanyId);
+                reset('groupID', 'categoryID', 'locationID', 'locDetailID');
+                if (!isEdit) {
+                  const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
+                  if (newCountry) {
+                    lookupsApi.getAssetCode(false, newCountry)
+                      .then((r) => set('assetCode', (r.data as { assetCode: string }).assetCode));
+                  } else {
+                    set('assetCode', '');
+                  }
+                }
+              }} required>
                 <option value="">Select…</option>
                 {companies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
               </Select>
@@ -402,7 +424,7 @@ export default function AssetFormPage() {
           {/* Asset Code */}
           <Field label="Asset Code *">
             <div className="flex gap-2">
-              <input className={inputCls} value={form.assetCode ?? ''} onChange={(e) => set('assetCode', e.target.value)} required maxLength={15} />
+              <input className={`${inputCls}${!isEdit ? ' bg-[#f5f5f5] cursor-default select-all' : ''}`} value={form.assetCode ?? ''} onChange={(e) => { if (isEdit) set('assetCode', e.target.value); }} readOnly={!isEdit} required maxLength={20} />
               {!isEdit && (
                 <button
                   type="button"

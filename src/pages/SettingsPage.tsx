@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+﻿import { useEffect, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,10 +9,11 @@ import { useConfirm } from '../hooks/useConfirm';
 import type { GroupType, CategoryType, LocationType, LocationDetail, Company, Country, Currency, Setting } from '../types';
 import Select from '../components/ui/Select';
 
-type Section = 'asset-code' | 'groups' | 'categories' | 'locations' | 'location-details' | 'currencies' | 'countries';
+type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'currencies' | 'countries';
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'asset-code', label: 'Asset Code' },
+  { key: 'notifications', label: 'Notifications' },
   { key: 'groups', label: 'Asset Groups' },
   { key: 'categories', label: 'Categories' },
   { key: 'locations', label: 'Locations' },
@@ -24,7 +26,7 @@ const inputCls = 'w-full px-2.5 py-[7px] border border-[#ddd] rounded-md text-sm
 
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
-  const visibleSections = SECTIONS.filter((s) => s.key !== 'asset-code' || isAdmin());
+  const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
   const [groups, setGroups] = useState<GroupType[]>([]);
   const [categories, setCategories] = useState<CategoryType[]>([]);
@@ -82,6 +84,7 @@ export default function SettingsPage() {
       </div>
 
       {section === 'asset-code' && isAdmin() && <AssetCodeSettingsSection />}
+      {section === 'notifications' && isAdmin() && <NotificationSettingsSection />}
       {section === 'groups' && <GroupsSection groups={groups} countries={countries} onReload={reloadGroups} />}
       {section === 'categories' && <CategoriesSection categories={categories} groups={groups} onReload={reloadCategories} />}
       {section === 'locations' && <LocationsSection locations={locations} companies={companies} onReload={reloadLocations} />}
@@ -92,10 +95,9 @@ export default function SettingsPage() {
   );
 }
 
-// â”€â”€ Asset Code Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Asset Code Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function AssetCodeSettingsSection() {
-  const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(true);
   const [acronym, setAcronym] = useState('');
   const [length, setLength] = useState('6');
@@ -109,7 +111,6 @@ function AssetCodeSettingsSection() {
     try {
       const r = await lookupsApi.getAtSettings();
       const s = r.data as Setting[];
-      setSettings(s);
       setAcronym(s.find(x => x.setID === 1)?.setValue ?? '');
       setLength(s.find(x => x.setID === 2)?.setValue ?? '6');
     } finally {
@@ -124,7 +125,7 @@ function AssetCodeSettingsSection() {
       await lookupsApi.updateAtSetting(1, acronym.toUpperCase());
       toast.success('Acronym updated');
       await load();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSavingAcronym(false); }
   }
 
@@ -137,14 +138,12 @@ function AssetCodeSettingsSection() {
       await lookupsApi.updateAtSetting(2, String(len));
       toast.success('Length updated');
       await load();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSavingLength(false); }
   }
 
-  const counter = Number(settings.find(x => x.setID === 3)?.setValue ?? 0);
   const len = Math.max(1, Math.min(10, Number(length) || 6));
-  const nextCounter = counter + 1;
-  const numPart = String(nextCounter).padStart(len, '0');
+  const numPart = '0'.repeat(len);
   const preview = (acronym.toUpperCase() || '—') + numPart;
 
   if (loading) return <div className="text-sm text-[#aaa] py-6">Loading…</div>;
@@ -152,15 +151,9 @@ function AssetCodeSettingsSection() {
   return (
     <div className="max-w-[680px]">
       {/* Preview banner */}
-      <div className="bg-brand rounded-xl px-6 py-5 mb-6 flex items-center justify-between">
-        <div>
-          <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest mb-1">Next Asset Code Preview</p>
-          <p className="text-[28px] font-bold text-white font-mono tracking-[0.12em] leading-none">{preview}</p>
-        </div>
-        <div className="text-right bg-white/10 rounded-lg px-4 py-3">
-          <p className="text-[11px] text-white/50 uppercase tracking-wide font-semibold mb-0.5">Counter</p>
-          <p className="text-2xl font-bold text-white">{counter}</p>
-        </div>
+      <div className="bg-brand rounded-xl px-6 py-5 mb-6">
+        <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest mb-1">Asset Code Format Preview</p>
+        <p className="text-[28px] font-bold text-white font-mono tracking-[0.12em] leading-none">{preview}</p>
       </div>
 
       {/* Settings card */}
@@ -234,16 +227,121 @@ function AssetCodeSettingsSection() {
           </form>
         </div>
 
-        {/* Counter row — read only */}
-        <div className="px-6 py-5 flex items-center justify-between bg-[#fafafa] rounded-b-xl">
-          <div>
-            <p className="text-[14px] font-semibold text-[#111827] mb-0.5">Counter</p>
-            <p className="text-[13px] text-[#6b7280]">Auto-increments each time a new asset code is generated. Read-only.</p>
-          </div>
-          <div className="bg-white border border-[#e8eaf0] rounded-lg px-5 py-2.5 text-right shadow-sm">
-            <p className="text-[11px] text-[#9ca3af] uppercase tracking-wide font-semibold mb-0.5">Current value</p>
-            <p className="text-2xl font-bold text-[#374151]">{counter}</p>
-          </div>
+      </div>
+    </div>
+  );
+}
+
+// Notification Settings
+
+function NotificationSettingsSection() {
+  const [loading, setLoading] = useState(true);
+  const [warrantyVal, setWarrantyVal] = useState('');
+  const [maintenanceVal, setMaintenanceVal] = useState('');
+  const [savingWarranty, setSavingWarranty] = useState(false);
+  const [savingMaintenance, setSavingMaintenance] = useState(false);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await lookupsApi.getAtSettings();
+      const s = r.data as Setting[];
+      setWarrantyVal(s.find(x => x.setID === 4)?.setValue ?? '');
+      setMaintenanceVal(s.find(x => x.setID === 5)?.setValue ?? '');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveWarranty(e: { preventDefault(): void }) {
+    e.preventDefault();
+    setSavingWarranty(true);
+    try {
+      await lookupsApi.updateAtSetting(4, warrantyVal.trim());
+      toast.success('Warranty intervals saved');
+    } catch (err) { handleApiError(err, 'Save failed'); }
+    finally { setSavingWarranty(false); }
+  }
+
+  async function saveMaintenance(e: { preventDefault(): void }) {
+    e.preventDefault();
+    setSavingMaintenance(true);
+    try {
+      await lookupsApi.updateAtSetting(5, maintenanceVal.trim());
+      toast.success('Maintenance intervals saved');
+    } catch (err) { handleApiError(err, 'Save failed'); }
+    finally { setSavingMaintenance(false); }
+  }
+
+  if (loading) return <div className={['text-sm py-6 text-gray-400'].join(' ')}>Loading...</div>;
+
+  const card = 'bg-white rounded-xl border border-[#e8eaf0] shadow-sm divide-y divide-[#f0f2f5]';
+  const rowCls = 'px-6 py-5';
+  const titleCls = 'text-[14px] font-semibold text-[#111827] mb-0.5';
+  const hintCls = 'text-[13px] text-[#6b7280] leading-relaxed mb-3';
+  const codeCls = 'bg-[#f3f4f6] px-1 rounded';
+  const inputCls2 = 'flex-1 px-3 py-2 border border-[#ddd] rounded-lg text-sm font-mono outline-none focus:border-accent transition-all';
+  const btnCls = 'bg-[#9a7c4b] text-white border-none rounded-lg px-4 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-60 whitespace-nowrap';
+
+  return (
+    <div className="max-w-[680px]">
+      <div className={card}>
+
+        <div className={rowCls}>
+          <p className={titleCls}>Warranty Alert Intervals</p>
+          <p className={hintCls}>
+            {'Comma-separated. Accepted formats: '}
+            <code className={codeCls}>2 Week</code>
+            {', '}
+            <code className={codeCls}>3 Days</code>
+            {', '}
+            <code className={codeCls}>Same Day</code>
+          </p>
+          <form onSubmit={saveWarranty} className="flex gap-2">
+            <input
+              className={inputCls2}
+              value={warrantyVal}
+              onChange={e => setWarrantyVal(e.target.value)}
+              placeholder="2 Week, 1 Week, 3 Days, Same Day"
+              required
+            />
+            <button type="submit" disabled={savingWarranty} className={btnCls}>
+              {savingWarranty ? 'Saving...' : 'Save'}
+            </button>
+          </form>
+        </div>
+
+        <div className={rowCls}>
+          <p className={titleCls}>Maintenance Alert Intervals</p>
+          <p className={hintCls}>
+            {'Comma-separated. Accepted formats: '}
+            <code className={codeCls}>1 Week</code>
+            {', '}
+            <code className={codeCls}>2 Days</code>
+            {', '}
+            <code className={codeCls}>1 Day</code>
+            {'. Once overdue, daily reminders fire automatically until Return From Maintenance is set.'}
+          </p>
+          <form onSubmit={saveMaintenance} className="flex gap-2">
+            <input
+              className={inputCls2}
+              value={maintenanceVal}
+              onChange={e => setMaintenanceVal(e.target.value)}
+              placeholder="1 Week, 2 Days, 1 Day"
+              required
+            />
+            <button type="submit" disabled={savingMaintenance} className={btnCls}>
+              {savingMaintenance ? 'Saving...' : 'Save'}
+            </button>
+          </form>
+        </div>
+
+        <div className="px-6 py-4 bg-[#fafafa] rounded-b-xl">
+          <p className="text-[12px] text-[#9ca3af]">
+            Changes take effect on the next background service run.
+          </p>
         </div>
 
       </div>
@@ -251,7 +349,7 @@ function AssetCodeSettingsSection() {
   );
 }
 
-// â”€â”€ Groups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Groups â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const emptyGroup = { groupName: '', acronym: '', depreciationRate: 0, accountNo: '', accountingExclusion: false, countryID: '' };
 
@@ -284,7 +382,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
       }
       cancel();
       await onReload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -295,7 +393,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
       await lookupsApi.deleteGroup(g.groupID);
       await onReload();
       toast.success('Group deleted');
-    } catch { toast.error('Delete failed — group may be in use'); }
+    } catch (err) { handleApiError(err, 'Delete failed — group may be in use'); }
   }
 
   return (
@@ -345,7 +443,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
   );
 }
 
-// â”€â”€ Categories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Categories â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const emptyCat = { category: '', groupID: 0 };
 
@@ -374,7 +472,7 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
       }
       cancel();
       await onReload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -385,7 +483,7 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
       await lookupsApi.deleteCategory(c.categoryID);
       await onReload();
       toast.success('Category deleted');
-    } catch { toast.error('Delete failed — category may be in use'); }
+    } catch (err) { handleApiError(err, 'Delete failed — category may be in use'); }
   }
 
   return (
@@ -420,7 +518,7 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
   );
 }
 
-// â”€â”€ Locations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Locations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function LocationsSection({ locations, companies, onReload }: { locations: LocationType[]; companies: Company[]; onReload: () => Promise<void> }) {
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
@@ -446,7 +544,7 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
       }
       cancel();
       await onReload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -457,7 +555,7 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
       await lookupsApi.deleteLocation(l.locationID);
       await onReload();
       toast.success('Location deleted');
-    } catch { toast.error('Delete failed — location may be in use'); }
+    } catch (err) { handleApiError(err, 'Delete failed — location may be in use'); }
   }
 
   return (
@@ -492,7 +590,7 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
   );
 }
 
-// â”€â”€ Location Details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Location Details â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const emptyLd = { locationID: 0, floor: '', zone: '', room: '' };
 
@@ -522,7 +620,7 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
       }
       cancel();
       await onReload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -533,7 +631,7 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
       await lookupsApi.deleteLocationDetail(d.locDetailID);
       await onReload();
       toast.success('Location detail deleted');
-    } catch { toast.error('Delete failed'); }
+    } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
   return (
@@ -576,7 +674,7 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
   );
 }
 
-// â”€â”€ Currencies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Currencies â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const emptyCurrency = { curCode: '', curName: '' };
 
@@ -605,7 +703,7 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
       }
       cancel();
       await onReload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -616,7 +714,7 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
       await lookupsApi.deleteCurrency(c.curCode.trim());
       await onReload();
       toast.success('Currency deleted');
-    } catch { toast.error('Delete failed — currency may be in use'); }
+    } catch (err) { handleApiError(err, 'Delete failed — currency may be in use'); }
   }
 
   return (
@@ -648,7 +746,7 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
   );
 }
 
-// â”€â”€ Countries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Countries â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const emptyCountry = { countryID: '', country: '', nationality: '', zipCode: '', workingCountry: false, activeCountry: true };
 const PAGE_SIZE = 10;
@@ -699,7 +797,7 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
       }
       cancel();
       await onReload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -709,7 +807,7 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
       await lookupsApi.toggleCountryActive(c.countryID.trim(), !c.activeCountry);
       await onReload();
       toast.success(c.activeCountry ? 'Country deactivated' : 'Country activated');
-    } catch { toast.error('Failed to update status'); }
+    } catch (err) { handleApiError(err, 'Failed to update status'); }
     finally { setToggling(null); }
   }
 
@@ -841,7 +939,7 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
   );
 }
 
-// â”€â”€ Shared components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Shared components â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function SectionWrapper({ title, onAdd, children }: { title: string; onAdd?: () => void; children: React.ReactNode }) {
   return (

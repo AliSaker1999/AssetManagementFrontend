@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
 import Modal from '../components/Modal';
@@ -56,7 +57,7 @@ export default function ContactsPage() {
         setContactTypes(ct.data as ContactType[]);
         setCountries(co.data as Country[]);
       })
-      .catch(() => toast.error('Failed to load contacts'))
+      .catch((err) => handleApiError(err, 'Failed to load contacts'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -94,7 +95,7 @@ export default function ContactsPage() {
       });
       setEditId(id);
       setMode('edit');
-    } catch { toast.error('Failed to load contact'); }
+    } catch (err) { handleApiError(err, 'Failed to load contact'); }
   }
 
   function cancel() { setMode(null); setEditId(null); }
@@ -126,7 +127,7 @@ export default function ContactsPage() {
       }
       cancel();
       await reload();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -137,7 +138,7 @@ export default function ContactsPage() {
       await contactsApi.delete(id);
       setContacts(prev => prev.filter(c => c.contactID !== id));
       toast.success('Contact deleted');
-    } catch { toast.error('Delete failed — contact may be in use'); }
+    } catch (err) { handleApiError(err, 'Delete failed — contact may be in use'); }
   }
 
   const filtered = contacts.filter(c =>

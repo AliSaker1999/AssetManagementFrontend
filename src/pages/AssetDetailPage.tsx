@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import Select from '../components/ui/Select';
 import { assetsApi } from '../api/assets';
@@ -11,6 +12,7 @@ import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
+import BarcodePrintModal from '../components/BarcodePrintModal';
 import type {
   Asset, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
   Maintenance, Warranty, Attachment, Contact, Currency,
@@ -69,6 +71,14 @@ function IconPaperclip() {
     </svg>
   );
 }
+function IconBarcode() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5v14M7 5v14M13 5v14M17 5v14M21 5v14"/>
+      <rect x="1" y="3" width="22" height="18" rx="2"/>
+    </svg>
+  );
+}
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
@@ -90,13 +100,15 @@ export default function AssetDetailPage() {
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const lookupsLoadedRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     assetsApi.get(assetId)
       .then((r) => setAsset(r.data as Asset))
-      .catch(() => toast.error('Failed to load asset'))
+      .catch((err) => handleApiError(err, 'Failed to load asset'))
       .finally(() => setLoading(false));
   }, [assetId]);
 
@@ -108,7 +120,7 @@ export default function AssetDetailPage() {
     if (tab === 'status' && statusHistory.length === 0)
       assetsApi.getStatusHistory(assetId)
         .then((r) => setStatusHistory(r.data as StatusHistoryItem[]))
-        .catch(() => toast.error('Failed to load status history'));
+        .catch((err) => handleApiError(err, 'Failed to load status history'));
     if (tab === 'maintenance') {
       if (maintenances.length === 0)
         maintenancesApi.getByAsset(assetId).then((r) => setMaintenances(r.data as Maintenance[]));
@@ -127,6 +139,12 @@ export default function AssetDetailPage() {
       attachmentsApi.getByAsset(assetId).then((r) => setAttachments(r.data as Attachment[]));
   }, [tab, assetId]);
 
+  useEffect(() => {
+    if (asset && searchParams.get('print') === '1' && asset.barcodeNumber) {
+      setShowBarcodeModal(true);
+    }
+  }, [asset, searchParams]);
+
   async function handleDelete() {
     const ok = await confirm('This asset will be permanently removed.', { title: 'Delete Asset?' });
     if (!ok) return;
@@ -134,9 +152,8 @@ export default function AssetDetailPage() {
       await assetsApi.delete(assetId);
       toast.success('Asset deleted');
       navigate('/assets');
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(msg ?? 'Delete failed');
+    } catch (err) {
+      handleApiError(err, 'Delete failed');
     }
   }
 
@@ -166,6 +183,15 @@ export default function AssetDetailPage() {
     <div>
       {confirmDialog}
 
+      {showBarcodeModal && asset?.barcodeNumber && (
+        <BarcodePrintModal
+          barcodeNumber={asset.barcodeNumber}
+          assetCode={asset.assetCode}
+          assetDesc={asset.assetDesc}
+          onClose={() => setShowBarcodeModal(false)}
+        />
+      )}
+
       {/* Page Header */}
       <div className="bg-white border-b border-pearl-200 px-8 py-5">
         <Link
@@ -188,7 +214,7 @@ export default function AssetDetailPage() {
               <div className="font-code text-[12px] text-navy-500 font-medium mb-0.5">{asset.assetCode}</div>
               <h1 className="text-[20px] font-extrabold text-ink-800 leading-tight">{asset.assetDesc}</h1>
               <div className="flex items-center gap-3 mt-1.5">
-                <StatusBadge status={asset.statusName ?? 'Active'} />
+                <StatusBadge status="Active" />
                 {asset.inServiceDate && (
                   <span className="text-[11px] text-ink-300">
                     In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -199,6 +225,15 @@ export default function AssetDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowBarcodeModal(true)}
+              disabled={!asset.barcodeNumber}
+              title={asset.barcodeNumber ? 'Print barcode label' : 'No barcode number assigned'}
+              className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <IconBarcode />
+              Print Barcode
+            </button>
             <Link
               to={`/assets/${assetId}/edit`}
               className="btn-secondary no-underline"
@@ -243,6 +278,8 @@ export default function AssetDetailPage() {
         {tab === 'maintenance' && (
           <MaintenanceTab
             assetId={assetId}
+            assetStatusID={asset?.statusID ?? null}
+            onAssetStatusChange={(sid) => setAsset(a => a ? { ...a, statusID: sid } : a)}
             items={maintenances}
             contacts={contacts}
             currencies={currencies}
@@ -407,10 +444,10 @@ function EmptyState({ message }: { message: string }) {
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string; onClose: () => void; children: React.ReactNode; width?: string }) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-card-lg w-full max-w-lg border border-pearl-200">
+      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
           <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
           <button
@@ -435,12 +472,14 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function ActionBtn({ onClick, danger, children }: { onClick: () => void; danger?: boolean; children: React.ReactNode }) {
+function ActionBtn({ onClick, danger, disabled, children }: { onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={clsx(
-        'text-[11px] font-semibold px-2.5 py-1 rounded cursor-pointer transition-colors border',
+        'text-[11px] font-semibold px-2.5 py-1 rounded transition-colors border',
+        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
         danger
           ? 'bg-danger-bg text-danger border-danger-light hover:bg-danger-light'
           : 'bg-navy-50 text-navy-600 border-navy-100 hover:bg-navy-100'
@@ -469,9 +508,11 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
 
 function MaintenanceTab({
-  assetId, items, contacts, currencies, onChange,
+  assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange,
 }: {
   assetId: number;
+  assetStatusID: number | null;
+  onAssetStatusChange: (sid: number) => void;
   items: Maintenance[];
   contacts: Contact[];
   currencies: Currency[];
@@ -482,6 +523,19 @@ function MaintenanceTab({
   const [editing, setEditing] = useState<Maintenance | null>(null);
   const [form, setForm] = useState<MaintForm>({ fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [saving, setSaving] = useState(false);
+  const [returning, setReturning] = useState<number | null>(null);
+
+  async function handleReturn(m: Maintenance) {
+    const ok = await confirm(`Mark asset as returned from maintenance?`, { title: 'Return From Maintenance' });
+    if (!ok) return;
+    setReturning(m.maintID);
+    try {
+      await maintenancesApi.returnFromMaintenance(m.maintID);
+      onAssetStatusChange(9);
+      toast.success('Asset marked as returned from maintenance');
+    } catch (err) { handleApiError(err, 'Failed to update status'); }
+    finally { setReturning(null); }
+  }
 
   function openAdd() {
     setForm({ fromDate: '', toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
@@ -516,7 +570,7 @@ function MaintenanceTab({
         toast.success('Maintenance updated');
       }
       close();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -531,7 +585,7 @@ function MaintenanceTab({
       });
       onChange(items.filter((i) => i.maintID !== item.maintID));
       toast.success('Deleted');
-    } catch { toast.error('Delete failed'); }
+    } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
   const contactName = (id: number) => contacts.find((c) => c.contactID === id)?.contactName ?? String(id);
@@ -566,6 +620,11 @@ function MaintenanceTab({
               <div className="flex gap-1.5">
                 <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>
                 <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>
+                {assetStatusID === 8 && (
+                  <ActionBtn onClick={() => handleReturn(m)} disabled={returning === m.maintID}>
+                    {returning === m.maintID ? '…' : 'Mark Returned'}
+                  </ActionBtn>
+                )}
               </div>
             </div>
           ))}
@@ -650,7 +709,7 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
         toast.success('Warranty updated');
       }
       close();
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 
@@ -664,7 +723,7 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
       });
       onChange(items.filter((i) => i.warntID !== item.warntID));
       toast.success('Deleted');
-    } catch { toast.error('Delete failed'); }
+    } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
   return (
@@ -724,6 +783,41 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
   );
 }
 
+// ─── Attachment helpers ────────────────────────────────────────────────────────
+
+function getMimeTypeFromExt(ext: string): string {
+  const map: Record<string, string> = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    bmp: 'image/bmp',
+    svg: 'image/svg+xml',
+    avif: 'image/avif',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc: 'application/msword',
+    txt: 'text/plain',
+    csv: 'text/csv',
+  };
+  return map[(ext ?? '').trim().toLowerCase().replace(/^\./, '')] ?? 'application/octet-stream';
+}
+
+async function downloadAttachment(item: Attachment) {
+  try {
+    const res = await attachmentsApi.download(item.attID);
+    const url = URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = item.attFileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) { handleApiError(err, 'Download failed'); }
+}
+
 // ─── Attachments Tab ──────────────────────────────────────────────────────────
 
 function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: Attachment[]; onChange: (v: Attachment[]) => void }) {
@@ -733,8 +827,30 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
   const [remark, setRemark] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [previewItem, setPreviewItem] = useState<Attachment | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   function close() { setShowModal(false); setAttDesc(''); setRemark(''); setFile(null); }
+
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewItem(null);
+    setPreviewUrl(null);
+  }
+
+  async function handlePreview(item: Attachment) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewLoading(true);
+    try {
+      const mime = getMimeTypeFromExt(item.attFileExt);
+      const res = await attachmentsApi.view(item.attID);
+      const url = URL.createObjectURL(new Blob([res.data], { type: mime }));
+      setPreviewItem(item);
+      setPreviewUrl(url);
+    } catch (err) { handleApiError(err, 'Preview failed'); }
+    finally { setPreviewLoading(false); }
+  }
 
   async function handleUpload(e: FormEvent) {
     e.preventDefault();
@@ -747,7 +863,7 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
       onChange([...items, r.data as Attachment]);
       toast.success('Attachment uploaded');
       close();
-    } catch { toast.error('Upload failed'); }
+    } catch (err) { handleApiError(err, 'Upload failed'); }
     finally { setSaving(false); }
   }
 
@@ -758,7 +874,7 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
       await attachmentsApi.delete({ attID: item.attID, assetID: item.assetID, attDesc: item.attDesc, attFileName: item.attFileName, attFileExt: item.attFileExt, remark: item.remark ?? null });
       onChange(items.filter((i) => i.attID !== item.attID));
       toast.success('Deleted');
-    } catch { toast.error('Delete failed'); }
+    } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
   return (
@@ -784,7 +900,11 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
               <div className="text-[12px] text-ink-600 truncate font-code">{a.attFileName}</div>
               <div className="text-[11px] text-ink-400 uppercase font-code">{a.attFileExt}</div>
               <div className="text-[12px] text-ink-400 truncate">{a.remark ?? '—'}</div>
-              <ActionBtn danger onClick={() => handleDelete(a)}>Delete</ActionBtn>
+              <div className="flex items-center gap-2">
+                <ActionBtn onClick={() => downloadAttachment(a)}>Download</ActionBtn>
+                <ActionBtn onClick={() => handlePreview(a)} disabled={previewLoading}>{previewLoading ? 'Loading…' : 'Preview'}</ActionBtn>
+                <ActionBtn danger onClick={() => handleDelete(a)}>Delete</ActionBtn>
+              </div>
             </div>
           ))}
         </div>
@@ -811,8 +931,45 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
           </form>
         </Modal>
       )}
+
+      {previewItem && previewUrl && (
+        <AttachmentPreviewModal item={previewItem} url={previewUrl} onClose={closePreview} />
+      )}
     </>
   );
+}
+
+// ─── Attachment Preview Modal ─────────────────────────────────────────────────
+
+function AttachmentPreviewModal({ item, url, onClose }: { item: Attachment; url: string; onClose: () => void }) {
+  const ext = (item.attFileExt ?? '').trim().toLowerCase().replace(/^\./, '');
+  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext);
+  const isPdf   = ext === 'pdf';
+  const isText  = ['txt', 'csv'].includes(ext);
+
+  return (
+    <Modal title={item.attFileName} onClose={onClose} width="max-w-4xl">
+      {isImage && (
+        <img src={url} alt={item.attFileName} className="max-w-full max-h-[70vh] mx-auto rounded object-contain block" />
+      )}
+      {isPdf && (
+        <iframe src={url} title={item.attFileName} className="w-full rounded border border-pearl-200" style={{ height: '70vh' }} />
+      )}
+      {isText && <TextPreview url={url} />}
+      {!isImage && !isPdf && !isText && (
+        <div className="py-10 text-center text-ink-400 text-sm">
+          <p className="mb-2">Preview is not available for <span className="font-semibold uppercase">.{ext}</span> files.</p>
+          <p>Use the <span className="font-semibold">Download</span> button to open this file.</p>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function TextPreview({ url }: { url: string }) {
+  const [text, setText] = useState('');
+  useEffect(() => { fetch(url).then((r) => r.text()).then(setText); }, [url]);
+  return <pre className="text-xs text-ink-700 overflow-auto max-h-[60vh] bg-pearl-50 rounded p-4 whitespace-pre-wrap">{text}</pre>;
 }
 
 // ─── Remark Tab ───────────────────────────────────────────────────────────────
@@ -828,7 +985,7 @@ function RemarkTab({ asset, onSaved }: { asset: Asset; onSaved: (updated: Asset)
       await assetsApi.update(asset.assetID, { ...asset, remark } as Asset);
       onSaved({ ...asset, remark });
       toast.success('Remark saved');
-    } catch { toast.error('Save failed'); }
+    } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
 

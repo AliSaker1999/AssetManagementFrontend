@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import client from '../api/client';
 import type { User, LoginResponse, UserPermission } from '../types';
 
@@ -78,6 +78,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const allowedCountries = user?.permissions?.map(p => p.countryID) ?? [];
   const allowedCompanies = user?.permissions?.map(p => p.companyID) ?? [];
+
+  useEffect(() => {
+    const handlePermissionsRevoked = async () => {
+      if (!user) return;
+      try {
+        const { data: perms } = await client.get<UserPermission[]>(`/users/${user.userId}/permissions`);
+        const updated = { ...user, permissions: perms };
+        localStorage.setItem('user', JSON.stringify(updated));
+        setUser(updated);
+        const allowedIds = perms.map(p => p.companyID);
+        setActiveCompanyIdState(prev => {
+          if (prev !== null && !allowedIds.includes(prev)) {
+            localStorage.removeItem('activeCompanyId');
+            return null;
+          }
+          return prev;
+        });
+      } catch {
+        logout();
+      }
+    };
+    window.addEventListener('permissions-revoked', handlePermissionsRevoked);
+    return () => window.removeEventListener('permissions-revoked', handlePermissionsRevoked);
+  }, [user, logout]);
 
   // null = "All Companies" — no forced fallback to first company
   const resolvedActiveCompanyId = activeCompanyId;

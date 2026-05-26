@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { assetsApi } from '../api/assets';
@@ -33,10 +33,18 @@ export default function CommandPalette({ open, onClose }: Props) {
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Refs so the window keydown listener always reads the latest values
+  const cursorRef = useRef(0);
+  const allResultsRef = useRef<{ type: 'nav' | 'asset'; label: string; sub: string; icon: string; id: string }[]>([]);
+  const onCloseRef = useRef(onClose);
+  const navigateRef = useRef(navigate);
+  onCloseRef.current = onClose;
+  navigateRef.current = navigate;
+
   // Load all assets once when palette opens
   useEffect(() => {
     if (!open) { setQuery(''); setCursor(0); return; }
-    setTimeout(() => inputRef.current?.focus(), 30);
+    inputRef.current?.focus();
     if (allAssets !== null) return;
     setLoading(true);
     assetsApi.getList()
@@ -72,6 +80,40 @@ export default function CommandPalette({ open, onClose }: Props) {
     ...assets.map((a) => ({ type: 'asset' as const, label: a.assetDesc, sub: a.assetCode, icon: '⬡', id: String(a.assetID) })),
   ];
 
+  // Keep refs in sync with latest render values
+  cursorRef.current = cursor;
+  allResultsRef.current = allResults;
+
+  // Global keyboard handler — works regardless of which element has focus
+  useEffect(() => {
+    if (!open) return;
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCursor((c) => Math.min(c + 1, allResultsRef.current.length - 1));
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCursor((c) => Math.max(c - 1, 0));
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const item = allResultsRef.current[cursorRef.current];
+        if (!item) return;
+        if (item.type === 'nav') navigateRef.current(item.id);
+        else navigateRef.current(`/assets/${item.id}`);
+        onCloseRef.current();
+      }
+    }
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  if (!open) return null;
+
   function go(index: number) {
     const item = allResults[index];
     if (!item) return;
@@ -79,15 +121,6 @@ export default function CommandPalette({ open, onClose }: Props) {
     else navigate(`/assets/${item.id}`);
     onClose();
   }
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { onClose(); return; }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(c + 1, allResults.length - 1)); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
-    if (e.key === 'Enter') { e.preventDefault(); go(cursor); }
-  }, [cursor, allResults]);
-
-  if (!open) return null;
 
   return (
     <div
@@ -111,7 +144,6 @@ export default function CommandPalette({ open, onClose }: Props) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
             placeholder="Search assets, navigate…"
             className="flex-1 text-[14px] text-ink-800 placeholder:text-ink-300 outline-none bg-transparent"
           />
@@ -146,7 +178,7 @@ export default function CommandPalette({ open, onClose }: Props) {
               onClick={() => go(i)}
               className={clsx(
                 'w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer border-none bg-transparent transition-colors',
-                cursor === i ? 'bg-navy-50' : 'hover:bg-pearl-50'
+                cursor === i ? 'bg-navy-100' : 'hover:bg-pearl-100'
               )}
             >
               <span className="w-7 h-7 rounded-lg bg-pearl-100 flex items-center justify-center text-[14px] shrink-0 text-ink-400">{item.icon}</span>
@@ -174,7 +206,7 @@ export default function CommandPalette({ open, onClose }: Props) {
                     onClick={() => go(idx)}
                     className={clsx(
                       'w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer border-none bg-transparent transition-colors',
-                      cursor === idx ? 'bg-navy-50' : 'hover:bg-pearl-50'
+                      cursor === idx ? 'bg-navy-100' : 'hover:bg-pearl-100'
                     )}
                   >
                     <span className="w-7 h-7 rounded-lg bg-navy-50 border border-navy-100 flex items-center justify-center shrink-0">

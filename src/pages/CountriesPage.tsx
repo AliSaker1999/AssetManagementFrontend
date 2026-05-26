@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
 import type { Country } from '../types';
@@ -30,8 +31,8 @@ export default function CountriesPage() {
     try {
       const r = await lookupsApi.getCountries();
       setCountries(r.data as Country[]);
-    } catch {
-      toast.error('Failed to load countries');
+    } catch (err) {
+      handleApiError(err, 'Failed to load countries');
     } finally {
       setLoading(false);
     }
@@ -59,8 +60,8 @@ export default function CountriesPage() {
       }
       cancel();
       await load();
-    } catch {
-      toast.error('Save failed');
+    } catch (err) {
+      handleApiError(err, 'Save failed');
     } finally {
       setSaving(false);
     }

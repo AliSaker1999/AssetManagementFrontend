@@ -116,3 +116,62 @@
     color: var(--gold-500);
   }
 }
+
+/* ─── Print: Barcode Label Only ─────────────────────────────────────────── */
+@media print {
+  body > * {
+    display: none !important;
+  }
+  body > #barcode-print-target {
+    display: block !important;
+  }
+
+  @page {
+    size: 3.5in 1.5in landscape;
+    margin: 0;
+  }
+
+  #barcode-print-target .barcode-label {
+    width: 3.5in;
+    height: 1.5in;
+    padding: 0.1in 0.15in;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #barcode-print-target .barcode-label svg {
+    width: 100%;
+    max-width: 3in;
+    height: auto;
+  }
+
+  #barcode-print-target .label-barcode-num {
+    font-family: 'Fira Code', monospace;
+    font-size: 9pt;
+    letter-spacing: 0.12em;
+    color: #1f1b16;
+    margin-top: 3pt;
+  }
+
+  #barcode-print-target .label-asset-code {
+    font-family: 'Fira Code', monospace;
+    font-size: 7pt;
+    color: #1f2b7b;
+    font-weight: 600;
+  }
+
+  #barcode-print-target .label-asset-desc {
+    font-size: 7pt;
+    color: #5a544e;
+    margin-top: 1pt;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 3in;
+  }
+}

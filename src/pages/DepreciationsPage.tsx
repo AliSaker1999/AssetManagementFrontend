@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { depreciationsApi } from '../api/depreciations';
 import { lookupsApi } from '../api/lookups';
@@ -32,7 +33,7 @@ export default function DepreciationsPage() {
           setCompanyId(list[0].companyID);
         }
       })
-      .catch(() => toast.error('Failed to load companies'))
+      .catch((err) => handleApiError(err, 'Failed to load companies'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -49,7 +50,7 @@ export default function DepreciationsPage() {
         setDepreciations(all.data as Depreciation[]);
         setLastDate(last.data as string | null);
       })
-      .catch(() => toast.error('Failed to load depreciations'));
+      .catch((err) => handleApiError(err, 'Failed to load depreciations'));
   }, [companyId]);
 
   async function selectDep(depId: number) {
@@ -59,7 +60,7 @@ export default function DepreciationsPage() {
     try {
       const r = await depreciationsApi.getReport(depId);
       setReport(r.data as DepreciationReportItem[]);
-    } catch { toast.error('Failed to load report'); }
+    } catch (err) { handleApiError(err, 'Failed to load report'); }
     finally { setReportLoading(false); }
   }
 
@@ -72,9 +73,8 @@ export default function DepreciationsPage() {
       toast.success('Depreciation run successfully');
       const all = await depreciationsApi.getAll(companyId);
       setDepreciations(all.data as Depreciation[]);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(msg ?? 'Depreciation run failed');
+    } catch (err) {
+      handleApiError(err, 'Depreciation run failed');
     }
   }
 
@@ -89,7 +89,7 @@ export default function DepreciationsPage() {
       setLastDate(last.data as string | null);
       setSelected(null);
       setReport([]);
-    } catch { toast.error('Delete failed'); }
+    } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
   if (loading) return <p className="p-8">Loading…</p>;

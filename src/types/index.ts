@@ -280,6 +280,8 @@ export interface Company {
   companyPrmCurCode: string;
   companyScdCurCode: string;
   countryID: string;
+  emailNotification?: string;
+  userNotification?: number;
 }
 
 export interface CategoryType {
@@ -329,6 +331,7 @@ export interface Country {
   zipCode?: string;
   workingCountry: boolean;
   activeCountry: boolean;
+  assetCodeCounter: number;
 }
 
 // Users & Permissions
@@ -353,4 +356,39 @@ export interface Setting {
   setValue: string;
   setDescription: string;
   setType: string;
+}
+
+export interface InventoryActiveSession {
+  inventoryID: number;
+  companyID: number;
+  inventoryStartDate: string;
+  inventoryEndDate?: string | null;
+  remark?: string;
+}
+
+export interface InventoryListItem {
+  inventoryID: number;
+  companyID: number;
+  inventoryStartDate: string;
+  inventoryEndDate: string;
+  remark?: string;
+  startCreatedByFullName: string;
+  startCreatedByDateTime: string;
+  endCreatedByFullName?: string;
+  totalAssets: number;
+  foundAssets: number;
+  relocatedAssets: number;
+}
+
+// Notifications
+export interface AppNotification {
+  notifID: number;
+  userID: number;
+  companyID: number;
+  type: 'Warranty' | 'Maintenance';
+  entityID: number;
+  assetID: number;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
 }

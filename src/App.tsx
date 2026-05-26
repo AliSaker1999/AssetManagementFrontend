@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -16,6 +17,7 @@ import CompaniesPage from './pages/CompaniesPage';
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <Toaster position="top-right" />
       <BrowserRouter>
@@ -45,6 +47,7 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -1,0 +1,83 @@
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import * as signalR from '@microsoft/signalr';
+import type { AppNotification } from '../types';
+import { notificationsApi } from '../api/notifications';
+
+interface NotificationContextValue {
+  notifications: AppNotification[];
+  unreadCount: number;
+  markRead: (id: number) => Promise<void>;
+  markAllRead: () => Promise<void>;
+}
+
+const NotificationContext = createContext<NotificationContextValue | null>(null);
+
+export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const connectionRef = useRef<signalR.HubConnection | null>(null);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  // Load initial notifications
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    notificationsApi.getAll()
+      .then(r => setNotifications(r.data as AppNotification[]))
+      .catch(() => {});
+
+    // Build SignalR connection with token in query string (required for hub auth)
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl('/hubs/notifications', {
+        accessTokenFactory: () => localStorage.getItem('token') ?? '',
+      })
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+
+    connection.on('ReceiveNotification', (notif: AppNotification) => {
+      setNotifications(prev => [notif, ...prev]);
+
+      // Browser push toast (if permission granted)
+      if (Notification.permission === 'granted') {
+        new Notification(notif.type === 'Warranty' ? 'Warranty Alert' : 'Maintenance Alert', {
+          body: notif.message,
+          icon: '/favicon.ico',
+        });
+      }
+    });
+
+    connection.start().catch(() => {});
+    connectionRef.current = connection;
+
+    // Request browser notification permission
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    return () => { connection.stop().catch(() => {}); };
+  }, []);
+
+  const markRead = useCallback(async (id: number) => {
+    await notificationsApi.markRead(id);
+    setNotifications(prev => prev.map(n => n.notifID === id ? { ...n, isRead: true } : n));
+  }, []);
+
+  const markAllRead = useCallback(async () => {
+    await notificationsApi.markAllRead();
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  }, []);
+
+  return (
+    <NotificationContext.Provider value={{ notifications, unreadCount, markRead, markAllRead }}>
+      {children}
+    </NotificationContext.Provider>
+  );
+}
+
+export function useNotifications() {
+  const ctx = useContext(NotificationContext);
+  if (!ctx) throw new Error('useNotifications must be used inside NotificationProvider');
+  return ctx;
+}

@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
+import { usersApi } from '../api/users';
 import { useConfirm } from '../hooks/useConfirm';
-import type { Company, Country, Currency } from '../types';
+import type { Company, Country, Currency, UserListItem } from '../types';
 import Select from '../components/ui/Select';
 
 const emptyForm = {
@@ -12,6 +14,8 @@ const emptyForm = {
   companyPrmCurCode: '',
   companyScdCurCode: '',
   countryID: '',
+  emailNotification: '',
+  userNotification: 0,
 };
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
@@ -21,6 +25,7 @@ export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [users, setUsers] = useState<UserListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
@@ -29,13 +34,14 @@ export default function CompaniesPage() {
   const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
-    Promise.all([lookupsApi.getCompanies(), lookupsApi.getCountries(), lookupsApi.getCurrencies()])
-      .then(([c, co, cur]) => {
+    Promise.all([lookupsApi.getCompanies(), lookupsApi.getCountries(), lookupsApi.getCurrencies(), usersApi.getUsers()])
+      .then(([c, co, cur, u]) => {
         setCompanies(c.data as Company[]);
         setCountries(co.data as Country[]);
         setCurrencies(cur.data as Currency[]);
+        setUsers(u.data as UserListItem[]);
       })
-      .catch(() => toast.error('Failed to load data'))
+      .catch((err) => handleApiError(err, 'Failed to load data'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -46,27 +52,40 @@ export default function CompaniesPage() {
 
   function startAdd() { setForm(emptyForm); setEditId(null); setMode('add'); }
   function startEdit(c: Company) {
-    setForm({ companyName: c.companyName, companyAbbreviation: c.companyAbbreviation, companyPrmCurCode: c.companyPrmCurCode, companyScdCurCode: c.companyScdCurCode, countryID: c.countryID });
+    setForm({
+      companyName: c.companyName,
+      companyAbbreviation: c.companyAbbreviation,
+      companyPrmCurCode: c.companyPrmCurCode,
+      companyScdCurCode: c.companyScdCurCode,
+      countryID: c.countryID,
+      emailNotification: c.emailNotification ?? '',
+      userNotification: c.userNotification ?? 0,
+    });
     setEditId(c.companyID);
     setMode('edit');
   }
   function cancel() { setMode(null); setEditId(null); }
 
-  async function handleSave(e: FormEvent) {
+  async function handleSave(e: { preventDefault(): void }) {
     e.preventDefault();
     setSaving(true);
+    const payload = {
+      ...form,
+      emailNotification: form.emailNotification || null,
+      userNotification: form.userNotification || null,
+    };
     try {
       if (mode === 'edit' && editId !== null) {
-        await lookupsApi.updateCompany(editId, form);
+        await lookupsApi.updateCompany(editId, payload);
         toast.success('Company updated');
       } else {
-        await lookupsApi.createCompany(form);
+        await lookupsApi.createCompany(payload);
         toast.success('Company created');
       }
       cancel();
       await reload();
-    } catch {
-      toast.error('Save failed');
+    } catch (err) {
+      handleApiError(err, 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -79,8 +98,8 @@ export default function CompaniesPage() {
       await lookupsApi.deleteCompany(c.companyID);
       await reload();
       toast.success('Company deleted');
-    } catch {
-      toast.error('Delete failed — company may be in use');
+    } catch (err) {
+      handleApiError(err, 'Delete failed — company may be in use');
     }
   }
 
@@ -134,6 +153,17 @@ export default function CompaniesPage() {
                   {countries.filter(c => c.activeCountry).map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
                 </Select>
               </div>
+              <div className="flex flex-col gap-1">
+                <label className={labelCls}>Email Notification</label>
+                <input className={inputCls} type="email" value={form.emailNotification} onChange={e => setForm(f => ({ ...f, emailNotification: e.target.value }))} maxLength={100} placeholder="e.g. notify@company.com" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className={labelCls}>Notification User</label>
+                <Select value={form.userNotification} onChange={e => setForm(f => ({ ...f, userNotification: Number(e.target.value) }))}>
+                  <option value={0}>— None —</option>
+                  {users.map(u => <option key={u.userID} value={u.userID}>{u.fullName}</option>)}
+                </Select>
+              </div>
             </div>
             <div className="flex gap-2 mt-4">
               <button type="submit" className="px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70" disabled={saving}>
@@ -151,28 +181,36 @@ export default function CompaniesPage() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', ''].map(h => (
+              {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', 'Email Notification', 'Notification User', 'Counter', ''].map(h => (
                 <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {companies.map(c => (
-              <tr key={c.companyID} className={clsx(editId === c.companyID && 'bg-[#eef3fb]')}>
-                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyName}</td>
-                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyAbbreviation}</td>
-                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyPrmCurCode}</td>
-                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyScdCurCode}</td>
-                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{countries.find(co => co.countryID === c.countryID)?.country ?? c.countryID}</td>
-                <td className="px-3 py-2.5 border-b border-[#f3f4f6] whitespace-nowrap">
-                  <button className="px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]" onClick={() => startEdit(c)}>Edit</button>
-                  {' '}
-                  <button className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors" onClick={() => handleDelete(c)}>Delete</button>
-                </td>
-              </tr>
-            ))}
+            {companies.map(c => {
+              const counter = countries.find(co => co.countryID.trim() === c.countryID.trim())?.assetCodeCounter ?? 0;
+              return (
+                <tr key={c.companyID} className={clsx(editId === c.companyID && 'bg-[#eef3fb]')}>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyName}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyAbbreviation}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyPrmCurCode}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyScdCurCode}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{countries.find(co => co.countryID === c.countryID)?.country ?? c.countryID}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.emailNotification ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{users.find(u => u.userID === c.userNotification)?.fullName ?? '—'}</td>
+                  <td className="px-3 py-2.5 border-b border-[#f3f4f6]">
+                    <span className="inline-block bg-[#f3f4f6] text-[#374151] font-mono font-semibold text-[13px] px-2.5 py-0.5 rounded-md">{counter}</span>
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-[#f3f4f6] whitespace-nowrap">
+                    <button className="px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]" onClick={() => startEdit(c)}>Edit</button>
+                    {' '}
+                    <button className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors" onClick={() => handleDelete(c)}>Delete</button>
+                  </td>
+                </tr>
+              );
+            })}
             {companies.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -180,4 +218,3 @@ export default function CompaniesPage() {
     </div>
   );
 }
-

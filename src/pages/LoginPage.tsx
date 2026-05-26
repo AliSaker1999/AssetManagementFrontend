@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import toast from 'react-hot-toast';
+import { handleApiError } from '../utils/errors';
 
 function IconDiamond() {
   return (
@@ -25,8 +25,8 @@ export default function LoginPage() {
     try {
       await login(userName.trim(), password);
       navigate('/', { replace: true });
-    } catch {
-      toast.error('Invalid username or password.');
+    } catch (err) {
+      handleApiError(err, 'Invalid username or password.');
     } finally {
       setLoading(false);
     }

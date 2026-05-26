@@ -20,8 +20,8 @@ export const lookupsApi = {
     client.put(`/lookups/settings/at/${id}`, JSON.stringify(value), {
       headers: { 'Content-Type': 'application/json' },
     }),
-  getAssetCode: (generate: boolean) =>
-    client.get('/lookups/asset-code', { params: { generate } }),
+  getAssetCode: (generate: boolean, countryId?: string) =>
+    client.get('/lookups/asset-code', { params: { generate, countryId } }),
 
   // Countries
   createCountry: (data: object) => client.post('/lookups/countries', data),
