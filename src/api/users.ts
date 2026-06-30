@@ -3,10 +3,10 @@ import client from './client';
 export const usersApi = {
   getUsers: () => client.get('/users'),
 
-  createUser: (data: { userName: string; password: string; fullName: string; roleID: number }) =>
+  createUser: (data: { userName: string; password: string; fullName: string; emailAddress: string; roleID: number }) =>
     client.post('/users', data),
 
-  updateUser: (id: number, data: { userName: string; password?: string; fullName: string; roleID: number }) =>
+  updateUser: (id: number, data: { userName: string; password?: string; fullName: string; emailAddress: string; roleID: number }) =>
     client.put(`/users/${id}`, data),
 
   deleteUser: (id: number) => client.delete(`/users/${id}`),

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { handleApiError } from '../utils/errors';
+import { parseApiError } from '../utils/errors';
 
 function IconDiamond() {
   return (
@@ -17,16 +17,18 @@ export default function LoginPage() {
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!userName.trim() || !password) return;
+    setErrorMessage(null);
     setLoading(true);
     try {
       await login(userName.trim(), password);
       navigate('/', { replace: true });
     } catch (err) {
-      handleApiError(err, 'Invalid username or password.');
+      setErrorMessage(parseApiError(err, 'Invalid username or password.'));
     } finally {
       setLoading(false);
     }
@@ -56,6 +58,12 @@ export default function LoginPage() {
         <div className="bg-pearl-50 rounded-2xl border border-pearl-200 shadow-card-lg px-8 py-8">
           <h2 className="text-[20px] font-extrabold text-ink-800 mb-1">Welcome back</h2>
           <p className="text-[13px] text-ink-300 mb-7">Sign in to your account to continue</p>
+
+          {errorMessage && (
+            <div className="mb-4 rounded-lg border border-[#f5c2c7] bg-[#fff1f2] px-3 py-2 text-[13px] text-[#842029]" role="alert">
+              {errorMessage}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">

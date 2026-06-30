@@ -3,10 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
-import { maintenancesApi } from '../api/maintenances';
 import type { AssetListItem, PaginatedResponse } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
+import StatusBadge from '../components/ui/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 
 const PAGE_SIZE = 25;
@@ -66,22 +66,16 @@ function TableSkeleton() {
 }
 
 export default function AssetsPage() {
-  const { activeCompanyId } = useAuth();
+  const { activeCompanyId, isAuditor } = useAuth();
+  const readOnly = isAuditor();
   const navigate = useNavigate();
   const [assets, setAssets] = useState<AssetListItem[]>([]);
-  const [maintCount, setMaintCount] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [pageNumber, setPageNumber] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
-
-  useEffect(() => {
-    maintenancesApi.getActiveCount()
-      .then((r) => setMaintCount(r.data as number))
-      .catch(() => {});
-  }, []);
 
   // Reset to page 1 and clear cache when search or active company changes
   useEffect(() => { setPageNumber(1); setAllAssetsCache(null); }, [search, activeCompanyId]);
@@ -138,7 +132,9 @@ export default function AssetsPage() {
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
 
-  const activeCount = totalCount - maintCount;
+  const visibleAssets = search.trim() ? (allAssetsCache ?? assets) : assets;
+  const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
+  const activeCount = visibleAssets.filter((a) => (a.statusID ?? 0) !== 8).length;
 
   return (
     <div>
@@ -147,10 +143,12 @@ export default function AssetsPage() {
         subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} assets across your organization` : undefined}
         breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Assets' }]}
         actions={
-          <Link to="/assets/new" className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
-            <IconPlus />
-            Add Asset
-          </Link>
+          !readOnly ? (
+            <Link to="/assets/new" className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
+              <IconPlus />
+              Add Asset
+            </Link>
+          ) : undefined
         }
       />
 
@@ -170,9 +168,9 @@ export default function AssetsPage() {
         />
         <MetricCard
           label="In Maintenance"
-          value={loading ? '—' : maintCount.toLocaleString()}
+          value={loading ? '—' : maintenanceCount.toLocaleString()}
           sub="currently"
-          accent={maintCount > 0 ? 'warning' : 'none'}
+          accent={maintenanceCount > 0 ? 'warning' : 'none'}
         />
         <MetricCard
           label="Page"
@@ -210,8 +208,8 @@ export default function AssetsPage() {
         {/* Table */}
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_3fr_2fr_2fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-            {['Code', 'Description', 'Category', 'Location', ''].map((h) => (
+          <div className="grid grid-cols-[2fr_3fr_1.2fr_2fr_2fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+            {['Code', 'Description', 'Status', 'Category', 'Location', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
@@ -239,7 +237,7 @@ export default function AssetsPage() {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[2fr_3fr_2fr_2fr_auto] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid grid-cols-[2fr_3fr_1.2fr_2fr_2fr_auto] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
@@ -249,6 +247,11 @@ export default function AssetsPage() {
 
                   {/* Description */}
                   <div className="text-[13px] text-ink-800 font-medium truncate pr-4">{a.assetDesc}</div>
+
+                  {/* Status */}
+                  <div className="pr-4">
+                    <StatusBadge status={a.status ?? (a.statusID === 8 ? 'Maintenance' : 'Active')} />
+                  </div>
 
                   {/* Category */}
                   <div className="text-[12px] text-ink-400 truncate pr-4">{a.category ?? '—'}</div>

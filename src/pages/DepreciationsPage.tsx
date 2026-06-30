@@ -10,7 +10,8 @@ import type { Company, Depreciation, DepreciationReportItem } from '../types';
 import Select from '../components/ui/Select';
 
 export default function DepreciationsPage() {
-  const { activeCompanyId } = useAuth();
+  const { activeCompanyId, isAuditor } = useAuth();
+  const readOnly = isAuditor();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState<number>(activeCompanyId ?? 0);
   const [depreciations, setDepreciations] = useState<Depreciation[]>([]);
@@ -65,6 +66,7 @@ export default function DepreciationsPage() {
   }
 
   async function runDepreciation() {
+    if (readOnly) return;
     const company = companies.find((c) => c.companyID === companyId);
     const ok = await confirm(`Run depreciation for ${company?.companyName ?? ''} on ${runDate}?`, { title: 'Run Depreciation', confirmLabel: 'Run', danger: false });
     if (!ok) return;
@@ -79,6 +81,7 @@ export default function DepreciationsPage() {
   }
 
   async function deleteLast() {
+    if (readOnly) return;
     const ok = await confirm('Delete the last depreciation run for this company? This cannot be undone.', { title: 'Delete Last Run' });
     if (!ok) return;
     try {
@@ -116,8 +119,12 @@ export default function DepreciationsPage() {
           onChange={(e) => setRunDate(e.target.value)}
           className="border border-[#ddd] rounded-md px-2.5 py-1.5 text-sm outline-none focus:border-accent"
         />
-        <button onClick={runDepreciation} className="bg-[#9a7c4b] text-white border-none px-4 py-2 rounded-md text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors">Run</button>
-        <button onClick={deleteLast} className="bg-[#c0392b] text-white border-none px-4 py-2 rounded-md text-[13px] font-semibold cursor-pointer hover:bg-[#a93226] transition-colors">Delete Last</button>
+        {!readOnly && (
+          <>
+            <button onClick={runDepreciation} className="bg-[#9a7c4b] text-white border-none px-4 py-2 rounded-md text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors">Run</button>
+            <button onClick={deleteLast} className="bg-[#c0392b] text-white border-none px-4 py-2 rounded-md text-[13px] font-semibold cursor-pointer hover:bg-[#a93226] transition-colors">Delete Last</button>
+          </>
+        )}
       </div>
 
       {/* Info panel */}

@@ -29,13 +29,19 @@ interface SelectProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
+  searchable?: boolean;
 }
 
-export default function Select({ value, onChange, children, required, disabled, className }: SelectProps) {
+export default function Select({ value, onChange, children, required, disabled, className, searchable = false }: SelectProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const options = parseOptions(children);
   const selectedOption = options.find((o) => o.value === String(value ?? ''));
+  const filteredOptions = searchable && query.trim()
+    ? options.filter((opt) => opt.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
 
   useEffect(() => {
     if (!open) return;
@@ -47,6 +53,14 @@ export default function Select({ value, onChange, children, required, disabled, 
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      if (searchable) searchRef.current?.focus();
+      return;
+    }
+    setQuery('');
+  }, [open, searchable]);
 
   function handleSelect(optValue: string) {
     onChange?.({ target: { value: optValue } } as React.ChangeEvent<HTMLSelectElement>);
@@ -108,8 +122,22 @@ export default function Select({ value, onChange, children, required, disabled, 
       {/* Dropdown list */}
       {open && (
         <div className="absolute z-50 w-full mt-1.5 bg-white border border-[#e5e7eb] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.13)] overflow-hidden">
+          {searchable && (
+            <div className="p-2 border-b border-[#eef0f3]">
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search…"
+                className="w-full rounded-lg border border-[#dbe0e6] bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-[rgba(31,43,123,0.12)]"
+              />
+            </div>
+          )}
           <div className="max-h-[220px] overflow-y-auto py-1">
-            {options.map((opt) => (
+            {filteredOptions.length === 0 && (
+              <div className="px-3 py-3 text-sm text-[#9ca3af]">No matches</div>
+            )}
+            {filteredOptions.map((opt) => (
               <button
                 key={opt.value}
                 type="button"

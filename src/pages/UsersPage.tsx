@@ -14,7 +14,7 @@ const ROLES = [
   { id: 3, name: 'Full Access User' },
 ];
 
-const emptyForm = { userName: '', password: '', fullName: '', roleID: 3 };
+const emptyForm = { userName: '', password: '', fullName: '', emailAddress: '', roleID: 3 };
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
 const labelCls = 'block text-xs font-semibold text-[#374151] mb-1 mt-3';
@@ -65,7 +65,7 @@ export default function UsersPage() {
 
   async function openEdit(u: UserListItem) {
     setEditingId(u.userID);
-    setForm({ userName: u.userName, password: '', fullName: u.fullName, roleID: u.roleID });
+    setForm({ userName: u.userName, password: '', fullName: u.fullName, emailAddress: u.emailAddress, roleID: u.roleID });
     try {
       const res = await usersApi.getPermissions(u.userID);
       setSelectedCompanyIDs(new Set((res.data as UserPermission[]).map(p => p.companyID)));
@@ -185,7 +185,7 @@ export default function UsersPage() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Full Name', 'Username', 'Role', ''].map(h => (
+                {['Full Name', 'Username', 'Email', 'Role', ''].map(h => (
                   <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
                 ))}
               </tr>
@@ -199,6 +199,7 @@ export default function UsersPage() {
                 >
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.fullName}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.userName}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.emailAddress}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.roleName}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6] whitespace-nowrap">
                     <button className={btnSmCls} onClick={e => { e.stopPropagation(); openEdit(u); }}>Edit</button>
@@ -271,6 +272,15 @@ export default function UsersPage() {
 
               <label className={labelCls}>Username</label>
               <input className={inputCls} value={form.userName} onChange={e => setForm(f => ({ ...f, userName: e.target.value }))} required />
+
+              <label className={labelCls}>Email</label>
+              <input
+                className={inputCls}
+                type="email"
+                value={form.emailAddress}
+                onChange={e => setForm(f => ({ ...f, emailAddress: e.target.value }))}
+                required
+              />
 
               <label className={labelCls}>{editingId ? 'New Password (leave blank to keep)' : 'Password'}</label>
               <input className={inputCls} type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required={!editingId} />

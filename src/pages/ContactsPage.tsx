@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
+import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { useConfirm } from '../hooks/useConfirm';
 import type { Contact, Country } from '../types';
@@ -35,6 +36,7 @@ const inp = 'w-full px-2.5 py-[7px] border border-[#ddd] rounded-md text-sm outl
 const lbl = 'text-xs font-semibold text-[#555] mb-1 block';
 
 export default function ContactsPage() {
+  const { isAuditor } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -45,6 +47,7 @@ export default function ContactsPage() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
+  const readOnly = isAuditor();
 
   useEffect(() => {
     Promise.all([
@@ -67,12 +70,14 @@ export default function ContactsPage() {
   }
 
   function startAdd() {
+    if (readOnly) return;
     setForm(emptyForm);
     setEditId(null);
     setMode('add');
   }
 
   async function startEdit(id: number) {
+    if (readOnly) return;
     try {
       const r = await contactsApi.get(id);
       const c = r.data as Contact;
@@ -102,6 +107,7 @@ export default function ContactsPage() {
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     if (!form.contactTypeID) { toast.error('Please select a contact type'); return; }
     setSaving(true);
     const payload = {
@@ -132,6 +138,7 @@ export default function ContactsPage() {
   }
 
   async function handleDelete(id: number) {
+    if (readOnly) return;
     const ok = await confirm('Delete this contact?', { title: 'Delete Contact' });
     if (!ok) return;
     try {
@@ -155,12 +162,14 @@ export default function ContactsPage() {
       {dialog}
       <div className="flex justify-between items-center mb-5">
         <h2 className="text-[22px] font-bold text-brand">Contacts</h2>
-        <button
-          onClick={startAdd}
-          className="bg-[#9a7c4b] text-white border-none rounded-md px-4 py-[7px] text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors"
-        >
-          + Add Contact
-        </button>
+        {!readOnly && (
+          <button
+            onClick={startAdd}
+            className="bg-[#9a7c4b] text-white border-none rounded-md px-4 py-[7px] text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors"
+          >
+            + Add Contact
+          </button>
+        )}
       </div>
 
       <input
@@ -171,7 +180,7 @@ export default function ContactsPage() {
       />
 
       {/* Add / Edit Modal */}
-      {mode !== null && (
+      {!readOnly && mode !== null && (
         <Modal title={mode === 'edit' ? 'Edit Contact' : 'New Contact'} onClose={cancel} width="max-w-[700px]">
           <form onSubmit={handleSave}>
             <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(190px,1fr))]">
@@ -276,14 +285,14 @@ export default function ContactsPage() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Name', 'Contact Type', 'Contact Person', 'Country', 'Telephone', 'Mobile', ''].map(h => (
+                {['Name', 'Contact Type', 'Contact Person', 'Country', 'Telephone', 'Mobile', ...(readOnly ? [] : [''])].map(h => (
                   <th key={h} className="px-3.5 py-2.5 text-left text-xs font-bold text-[#666] bg-surface-2 border-b border-[#eee]">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="p-5 text-center text-[#bbb]">No contacts found.</td></tr>
+                <tr><td colSpan={readOnly ? 6 : 7} className="p-5 text-center text-[#bbb]">No contacts found.</td></tr>
               ) : (
                 filtered.map(c => (
                   <tr key={c.contactID} className="border-b border-[#f0f0f0] hover:bg-[#fafbff]">
@@ -293,22 +302,24 @@ export default function ContactsPage() {
                     <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.country ?? '—'}</td>
                     <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.telephone1}</td>
                     <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{c.mobile1 ?? '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => startEdit(c.contactID)}
-                          className="bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(c.contactID)}
-                          className="bg-[#c0392b] text-white border-none rounded-md px-2.5 py-1 text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
+                    {!readOnly && (
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => startEdit(c.contactID)}
+                            className="bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(c.contactID)}
+                            className="bg-[#c0392b] text-white border-none rounded-md px-2.5 py-1 text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

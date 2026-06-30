@@ -33,6 +33,25 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function diffDays(startIso: string | null | undefined, endIso: string | null | undefined) {
+  if (!startIso || !endIso) return null;
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerDay));
+}
+
+function diffMonthsFromNow(dateIso: string | null | undefined) {
+  if (!dateIso) return null;
+  const d = new Date(dateIso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let months = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+  if (now.getDate() < d.getDate()) months -= 1;
+  return Math.max(0, months);
+}
+
 // ─── RelocateModal ──────────────────────────────────────────────────────────
 
 function PlusIcon() {
@@ -571,7 +590,7 @@ function InventoryHistoryTab({ rows }: { rows: InventoryHistoryItem[] }) {
   return (
     <div className="rounded-lg border border-pearl-200 overflow-hidden">
       <div className="grid grid-cols-[110px_1fr_70px_70px] bg-pearl-100 px-4 py-2 border-b border-pearl-200">
-        {['Date', 'Location', 'Found', 'Moved'].map((h) => (
+        {['Date', 'Location', 'Found', 'Relocated'].map((h) => (
           <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
         ))}
       </div>
@@ -821,7 +840,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
           ) : (
             <>
               <div className="grid grid-cols-[150px_1fr_130px_200px_60px_60px] bg-pearl-100 border-b border-pearl-200 px-4 py-2">
-                {['Code', 'Description', 'Group', 'Location', 'Found', 'Moved'].map((h) => (
+                {['Code', 'Description', 'Group', 'Location', 'Found', 'Relocated'].map((h) => (
                   <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
                 ))}
               </div>
@@ -960,7 +979,8 @@ function PastInventoriesSection({
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function InventoriesPage() {
-  const { activeCompanyId } = useAuth();
+  const { activeCompanyId, isAuditor } = useAuth();
+  const readOnly = isAuditor();
 
   const [companies, setCompanies]           = useState<Company[]>([]);
   const [companyId, setCompanyId]           = useState<number>(0);
@@ -1043,6 +1063,7 @@ export default function InventoriesPage() {
 
   // ── start inventory ───────────────────────────────────────────────────────
   async function handleStart() {
+    if (readOnly) return;
     if (!companyId) return;
     setActionLoading(true);
     try {
@@ -1058,6 +1079,7 @@ export default function InventoriesPage() {
 
   // ── end inventory ─────────────────────────────────────────────────────────
   async function handleEnd(endDate: string) {
+    if (readOnly) return;
     if (!session) return;
     await inventoriesApi.end(session.inventoryID, { inventoryEndDate: endDate });
     toast.success('Inventory session ended');
@@ -1067,6 +1089,7 @@ export default function InventoriesPage() {
 
   // ── refresh ───────────────────────────────────────────────────────────────
   async function handleRefresh() {
+    if (readOnly) return;
     if (!session) return;
     setActionLoading(true);
     try {
@@ -1082,6 +1105,7 @@ export default function InventoriesPage() {
 
   // ── mark all available ────────────────────────────────────────────────────
   async function handleMarkAllAvailable() {
+    if (readOnly) return;
     if (!session) return;
     setActionLoading(true);
     try {
@@ -1097,6 +1121,7 @@ export default function InventoriesPage() {
 
   // ── toggle single availability ────────────────────────────────────────────
   async function toggleAvailable(item: InventoryDetail) {
+    if (readOnly) return;
     const next = !item.isAvailable;
     setDetails((prev) => prev.map((d) => d.invDetailID === item.invDetailID ? { ...d, isAvailable: next } : d));
     try {
@@ -1109,6 +1134,7 @@ export default function InventoriesPage() {
 
   // ── confirm relocation ────────────────────────────────────────────────────
   async function handleRelocateConfirm(locId: number, locDetailId: number) {
+    if (readOnly) return;
     if (!relocateTarget) return;
     await inventoriesApi.relocate({
       invDetailID: relocateTarget.invDetailID,
@@ -1135,6 +1161,15 @@ export default function InventoriesPage() {
   );
 
   const foundCount = filtered.filter((d) => d.isAvailable).length;
+  const latestCompletedInventory = pastInventories.reduce<InventoryListItem | null>((latest, current) => {
+    if (!latest) return current;
+    return new Date(current.inventoryEndDate) > new Date(latest.inventoryEndDate) ? current : latest;
+  }, null);
+  const lastFinishedInDays = diffDays(
+    latestCompletedInventory?.inventoryStartDate,
+    latestCompletedInventory?.inventoryEndDate,
+  );
+  const lastMadeInMonths = diffMonthsFromNow(lastDate ?? latestCompletedInventory?.inventoryEndDate ?? null);
 
   // ── loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
@@ -1251,22 +1286,34 @@ export default function InventoriesPage() {
                     </div>
                   )}
 
+                  <div className="bg-pearl-50 border border-pearl-200 rounded-lg px-3 py-2.5">
+                    <p className="text-[11px] font-semibold uppercase text-ink-300 mb-1.5">Inventory Summary</p>
+                    <p className="text-[12px] text-ink-500">
+                      Inventory was finished in: <span className="font-semibold text-ink-700">{lastFinishedInDays ?? '—'} Day/s</span>.
+                    </p>
+                    <p className="text-[12px] text-ink-500 mt-1">
+                      Inventory was last made in: <span className="font-semibold text-ink-700">{lastMadeInMonths ?? '—'} Month/s</span>.
+                    </p>
+                  </div>
+
                   <div className="flex gap-2 items-start bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
                     <svg className="mt-0.5 shrink-0 text-amber-500" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                     </svg>
                     <p className="text-[11px] text-amber-700 leading-relaxed">
-                      Disposed assets (Donated, Transferred, Destroyed, Sold, Return to Supplier) are automatically excluded.
+                      Generating inventory will disregard all the asset with status and will deny disposal or reproduced of any asset.
                     </p>
                   </div>
 
-                  <button
-                    onClick={handleStart}
-                    disabled={actionLoading}
-                    className="btn-primary w-full py-2.5 text-sm font-semibold disabled:opacity-60"
-                  >
-                    {actionLoading ? 'Starting…' : `Start Inventory`}
-                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={handleStart}
+                      disabled={actionLoading}
+                      className="btn-primary w-full py-2.5 text-sm font-semibold disabled:opacity-60"
+                    >
+                      {actionLoading ? 'Starting…' : `Start Inventory`}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1317,41 +1364,43 @@ export default function InventoriesPage() {
                   <span className="font-semibold text-ink-700">{foundCount}</span> / {filtered.length} found
                 </span>
 
-                <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    onClick={handleRefresh}
-                    disabled={actionLoading}
-                    className="btn-secondary text-sm px-3 py-2 flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
-                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                    </svg>
-                    Refresh New Assets
-                  </button>
+                {!readOnly && (
+                  <div className="flex items-center gap-2 ml-auto">
+                    <button
+                      onClick={handleRefresh}
+                      disabled={actionLoading}
+                      className="btn-secondary text-sm px-3 py-2 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                      Refresh New Assets
+                    </button>
 
-                  <button
-                    onClick={handleMarkAllAvailable}
-                    disabled={actionLoading}
-                    className="btn-secondary text-sm px-3 py-2 flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Mark All Available
-                  </button>
+                    <button
+                      onClick={handleMarkAllAvailable}
+                      disabled={actionLoading}
+                      className="btn-secondary text-sm px-3 py-2 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      Mark All Available
+                    </button>
 
-                  <button
-                    onClick={() => setShowEndModal(true)}
-                    className="btn-danger text-sm px-4 py-2 flex items-center gap-1.5"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                      <line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" />
-                    </svg>
-                    End Inventory
-                  </button>
-                </div>
+                    <button
+                      onClick={() => setShowEndModal(true)}
+                      className="btn-danger text-sm px-4 py-2 flex items-center gap-1.5"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" />
+                      </svg>
+                      End Inventory
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* table */}
@@ -1372,7 +1421,7 @@ export default function InventoriesPage() {
                 <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
                   {/* table header */}
                   <div className="grid grid-cols-[150px_1fr_130px_200px_64px_64px] gap-0 bg-pearl-100 border-b border-pearl-200 px-4 py-2.5">
-                    {['Code', 'Description', 'Group', 'Current Location', 'Found', 'Moved'].map((h) => (
+                    {['Code', 'Description', 'Group', 'Current Location', 'Found', 'Relocated'].map((h) => (
                       <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
                     ))}
                   </div>
@@ -1425,7 +1474,7 @@ export default function InventoriesPage() {
                         <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                           <AvailabilityCheckbox
                             checked={d.isAvailable}
-                            onChange={() => toggleAvailable(d)}
+                            onChange={() => { if (!readOnly) void toggleAvailable(d); }}
                           />
                         </div>
 
@@ -1433,7 +1482,7 @@ export default function InventoriesPage() {
                         <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                           <RelocateCheckbox
                             relocated={d.relocated}
-                            onClick={() => { if (!d.relocated) setRelocateTarget(d); }}
+                            onClick={() => { if (!readOnly && !d.relocated) setRelocateTarget(d); }}
                           />
                         </div>
                       </div>

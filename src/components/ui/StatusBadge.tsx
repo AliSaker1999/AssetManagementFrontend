@@ -43,9 +43,9 @@ interface Props {
 
 export default function StatusBadge({ status, className }: Props) {
   const key = normalize(status);
-  const style = styles[key] ?? styles.inactive;
-  const dot = dots[key] ?? dots.inactive;
-  const label = labels[key] ?? status ?? 'Unknown';
+  const style = styles[key] ?? styles.active;
+  const dot = dots[key] ?? dots.active;
+  const label = labels[key] ?? (status ? status : 'Active');
 
   return (
     <span className={clsx(

@@ -86,7 +86,7 @@ export default function SettingsPage() {
       {section === 'asset-code' && isAdmin() && <AssetCodeSettingsSection />}
       {section === 'notifications' && isAdmin() && <NotificationSettingsSection />}
       {section === 'groups' && <GroupsSection groups={groups} countries={countries} onReload={reloadGroups} />}
-      {section === 'categories' && <CategoriesSection categories={categories} groups={groups} onReload={reloadCategories} />}
+      {section === 'categories' && <CategoriesSection categories={categories} onReload={reloadCategories} />}
       {section === 'locations' && <LocationsSection locations={locations} companies={companies} onReload={reloadLocations} />}
       {section === 'location-details' && <LocationDetailsSection locDetails={locDetails} locations={locations} onReload={reloadLocDetails} />}
       {section === 'currencies' && <CurrenciesSection currencies={currencies} onReload={reloadCurrencies} />}
@@ -354,6 +354,8 @@ function NotificationSettingsSection() {
 const emptyGroup = { groupName: '', acronym: '', depreciationRate: 0, accountNo: '', accountingExclusion: false, countryID: '' };
 
 function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; countries: Country[]; onReload: () => Promise<void> }) {
+  const { isAuditor, isFullAccess } = useAuth();
+  const canManage = !isAuditor() && !isFullAccess();
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyGroup);
@@ -397,7 +399,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
   }
 
   return (
-    <SectionWrapper title="Asset Groups" onAdd={mode === null ? startAdd : undefined}>
+    <SectionWrapper title="Asset Groups" onAdd={canManage && mode === null ? startAdd : undefined}>
       {dialog}
       {mode !== null && (
         <Modal title={mode === 'edit' ? 'Edit Group' : 'New Group'} onClose={cancel} width="max-w-[600px]">
@@ -436,8 +438,8 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
         columns={['Country', 'Group Name', 'Acronym', 'Dep. Rate %', 'Account No', 'Excl.']}
         rows={groups.map(g => [countries.find(c => c.countryID.trim() === g.countryID.trim())?.country ?? g.countryID.trim(), g.groupName, g.acronym, `${g.depreciationRate}%`, g.accountNo ?? '—', g.accountingExclusion ? 'Yes' : 'No'])}
         highlightIndex={editId !== null ? groups.findIndex(g => g.groupID === editId) : null}
-        onEdit={i => startEdit(groups[i])}
-        onDelete={i => del(groups[i])}
+        onEdit={canManage ? i => startEdit(groups[i]) : undefined}
+        onDelete={canManage ? i => del(groups[i]) : undefined}
       />
     </SectionWrapper>
   );
@@ -445,9 +447,11 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
 
 // â"€â"€ Categories â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-const emptyCat = { category: '', groupID: 0 };
+const emptyCat = { category: '' };
 
-function CategoriesSection({ categories, groups, onReload }: { categories: CategoryType[]; groups: GroupType[]; onReload: () => Promise<void> }) {
+function CategoriesSection({ categories, onReload }: { categories: CategoryType[]; onReload: () => Promise<void> }) {
+  const { isAuditor } = useAuth();
+  const canManage = !isAuditor();
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyCat);
@@ -455,12 +459,11 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
   const { confirm, dialog } = useConfirm();
 
   function startAdd() { setForm(emptyCat); setEditId(null); setMode('add'); }
-  function startEdit(c: CategoryType) { setForm({ category: c.category, groupID: c.groupID }); setEditId(c.categoryID); setMode('edit'); }
+  function startEdit(c: CategoryType) { setForm({ category: c.category }); setEditId(c.categoryID); setMode('edit'); }
   function cancel() { setMode(null); setEditId(null); }
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!form.groupID) { toast.error('Please select a group'); return; }
     setSaving(true);
     try {
       if (mode === 'edit' && editId !== null) {
@@ -487,7 +490,7 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
   }
 
   return (
-    <SectionWrapper title="Categories" onAdd={mode === null ? startAdd : undefined}>
+    <SectionWrapper title="Categories" onAdd={canManage && mode === null ? startAdd : undefined}>
       {dialog}
       {mode !== null && (
         <Modal title={mode === 'edit' ? 'Edit Category' : 'New Category'} onClose={cancel}>
@@ -496,23 +499,17 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
               <Field label="Category *">
                 <input className={inputCls} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} required maxLength={50} autoFocus />
               </Field>
-              <Field label="Group *">
-                <Select value={form.groupID || ''} onChange={e => setForm(f => ({ ...f, groupID: Number(e.target.value) }))} required>
-                  <option value="">Select group…</option>
-                  {groups.map(g => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
-                </Select>
-              </Field>
             </div>
             <FormActions saving={saving} mode={mode} onCancel={cancel} />
           </form>
         </Modal>
       )}
       <DataTable
-        columns={['Category', 'Group']}
-        rows={categories.map(c => [c.category, groups.find(g => g.groupID === c.groupID)?.groupName ?? String(c.groupID)])}
+        columns={['Category']}
+        rows={categories.map(c => [c.category])}
         highlightIndex={editId !== null ? categories.findIndex(c => c.categoryID === editId) : null}
-        onEdit={i => startEdit(categories[i])}
-        onDelete={i => del(categories[i])}
+        onEdit={canManage ? i => startEdit(categories[i]) : undefined}
+        onDelete={canManage ? i => del(categories[i]) : undefined}
       />
     </SectionWrapper>
   );
@@ -521,6 +518,8 @@ function CategoriesSection({ categories, groups, onReload }: { categories: Categ
 // â"€â"€ Locations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function LocationsSection({ locations, companies, onReload }: { locations: LocationType[]; companies: Company[]; onReload: () => Promise<void> }) {
+  const { isAuditor } = useAuth();
+  const canManage = !isAuditor();
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ location: '', companyID: 0 });
@@ -559,7 +558,7 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
   }
 
   return (
-    <SectionWrapper title="Locations" onAdd={mode === null ? startAdd : undefined}>
+    <SectionWrapper title="Locations" onAdd={canManage && mode === null ? startAdd : undefined}>
       {dialog}
       {mode !== null && (
         <Modal title={mode === 'edit' ? 'Edit Location' : 'New Location'} onClose={cancel}>
@@ -583,8 +582,8 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
         columns={['Location', 'Company']}
         rows={locations.map(l => [l.location, companies.find(c => c.companyID === l.companyID)?.companyName ?? String(l.companyID)])}
         highlightIndex={editId !== null ? locations.findIndex(l => l.locationID === editId) : null}
-        onEdit={i => startEdit(locations[i])}
-        onDelete={i => del(locations[i])}
+        onEdit={canManage ? i => startEdit(locations[i]) : undefined}
+        onDelete={canManage ? i => del(locations[i]) : undefined}
       />
     </SectionWrapper>
   );
@@ -595,6 +594,8 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
 const emptyLd = { locationID: 0, floor: '', zone: '', room: '' };
 
 function LocationDetailsSection({ locDetails, locations, onReload }: { locDetails: LocationDetail[]; locations: LocationType[]; onReload: () => Promise<void> }) {
+  const { isAuditor } = useAuth();
+  const canManage = !isAuditor();
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyLd);
@@ -635,7 +636,7 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
   }
 
   return (
-    <SectionWrapper title="Location Details" onAdd={mode === null ? startAdd : undefined}>
+    <SectionWrapper title="Location Details" onAdd={canManage && mode === null ? startAdd : undefined}>
       {dialog}
       {mode !== null && (
         <Modal title={mode === 'edit' ? 'Edit Location Detail' : 'New Location Detail'} onClose={cancel}>
@@ -667,8 +668,8 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
         columns={['Location', 'Floor', 'Zone', 'Room']}
         rows={locDetails.map(d => [locations.find(l => l.locationID === d.locationID)?.location ?? String(d.locationID), d.floor, d.zone ?? '—', d.room ?? '—'])}
         highlightIndex={editId !== null ? locDetails.findIndex(d => d.locDetailID === editId) : null}
-        onEdit={i => startEdit(locDetails[i])}
-        onDelete={i => del(locDetails[i])}
+        onEdit={canManage ? i => startEdit(locDetails[i]) : undefined}
+        onDelete={canManage ? i => del(locDetails[i]) : undefined}
       />
     </SectionWrapper>
   );

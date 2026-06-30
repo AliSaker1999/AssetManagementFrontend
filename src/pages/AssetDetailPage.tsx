@@ -10,6 +10,7 @@ import { warrantiesApi } from '../api/warranties';
 import { attachmentsApi } from '../api/attachments';
 import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
+import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
 import BarcodePrintModal from '../components/BarcodePrintModal';
@@ -83,6 +84,8 @@ function IconBarcode() {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function AssetDetailPage() {
+  const { isAuditor } = useAuth();
+  const readOnly = isAuditor();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const assetId = Number(id);
@@ -214,7 +217,7 @@ export default function AssetDetailPage() {
               <div className="font-code text-[12px] text-navy-500 font-medium mb-0.5">{asset.assetCode}</div>
               <h1 className="text-[20px] font-extrabold text-ink-800 leading-tight">{asset.assetDesc}</h1>
               <div className="flex items-center gap-3 mt-1.5">
-                <StatusBadge status="Active" />
+                <StatusBadge status={asset.statusName ?? (asset.statusID != null ? `Status ${asset.statusID}` : 'Unknown')} />
                 {asset.inServiceDate && (
                   <span className="text-[11px] text-ink-300">
                     In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -234,17 +237,21 @@ export default function AssetDetailPage() {
               <IconBarcode />
               Print Barcode
             </button>
-            <Link
-              to={`/assets/${assetId}/edit`}
-              className="btn-secondary no-underline"
-            >
-              <IconEdit />
-              Edit
-            </Link>
-            <button onClick={handleDelete} className="btn-danger">
-              <IconTrash />
-              Delete
-            </button>
+            {!readOnly && (
+              <>
+                <Link
+                  to={`/assets/${assetId}/edit`}
+                  className="btn-secondary no-underline"
+                >
+                  <IconEdit />
+                  Edit
+                </Link>
+                <button onClick={handleDelete} className="btn-danger">
+                  <IconTrash />
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -274,9 +281,10 @@ export default function AssetDetailPage() {
         {tab === 'info' && <AssetInfo asset={asset} />}
         {tab === 'depreciation' && <DepreciationTab data={depHistory} />}
         {tab === 'inventory' && <SimpleTable data={invHistory} columns={['inventoryID', 'isAvailable', 'location', 'relocated', 'createdDate']} />}
-        {tab === 'status' && <SimpleTable data={statusHistory} columns={['statusDate', 'statusName', 'statusDesc', 'statusSalePrice', 'createdByFullName']} />}
+        {tab === 'status' && <SimpleTable data={statusHistory} columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']} />}
         {tab === 'maintenance' && (
           <MaintenanceTab
+            readOnly={readOnly}
             assetId={assetId}
             assetStatusID={asset?.statusID ?? null}
             onAssetStatusChange={(sid) => setAsset(a => a ? { ...a, statusID: sid } : a)}
@@ -287,13 +295,13 @@ export default function AssetDetailPage() {
           />
         )}
         {tab === 'warranty' && (
-          <WarrantyTab assetId={assetId} items={warranties} onChange={setWarranties} />
+          <WarrantyTab readOnly={readOnly} assetId={assetId} items={warranties} onChange={setWarranties} />
         )}
         {tab === 'attachments' && (
-          <AttachmentsTab assetId={assetId} items={attachments} onChange={setAttachments} />
+          <AttachmentsTab readOnly={readOnly} assetId={assetId} items={attachments} onChange={setAttachments} />
         )}
         {tab === 'remark' && (
-          <RemarkTab asset={asset} onSaved={(updated) => setAsset(updated)} />
+          <RemarkTab readOnly={readOnly} asset={asset} onSaved={(updated) => setAsset(updated)} />
         )}
       </div>
     </div>
@@ -508,8 +516,9 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
 
 function MaintenanceTab({
-  assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange,
+  readOnly, assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange,
 }: {
+  readOnly: boolean;
   assetId: number;
   assetStatusID: number | null;
   onAssetStatusChange: (sid: number) => void;
@@ -526,6 +535,7 @@ function MaintenanceTab({
   const [returning, setReturning] = useState<number | null>(null);
 
   async function handleReturn(m: Maintenance) {
+    if (readOnly) return;
     const ok = await confirm(`Mark asset as returned from maintenance?`, { title: 'Return From Maintenance' });
     if (!ok) return;
     setReturning(m.maintID);
@@ -538,10 +548,12 @@ function MaintenanceTab({
   }
 
   function openAdd() {
+    if (readOnly) return;
     setForm({ fromDate: '', toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
     setModal('add');
   }
   function openEdit(item: Maintenance) {
+    if (readOnly) return;
     setEditing(item);
     setForm({ fromDate: item.fromDate, toDate: item.toDate, supplierContactID: item.supplierContactID, cost: item.cost, curCode: item.curCode, remark: item.remark ?? '' });
     setModal('edit');
@@ -551,6 +563,7 @@ function MaintenanceTab({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     setSaving(true);
     try {
       if (modal === 'add') {
@@ -575,6 +588,7 @@ function MaintenanceTab({
   }
 
   async function handleDelete(item: Maintenance) {
+    if (readOnly) return;
     const ok = await confirm('This maintenance record will be permanently removed.', { title: 'Delete Maintenance?' });
     if (!ok) return;
     try {
@@ -593,11 +607,13 @@ function MaintenanceTab({
   return (
     <>
       {confirmDialog}
-      <div className="flex justify-end mb-4">
-        <button onClick={openAdd} className="btn-primary">
-          <IconPlus /> Add Maintenance
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end mb-4">
+          <button onClick={openAdd} className="btn-primary">
+            <IconPlus /> Add Maintenance
+          </button>
+        </div>
+      )}
 
       {items.length === 0 ? <EmptyState message="No maintenance records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
@@ -618,9 +634,9 @@ function MaintenanceTab({
               <div className="text-[12px] font-code text-ink-600">{m.curCode}</div>
               <div className="text-[12px] text-ink-400 truncate">{m.remark ?? '—'}</div>
               <div className="flex gap-1.5">
-                <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>
-                <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>
-                {assetStatusID === 8 && (
+                {!readOnly && <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>}
+                {!readOnly && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
+                {!readOnly && assetStatusID === 8 && (
                   <ActionBtn onClick={() => handleReturn(m)} disabled={returning === m.maintID}>
                     {returning === m.maintID ? '…' : 'Mark Returned'}
                   </ActionBtn>
@@ -631,7 +647,7 @@ function MaintenanceTab({
         </div>
       )}
 
-      {modal && (
+      {!readOnly && modal && (
         <Modal title={modal === 'add' ? 'Add Maintenance' : 'Edit Maintenance'} onClose={close}>
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4">
@@ -673,15 +689,16 @@ function MaintenanceTab({
 
 type WarrForm = Omit<Warranty, 'warntID' | 'assetID'>;
 
-function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: Warranty[]; onChange: (v: Warranty[]) => void }) {
+function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean; assetId: number; items: Warranty[]; onChange: (v: Warranty[]) => void }) {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Warranty | null>(null);
   const [form, setForm] = useState<WarrForm>({ warrantyDesc: '', fromDate: '', toDate: '', remark: '' });
   const [saving, setSaving] = useState(false);
 
-  function openAdd() { setForm({ warrantyDesc: '', fromDate: '', toDate: '', remark: '' }); setModal('add'); }
+  function openAdd() { if (readOnly) return; setForm({ warrantyDesc: '', fromDate: '', toDate: '', remark: '' }); setModal('add'); }
   function openEdit(item: Warranty) {
+    if (readOnly) return;
     setEditing(item);
     setForm({ warrantyDesc: item.warrantyDesc, fromDate: item.fromDate, toDate: item.toDate, remark: item.remark ?? '' });
     setModal('edit');
@@ -691,6 +708,7 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     setSaving(true);
     try {
       if (modal === 'add') {
@@ -714,6 +732,7 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
   }
 
   async function handleDelete(item: Warranty) {
+    if (readOnly) return;
     const ok = await confirm('This warranty record will be permanently removed.', { title: 'Delete Warranty?' });
     if (!ok) return;
     try {
@@ -729,9 +748,11 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
   return (
     <>
       {confirmDialog}
-      <div className="flex justify-end mb-4">
-        <button onClick={openAdd} className="btn-primary"><IconPlus /> Add Warranty</button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end mb-4">
+          <button onClick={openAdd} className="btn-primary"><IconPlus /> Add Warranty</button>
+        </div>
+      )}
 
       {items.length === 0 ? <EmptyState message="No warranty records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
@@ -750,15 +771,15 @@ function WarrantyTab({ assetId, items, onChange }: { assetId: number; items: War
               <div className="text-[12px] text-ink-600">{w.toDate}</div>
               <div className="text-[12px] text-ink-400 truncate">{w.remark ?? '—'}</div>
               <div className="flex gap-1.5">
-                <ActionBtn onClick={() => openEdit(w)}>Edit</ActionBtn>
-                <ActionBtn danger onClick={() => handleDelete(w)}>Delete</ActionBtn>
+                {!readOnly && <ActionBtn onClick={() => openEdit(w)}>Edit</ActionBtn>}
+                {!readOnly && <ActionBtn danger onClick={() => handleDelete(w)}>Delete</ActionBtn>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {modal && (
+      {!readOnly && modal && (
         <Modal title={modal === 'add' ? 'Add Warranty' : 'Edit Warranty'} onClose={close}>
           <form onSubmit={handleSubmit}>
             <FormRow label="Description *">
@@ -820,7 +841,7 @@ async function downloadAttachment(item: Attachment) {
 
 // ─── Attachments Tab ──────────────────────────────────────────────────────────
 
-function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: Attachment[]; onChange: (v: Attachment[]) => void }) {
+function AttachmentsTab({ readOnly, assetId, items, onChange }: { readOnly: boolean; assetId: number; items: Attachment[]; onChange: (v: Attachment[]) => void }) {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [showModal, setShowModal] = useState(false);
   const [attDesc, setAttDesc] = useState('');
@@ -854,6 +875,7 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
 
   async function handleUpload(e: FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     if (!file) { toast.error('Please select a file'); return; }
     setSaving(true);
     try {
@@ -868,6 +890,7 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
   }
 
   async function handleDelete(item: Attachment) {
+    if (readOnly) return;
     const ok = await confirm(`"${item.attDesc}" will be permanently removed.`, { title: 'Delete Attachment?' });
     if (!ok) return;
     try {
@@ -880,9 +903,11 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
   return (
     <>
       {confirmDialog}
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setShowModal(true)} className="btn-primary"><IconPaperclip /> Upload Attachment</button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end mb-4">
+          <button onClick={() => setShowModal(true)} className="btn-primary"><IconPaperclip /> Upload Attachment</button>
+        </div>
+      )}
 
       {items.length === 0 ? <EmptyState message="No attachments yet." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
@@ -903,14 +928,14 @@ function AttachmentsTab({ assetId, items, onChange }: { assetId: number; items: 
               <div className="flex items-center gap-2">
                 <ActionBtn onClick={() => downloadAttachment(a)}>Download</ActionBtn>
                 <ActionBtn onClick={() => handlePreview(a)} disabled={previewLoading}>{previewLoading ? 'Loading…' : 'Preview'}</ActionBtn>
-                <ActionBtn danger onClick={() => handleDelete(a)}>Delete</ActionBtn>
+                {!readOnly && <ActionBtn danger onClick={() => handleDelete(a)}>Delete</ActionBtn>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {showModal && (
+      {!readOnly && showModal && (
         <Modal title="Upload Attachment" onClose={close}>
           <form onSubmit={handleUpload}>
             <FormRow label="Description *">
@@ -974,12 +999,13 @@ function TextPreview({ url }: { url: string }) {
 
 // ─── Remark Tab ───────────────────────────────────────────────────────────────
 
-function RemarkTab({ asset, onSaved }: { asset: Asset; onSaved: (updated: Asset) => void }) {
+function RemarkTab({ readOnly, asset, onSaved }: { readOnly: boolean; asset: Asset; onSaved: (updated: Asset) => void }) {
   const [remark, setRemark] = useState(asset.remark ?? '');
   const [saving, setSaving] = useState(false);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     setSaving(true);
     try {
       await assetsApi.update(asset.assetID, { ...asset, remark } as Asset);
@@ -998,11 +1024,14 @@ function RemarkTab({ asset, onSaved }: { asset: Asset; onSaved: (updated: Asset)
           maxLength={100}
           value={remark}
           onChange={(e) => setRemark(e.target.value)}
+          disabled={readOnly}
         />
         <div className="text-right text-[11px] text-ink-300 mb-4">{remark.length}/100</div>
-        <button type="submit" disabled={saving} className="btn-primary">
-          {saving ? 'Saving…' : 'Save Remark'}
-        </button>
+        {!readOnly && (
+          <button type="submit" disabled={saving} className="btn-primary">
+            {saving ? 'Saving…' : 'Save Remark'}
+          </button>
+        )}
       </form>
     </div>
   );

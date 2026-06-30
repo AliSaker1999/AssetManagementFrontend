@@ -300,7 +300,7 @@ export default function Layout() {
               <>
                 <div className="px-4 pt-4 pb-1.5">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-navy-300">
-                    Organization
+                    Admin Setting
                   </span>
                 </div>
                 <NavItem to="/companies" Icon={IconCompanies} label="Companies" />

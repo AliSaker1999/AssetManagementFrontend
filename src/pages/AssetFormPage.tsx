@@ -43,7 +43,7 @@ export default function AssetFormPage() {
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [modalSaving, setModalSaving] = useState(false);
   const [groupForm, setGroupForm] = useState({ countryID: '', groupName: '', acronym: '', depreciationRate: 20, accountNo: '', accountingExclusion: false });
-  const [catForm, setCatForm] = useState({ category: '', groupID: 0 });
+  const [catForm, setCatForm] = useState({ category: '' });
   const [locForm, setLocForm] = useState({ location: '', companyID: 0 });
   const [locDetailForm, setLocDetailForm] = useState({ locationID: 0, floor: '', zone: '', room: '' });
   const [curForm, setCurForm] = useState({ curCode: '', curName: '' });
@@ -113,7 +113,7 @@ export default function AssetFormPage() {
         const countryId = selectedCompany?.countryID?.trim() ?? '';
         const codeRes = await lookupsApi.getAssetCode(true, countryId);
         const assetCode = (codeRes.data as { assetCode: string }).assetCode;
-        const r = await assetsApi.create({ ...form, assetCode } as Asset);
+        const r = await assetsApi.create({ ...form, assetCode, statusID: 0 } as Asset);
         toast.success('Asset created');
         navigate(`/assets/${(r.data as { assetID: number }).assetID}`);
       }
@@ -127,7 +127,7 @@ export default function AssetFormPage() {
   // ── Open modal helpers (pre-fill contextual defaults) ──────────────────────
   function openModal(type: ModalType) {
     if (type === 'category') {
-      setCatForm({ category: '', groupID: form.groupID ?? 0 });
+      setCatForm({ category: '' });
     } else if (type === 'location') {
       setLocForm({ location: '', companyID: form.companyID ?? 0 });
     } else if (type === 'locDetail') {
@@ -165,7 +165,6 @@ export default function AssetFormPage() {
       const r = await lookupsApi.createCategory(catForm);
       const newCat = r.data as CategoryType;
       setCategories((prev) => [...prev, newCat]);
-      if (!form.groupID) set('groupID', newCat.groupID);
       set('categoryID', newCat.categoryID);
       setActiveModal(null);
       toast.success(`Category "${newCat.category}" created`);
@@ -236,7 +235,7 @@ export default function AssetFormPage() {
       const newComp = r.data as Company;
       setCompanies((prev) => [...prev, newComp]);
       set('companyID', newComp.companyID);
-      reset('groupID', 'categoryID', 'locationID', 'locDetailID');
+      reset('groupID', 'locationID', 'locDetailID');
       setActiveModal(null);
       toast.success(`Company "${newComp.companyName}" created`);
     } catch (err) { handleApiError(err, 'Failed to create company'); }
@@ -245,7 +244,7 @@ export default function AssetFormPage() {
 
   const selectedCompany = companies.find((c) => c.companyID === form.companyID);
   const filteredGroups = selectedCompany ? groups.filter((g) => g.countryID?.trim() === selectedCompany.countryID?.trim()) : groups;
-  const filteredCategories = form.groupID ? categories.filter((c) => c.groupID === form.groupID) : categories;
+  const filteredCategories = categories;
   const filteredLocations = form.companyID ? locations.filter((l) => l.companyID === form.companyID) : locations;
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
 
@@ -289,12 +288,6 @@ export default function AssetFormPage() {
         <QuickAddModal title="New Category" onClose={() => setActiveModal(null)} onSubmit={saveCategory} saving={modalSaving}>
           <MField label="Category Name *">
             <input className={inputCls} value={catForm.category} onChange={(e) => setCatForm((p) => ({ ...p, category: e.target.value }))} required maxLength={50} placeholder="e.g. Laptops" autoFocus />
-          </MField>
-          <MField label="Group *">
-            <Select value={catForm.groupID || ''} onChange={(e) => setCatForm((p) => ({ ...p, groupID: Number(e.target.value) }))} required>
-              <option value="">Select group…</option>
-              {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
-            </Select>
           </MField>
         </QuickAddModal>
       )}
@@ -404,7 +397,7 @@ export default function AssetFormPage() {
               <Select value={form.companyID ?? ''} onChange={(e) => {
                 const newCompanyId = Number(e.target.value);
                 set('companyID', newCompanyId);
-                reset('groupID', 'categoryID', 'locationID', 'locDetailID');
+                reset('groupID', 'locationID', 'locDetailID');
                 if (!isEdit) {
                   const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
                   if (newCountry) {
@@ -446,7 +439,7 @@ export default function AssetFormPage() {
           {/* Group */}
           <Field label="Group *">
             <DropWithAdd onAdd={() => openModal('group')}>
-              <Select value={form.groupID ?? ''} onChange={(e) => { set('groupID', Number(e.target.value)); reset('categoryID'); }} required>
+              <Select value={form.groupID ?? ''} onChange={(e) => set('groupID', Number(e.target.value))} required>
                 <option value="">Select…</option>
                 {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
               </Select>
@@ -456,7 +449,7 @@ export default function AssetFormPage() {
           {/* Category */}
           <Field label="Category *">
             <DropWithAdd onAdd={() => openModal('category')}>
-              <Select value={form.categoryID ?? ''} onChange={(e) => set('categoryID', Number(e.target.value))} required>
+              <Select value={form.categoryID ?? ''} onChange={(e) => set('categoryID', Number(e.target.value))} required searchable>
                 <option value="">Select…</option>
                 {filteredCategories.map((c) => <option key={c.categoryID} value={c.categoryID}>{c.category}</option>)}
               </Select>

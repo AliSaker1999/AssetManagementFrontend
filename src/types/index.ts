@@ -68,6 +68,7 @@ export interface Asset {
   barcodeNumber?: string;
   serialNumber?: string;
   statusID?: number;
+  statusName?: string;
   statusDate?: string;
   remark?: string;
   installedAt?: string;
@@ -280,14 +281,11 @@ export interface Company {
   companyPrmCurCode: string;
   companyScdCurCode: string;
   countryID: string;
-  emailNotification?: string;
-  userNotification?: number;
 }
 
 export interface CategoryType {
   categoryID: number;
   category: string;
-  groupID: number;
 }
 
 export interface GroupType {
@@ -339,6 +337,7 @@ export interface UserListItem {
   userID: number;
   userName: string;
   fullName: string;
+  emailAddress: string;
   roleID: number;
   roleName: string;
 }
