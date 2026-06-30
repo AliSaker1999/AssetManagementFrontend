@@ -73,8 +73,21 @@ export default function DepreciationsPage() {
     try {
       await depreciationsApi.run({ depreciationDate: runDate, companyID: companyId });
       toast.success('Depreciation run successfully');
-      const all = await depreciationsApi.getAll(companyId);
-      setDepreciations(all.data as Depreciation[]);
+      const [all, last] = await Promise.all([
+        depreciationsApi.getAll(companyId),
+        depreciationsApi.getLastDate(companyId),
+      ]);
+      const list = all.data as Depreciation[];
+      setDepreciations(list);
+      setLastDate(last.data as string | null);
+
+      if (list.length > 0) {
+        const latest = [...list].sort((a, b) => b.depID - a.depID)[0];
+        await selectDep(latest.depID);
+      } else {
+        setSelected(null);
+        setReport([]);
+      }
     } catch (err) {
       handleApiError(err, 'Depreciation run failed');
     }
@@ -139,13 +152,19 @@ export default function DepreciationsPage() {
             <p className="text-[13px] text-[#555] my-1">Months ago: <strong>{lastDate ? monthsSince(lastDate) : '—'}</strong></p>
           </div>
           <div className="p-4 border-r border-[#f0f0f0]">
-            <div className="font-semibold text-[13px] text-brand mb-2.5">Not Applied On</div>
+            <div className="font-semibold text-[13px] text-brand mb-2.5">Depreciation Scope</div>
+            <p className="text-[13px] text-[#555] my-1.5 leading-[1.7]">
+              Depreciation will not take into consideration the following assets:
+            </p>
             <ol className="m-0 pl-[18px] text-[13px] text-[#555] leading-[1.8]">
-              <li>Assets with 0 purchase price</li>
-              <li>Assets with no accounting entry date</li>
-              <li>Disposed assets</li>
-              <li>Reproduced assets</li>
+              <li>1. Assets with 0 purchase price</li>
+              <li>2. Assets with no accounting entry date</li>
+              <li>3. Disposed assets</li>
+              <li>4. Reproduced assets</li>
             </ol>
+            <p className="text-[13px] text-[#555] mt-2.5 leading-[1.7]">
+              Depreciation will be applied on assets with purchase price and accounting entry date, with no status or under maintenance status only.
+            </p>
           </div>
           <div className="p-4">
             <div className="font-semibold text-[13px] text-brand mb-2.5">Depreciation Formula</div>

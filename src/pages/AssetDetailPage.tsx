@@ -16,7 +16,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import type {
   Asset, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
-  Maintenance, Warranty, Attachment, Contact, Currency,
+  Maintenance, Warranty, Attachment, Contact, Currency, StatusType,
 } from '../types';
 
 type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'attachments' | 'remark';
@@ -103,17 +103,75 @@ export default function AssetDetailPage() {
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [statuses, setStatuses] = useState<StatusType[]>([]);
+  const [changingStatus, setChangingStatus] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const lookupsLoadedRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    assetsApi.get(assetId)
-      .then((r) => setAsset(r.data as Asset))
+    Promise.all([
+      assetsApi.get(assetId),
+      lookupsApi.getStatuses(),
+    ])
+      .then(([assetRes, statusRes]) => {
+        setAsset(assetRes.data as Asset);
+        setStatuses(statusRes.data as StatusType[]);
+      })
       .catch((err) => handleApiError(err, 'Failed to load asset'))
       .finally(() => setLoading(false));
   }, [assetId]);
+
+  async function handleStatusChange(newStatusId: number) {
+    if (!asset) return;
+    if (readOnly) return;
+    if (asset.statusID === 10) return; // Under Inventory — cannot change
+    const today = new Date().toISOString().slice(0, 10);
+    setChangingStatus(true);
+    try {
+      await assetsApi.updateStatus(assetId, {
+        assetStatusID: newStatusId,
+        assetStatusDate: today,
+        statusID: newStatusId,
+        statusDate: today,
+        statusContactID: null,
+        statusSalePrice: 0,
+        statusSaleCurCode: null,
+        statusDesc: null,
+      });
+      setAsset((a) => a ? { ...a, statusID: newStatusId, statusName: statuses.find((s) => s.statusID === newStatusId)?.status } : a);
+      toast.success('Status updated');
+    } catch (err) {
+      handleApiError(err, 'Failed to update status');
+    } finally {
+      setChangingStatus(false);
+    }
+  }
+
+  async function handleRemoveStatus() {
+    if (!asset) return;
+    if (readOnly) return;
+    if (asset.statusID === 10) return; // Under Inventory — cannot change
+    const today = new Date().toISOString().slice(0, 10);
+    setChangingStatus(true);
+    try {
+      await assetsApi.removeStatus(assetId, {
+        statusID: 5,
+        statusDate: today,
+        statusContactID: null,
+        statusSalePrice: 0,
+        statusSaleCurCode: null,
+        statusDesc: null,
+      });
+      setAsset((a) => a ? { ...a, statusID: 0, statusName: statuses.find((s) => s.statusID === 0)?.status ?? 'Active' } : a);
+      toast.success('Status removed');
+    } catch (err) {
+      handleApiError(err, 'Failed to remove status');
+    } finally {
+      setChangingStatus(false);
+    }
+  }
 
   useEffect(() => {
     if (tab === 'depreciation' && depHistory.length === 0)
@@ -216,18 +274,53 @@ export default function AssetDetailPage() {
             <div>
               <div className="font-code text-[12px] text-navy-500 font-medium mb-0.5">{asset.assetCode}</div>
               <h1 className="text-[20px] font-extrabold text-ink-800 leading-tight">{asset.assetDesc}</h1>
-              <div className="flex items-center gap-3 mt-1.5">
-                <StatusBadge status={asset.statusName ?? (asset.statusID != null ? `Status ${asset.statusID}` : 'Unknown')} />
-                {asset.inServiceDate && (
-                  <span className="text-[11px] text-ink-300">
-                    In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
-                  </span>
-                )}
-              </div>
+              {asset.inServiceDate && (
+                <span className="text-[11px] text-ink-300 mt-1 block">
+                  In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
+            {/* ── Status dropdown ── */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">Status</span>
+              {asset.statusID === 10 ? (
+                <div className="flex items-center gap-1.5">
+                  <StatusBadge status={asset.statusName ?? 'Under Inventory'} />
+                  <span className="text-[10px] text-amber-600 font-medium">(locked)</span>
+                </div>
+              ) : readOnly ? (
+                <StatusBadge status={asset.statusName ?? (asset.statusID != null ? `Status ${asset.statusID}` : 'Unknown')} />
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <Select
+                    value={asset.statusID ?? ''}
+                    onChange={(e) => handleStatusChange(Number(e.target.value))}
+                    disabled={changingStatus}
+                    className="input-base text-[13px] py-1.5 min-w-[160px] disabled:opacity-60"
+                  >
+                    {statuses
+                      .filter((s) => ![5, 8, 9, 10].includes(s.statusID))
+                      .map((s) => (
+                        <option key={s.statusID} value={s.statusID}>{s.status}</option>
+                      ))}
+                  </Select>
+                  <button
+                    type="button"
+                    onClick={handleRemoveStatus}
+                    disabled={changingStatus || asset.statusID === 0}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Remove Status
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="w-px h-8 bg-pearl-200" />
+
             <button
               onClick={() => setShowBarcodeModal(true)}
               disabled={!asset.barcodeNumber}
@@ -541,7 +634,7 @@ function MaintenanceTab({
     setReturning(m.maintID);
     try {
       await maintenancesApi.returnFromMaintenance(m.maintID);
-      onAssetStatusChange(9);
+      onAssetStatusChange(0);
       toast.success('Asset marked as returned from maintenance');
     } catch (err) { handleApiError(err, 'Failed to update status'); }
     finally { setReturning(null); }

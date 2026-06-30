@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
+import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
-import type { AssetListItem, PaginatedResponse } from '../types';
+import { lookupsApi } from '../api/lookups';
+import type { AssetListItem, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -49,6 +51,99 @@ function IconBarcode() {
   );
 }
 
+function IconChevronDown() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+}
+
+function StatusIcon({ statusId }: { statusId?: number }) {
+  if (statusId === 0) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    );
+  }
+  if (statusId === 1) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    );
+  }
+  if (statusId === 2) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M7 7h10"/>
+        <path d="M13 3l4 4-4 4"/>
+        <path d="M17 17H7"/>
+        <path d="M11 21l-4-4 4-4"/>
+      </svg>
+    );
+  }
+  if (statusId === 3) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 6 6 18"/>
+        <path d="m6 6 12 12"/>
+      </svg>
+    );
+  }
+  if (statusId === 4) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="8"/>
+        <path d="M10 9h3a2 2 0 1 1 0 4h-2a2 2 0 1 0 0 4h3"/>
+      </svg>
+    );
+  }
+  if (statusId === 6) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="7"/>
+        <path d="m21 21-4.35-4.35"/>
+        <path d="M7 7l8 8"/>
+      </svg>
+    );
+  }
+  if (statusId === 7) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 4 4 10l6 6"/>
+        <path d="M20 20V8a4 4 0 0 0-4-4H4"/>
+      </svg>
+    );
+  }
+  if (statusId === 11) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 8a2 2 0 0 1-2 2H5a2 2 0 0 1 0-4h14a2 2 0 0 1 2 2Z"/>
+        <path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8Z"/>
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="12" r="4"/>
+    </svg>
+  );
+}
+
+function statusTone(statusId?: number) {
+  if (statusId === 0) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (statusId === 3 || statusId === 11) return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (statusId === 4 || statusId === 1 || statusId === 7) return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (statusId === 2) return 'bg-sky-50 text-sky-700 border-sky-200';
+  if (statusId === 6) return 'bg-violet-50 text-violet-700 border-violet-200';
+  return 'bg-pearl-50 text-ink-700 border-pearl-200';
+}
+
 function TableSkeleton() {
   return (
     <div className="animate-pulse">
@@ -76,6 +171,30 @@ export default function AssetsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
+  const [statuses, setStatuses] = useState<StatusType[]>([]);
+  const [changingStatus, setChangingStatus] = useState<Set<number>>(new Set());
+  const [openStatusMenuAssetId, setOpenStatusMenuAssetId] = useState<number | null>(null);
+  const statusesLoadedRef = useRef(false);
+
+  // Load status types once
+  useEffect(() => {
+    if (statusesLoadedRef.current) return;
+    statusesLoadedRef.current = true;
+    lookupsApi.getStatuses()
+      .then((r) => setStatuses(r.data as StatusType[]))
+      .catch(() => { /* non-critical */ });
+  }, []);
+
+  useEffect(() => {
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-status-menu-root="true"]')) return;
+      setOpenStatusMenuAssetId(null);
+    };
+
+    document.addEventListener('mousedown', onDocumentMouseDown);
+    return () => document.removeEventListener('mousedown', onDocumentMouseDown);
+  }, []);
 
   // Reset to page 1 and clear cache when search or active company changes
   useEffect(() => { setPageNumber(1); setAllAssetsCache(null); }, [search, activeCompanyId]);
@@ -131,6 +250,73 @@ export default function AssetsPage() {
 
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
+
+  async function handleStatusChange(assetId: number, newStatusId: number) {
+    if (readOnly) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setChangingStatus((prev) => new Set(prev).add(assetId));
+    try {
+      const newCurrentStatusId = newStatusId;
+      const newStatusName = statuses.find((s) => s.statusID === newStatusId)?.status;
+
+      await assetsApi.updateStatus(assetId, {
+        assetStatusID: newStatusId,
+        assetStatusDate: today,
+        statusID: newStatusId,
+        statusDate: today,
+        statusContactID: null,
+        statusSalePrice: 0,
+        statusSaleCurCode: null,
+        statusDesc: null,
+      });
+
+      setAssets((prev) =>
+        prev.map((a) => a.assetID === assetId ? { ...a, statusID: newCurrentStatusId, status: newStatusName } : a)
+      );
+      if (allAssetsCache) {
+        setAllAssetsCache((prev) =>
+          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: newCurrentStatusId, status: newStatusName } : a) : prev
+        );
+      }
+      toast.success('Status updated');
+    } catch (err) {
+      handleApiError(err, 'Failed to update status');
+    } finally {
+      setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
+    }
+  }
+
+  async function handleRemoveStatus(assetId: number) {
+    if (readOnly) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setChangingStatus((prev) => new Set(prev).add(assetId));
+    try {
+      await assetsApi.removeStatus(assetId, {
+        statusID: 5,
+        statusDate: today,
+        statusContactID: null,
+        statusSalePrice: 0,
+        statusSaleCurCode: null,
+        statusDesc: null,
+      });
+
+      const activeName = statuses.find((s) => s.statusID === 0)?.status ?? 'Active';
+      setAssets((prev) =>
+        prev.map((a) => a.assetID === assetId ? { ...a, statusID: 0, status: activeName } : a)
+      );
+      if (allAssetsCache) {
+        setAllAssetsCache((prev) =>
+          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: 0, status: activeName } : a) : prev
+        );
+      }
+      setOpenStatusMenuAssetId(null);
+      toast.success('Status removed');
+    } catch (err) {
+      handleApiError(err, 'Failed to remove status');
+    } finally {
+      setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
+    }
+  }
 
   const visibleAssets = search.trim() ? (allAssetsCache ?? assets) : assets;
   const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
@@ -206,10 +392,10 @@ export default function AssetsPage() {
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-visible">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_3fr_1.2fr_2fr_2fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-            {['Code', 'Description', 'Status', 'Category', 'Location', ''].map((h) => (
+          <div className="grid grid-cols-[2fr_3fr_2fr_2fr_1.6fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+            {['Code', 'Description', 'Category', 'Location', 'Status', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
@@ -237,7 +423,7 @@ export default function AssetsPage() {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[2fr_3fr_1.2fr_2fr_2fr_auto] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid grid-cols-[2fr_3fr_2fr_2fr_1.6fr_auto] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
@@ -248,11 +434,6 @@ export default function AssetsPage() {
                   {/* Description */}
                   <div className="text-[13px] text-ink-800 font-medium truncate pr-4">{a.assetDesc}</div>
 
-                  {/* Status */}
-                  <div className="pr-4">
-                    <StatusBadge status={a.status ?? (a.statusID === 8 ? 'Maintenance' : 'Active')} />
-                  </div>
-
                   {/* Category */}
                   <div className="text-[12px] text-ink-400 truncate pr-4">{a.category ?? '—'}</div>
 
@@ -261,6 +442,91 @@ export default function AssetsPage() {
                     {a.location ?? '—'}
                     {a.floor ? ` · ${a.floor}` : ''}
                     {a.room ? ` · ${a.room}` : ''}
+                  </div>
+
+                  {/* Status */}
+                  <div className="pr-3" onClick={(e) => e.stopPropagation()}>
+                    {a.statusID === 10 ? (
+                      <div className="flex items-center gap-1.5">
+                        <StatusBadge status={a.status ?? 'Under Inventory'} />
+                        <span className="text-[9px] font-bold text-amber-500 tracking-wide uppercase">Locked</span>
+                      </div>
+                    ) : readOnly ? (
+                      <StatusBadge status={a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')} />
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative inline-flex items-center" data-status-menu-root="true">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (changingStatus.has(a.assetID)) return;
+                              setOpenStatusMenuAssetId((prev) => prev === a.assetID ? null : a.assetID);
+                            }}
+                            className={clsx(
+                              'inline-flex items-center gap-2 min-w-[150px] rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
+                              statusTone(a.statusID),
+                              'hover:shadow-sm transition-all cursor-pointer',
+                              'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
+                              changingStatus.has(a.assetID) && 'opacity-70 cursor-not-allowed'
+                            )}
+                          >
+                            <span className="inline-flex items-center justify-center w-4 h-4">
+                              {changingStatus.has(a.assetID)
+                                ? <span className="block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                : <StatusIcon statusId={a.statusID} />}
+                            </span>
+                            <span className="truncate">{a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')}</span>
+                            <span className="ml-auto text-ink-300"><IconChevronDown /></span>
+                          </button>
+
+                          {openStatusMenuAssetId === a.assetID && (
+                            <div
+                              className="absolute top-[calc(100%+6px)] right-0 z-30 min-w-[200px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {statuses
+                                .filter((s) => ![5, 8, 9, 10].includes(s.statusID))
+                                .map((s) => (
+                                  <button
+                                    type="button"
+                                    key={s.statusID}
+                                    onClick={() => {
+                                      if (a.statusID === s.statusID) {
+                                        setOpenStatusMenuAssetId(null);
+                                        return;
+                                      }
+                                      setOpenStatusMenuAssetId(null);
+                                      handleStatusChange(a.assetID, s.statusID);
+                                    }}
+                                    className={clsx(
+                                      'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] transition-colors cursor-pointer',
+                                      a.statusID === s.statusID
+                                        ? 'bg-navy-50 text-navy-700'
+                                        : 'hover:bg-pearl-50 text-ink-700'
+                                    )}
+                                  >
+                                    <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusTone(s.statusID))}>
+                                      <StatusIcon statusId={s.statusID} />
+                                    </span>
+                                    <span>{s.status}</span>
+                                    {a.statusID === s.statusID && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-navy-500">Current</span>}
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStatus(a.assetID)}
+                          disabled={changingStatus.has(a.assetID) || a.statusID === 0}
+                          className="text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Remove Status
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Barcode action */}
