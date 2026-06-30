@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
+import { maintenancesApi } from '../api/maintenances';
+import { attachmentsApi } from '../api/attachments';
+import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
-import type { AssetListItem, PaginatedResponse, StatusType } from '../types';
+import type { AssetListItem, Attachment, Contact, Currency, Maintenance, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 
 const PAGE_SIZE = 25;
+const inp = 'input-base';
+type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
 
 function IconSearch() {
   return (
@@ -55,6 +60,14 @@ function IconChevronDown() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>
   );
 }
@@ -160,6 +173,47 @@ function TableSkeleton() {
   );
 }
 
+function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string; onClose: () => void; children: React.ReactNode; width?: string }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
+          <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-ink-300 hover:text-ink-700 border-none bg-transparent cursor-pointer p-1.5 rounded-md hover:bg-pearl-100 transition-colors"
+          >
+            <IconClose />
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 mb-4">
+      <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => void }) {
+  return (
+    <div className="flex gap-2 pt-2">
+      <button type="submit" disabled={saving} className="btn-primary">
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+      <button type="button" onClick={onCancel} className="btn-secondary">
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 export default function AssetsPage() {
   const { activeCompanyId, isAuditor } = useAuth();
   const readOnly = isAuditor();
@@ -172,8 +226,14 @@ export default function AssetsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [changingStatus, setChangingStatus] = useState<Set<number>>(new Set());
   const [openStatusMenuAssetId, setOpenStatusMenuAssetId] = useState<number | null>(null);
+  const [maintenanceModalAsset, setMaintenanceModalAsset] = useState<AssetListItem | null>(null);
+  const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [maintenanceAttachmentFile, setMaintenanceAttachmentFile] = useState<File | null>(null);
+  const [savingMaintenanceModal, setSavingMaintenanceModal] = useState(false);
   const statusesLoadedRef = useRef(false);
 
   // Load status types once
@@ -184,6 +244,102 @@ export default function AssetsPage() {
       .then((r) => setStatuses(r.data as StatusType[]))
       .catch(() => { /* non-critical */ });
   }, []);
+
+  function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
+    return {
+      attID: null,
+      fromDate: '',
+      toDate: '',
+      supplierContactID: cs[0]?.contactID ?? 0,
+      cost: 0,
+      curCode: ccy[0]?.curCode ?? 'USD',
+      remark: '',
+    };
+  }
+
+  async function openUnderMaintenanceModal(asset: AssetListItem) {
+    if (readOnly) return;
+    if (asset.statusID === 10) return;
+
+    try {
+      let nextContacts = contacts;
+      let nextCurrencies = currencies;
+
+      if (nextContacts.length === 0 || nextCurrencies.length === 0) {
+        const [c, cur] = await Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()]);
+        nextContacts = c.data as Contact[];
+        nextCurrencies = cur.data as Currency[];
+        setContacts(nextContacts);
+        setCurrencies(nextCurrencies);
+      }
+
+      setMaintenanceModalAsset(asset);
+      setMaintenanceForm(makeDefaultMaintenanceForm(nextContacts, nextCurrencies));
+      setMaintenanceAttachmentFile(null);
+    } catch (err) {
+      handleApiError(err, 'Failed to load maintenance lookups');
+    }
+  }
+
+  function setMaintenanceField<K extends keyof MaintForm>(key: K, value: MaintForm[K]) {
+    setMaintenanceForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleUnderMaintenanceSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!maintenanceModalAsset || readOnly) return;
+
+    setSavingMaintenanceModal(true);
+    try {
+      const assetId = maintenanceModalAsset.assetID;
+      let attID = maintenanceForm.attID ?? null;
+      if (maintenanceAttachmentFile) {
+        const base64 = await toBase64(maintenanceAttachmentFile);
+        const ext = maintenanceAttachmentFile.name.split('.').pop() ?? '';
+        const upload = await attachmentsApi.create({
+          assetID: assetId,
+          attDesc: 'Maintenance Attachment',
+          attFileName: maintenanceAttachmentFile.name,
+          attFileExt: ext,
+          remark: null,
+          fileBase64: base64,
+        });
+        attID = (upload.data as Attachment).attID;
+      }
+
+      await maintenancesApi.create({ assetID: assetId, ...maintenanceForm, attID });
+
+      const today = new Date().toISOString().slice(0, 10);
+      await assetsApi.updateStatus(assetId, {
+        assetStatusID: 8,
+        assetStatusDate: today,
+        statusID: 8,
+        statusDate: today,
+        statusContactID: null,
+        statusSalePrice: 0,
+        statusSaleCurCode: null,
+        statusDesc: null,
+      });
+
+      const maintenanceName = statuses.find((s) => s.statusID === 8)?.status ?? 'Under Maintenance';
+      setAssets((prev) =>
+        prev.map((a) => a.assetID === assetId ? { ...a, statusID: 8, status: maintenanceName } : a)
+      );
+      if (allAssetsCache) {
+        setAllAssetsCache((prev) =>
+          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: 8, status: maintenanceName } : a) : prev
+        );
+      }
+
+      setMaintenanceModalAsset(null);
+      setMaintenanceAttachmentFile(null);
+      toast.success('Asset moved to Under Maintenance');
+    } catch (err) {
+      handleApiError(err, 'Failed to move asset to maintenance');
+    } finally {
+      setSavingMaintenanceModal(false);
+    }
+  }
 
   useEffect(() => {
     const onDocumentMouseDown = (event: MouseEvent) => {
@@ -486,7 +642,7 @@ export default function AssetsPage() {
                               onClick={(e) => e.stopPropagation()}
                             >
                               {statuses
-                                .filter((s) => ![5, 8, 9, 10].includes(s.statusID))
+                                .filter((s) => ![5, 9, 10].includes(s.statusID))
                                 .map((s) => (
                                   <button
                                     type="button"
@@ -497,7 +653,11 @@ export default function AssetsPage() {
                                         return;
                                       }
                                       setOpenStatusMenuAssetId(null);
-                                      handleStatusChange(a.assetID, s.statusID);
+                                      if (s.statusID === 8) {
+                                        void openUnderMaintenanceModal(a);
+                                        return;
+                                      }
+                                      void handleStatusChange(a.assetID, s.statusID);
                                     }}
                                     className={clsx(
                                       'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] transition-colors cursor-pointer',
@@ -596,6 +756,58 @@ export default function AssetsPage() {
           </div>
         )}
       </div>
+
+      {!readOnly && maintenanceModalAsset && (
+        <Modal title={`Add Maintenance · ${maintenanceModalAsset.assetCode}`} onClose={() => setMaintenanceModalAsset(null)}>
+          <form onSubmit={handleUnderMaintenanceSubmit}>
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="From Date *">
+                <input className={inp} type="date" value={maintenanceForm.fromDate} onChange={(e) => setMaintenanceField('fromDate', e.target.value)} required />
+              </FormRow>
+              <FormRow label="To Date *">
+                <input className={inp} type="date" value={maintenanceForm.toDate} onChange={(e) => setMaintenanceField('toDate', e.target.value)} required />
+              </FormRow>
+            </div>
+            <FormRow label="Supplier *">
+              <select className={inp} value={maintenanceForm.supplierContactID} onChange={(e) => setMaintenanceField('supplierContactID', Number(e.target.value))} required>
+                <option value="">Select…</option>
+                {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
+              </select>
+            </FormRow>
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="Cost">
+                <input className={inp} type="number" step="0.01" value={maintenanceForm.cost} onChange={(e) => setMaintenanceField('cost', Number(e.target.value))} />
+              </FormRow>
+              <FormRow label="Currency *">
+                <select className={inp} value={maintenanceForm.curCode} onChange={(e) => setMaintenanceField('curCode', e.target.value)} required>
+                  {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+                </select>
+              </FormRow>
+            </div>
+            <FormRow label="Remark">
+              <input className={inp} value={maintenanceForm.remark ?? ''} onChange={(e) => setMaintenanceField('remark', e.target.value)} maxLength={100} />
+            </FormRow>
+            <FormRow label="Attachment">
+              <input
+                className={inp}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                onChange={(e) => setMaintenanceAttachmentFile(e.target.files?.[0] ?? null)}
+              />
+            </FormRow>
+            <ModalActions saving={savingMaintenanceModal} onCancel={() => setMaintenanceModalAsset(null)} />
+          </form>
+        </Modal>
+      )}
     </div>
   );
+}
+
+function toBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }

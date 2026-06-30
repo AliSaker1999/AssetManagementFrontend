@@ -234,6 +234,7 @@ export interface Attachment {
 export interface Maintenance {
   maintID: number;
   assetID: number;
+  attID?: number | null;
   fromDate: string;
   toDate: string;
   supplierContactID: number;
@@ -246,6 +247,7 @@ export interface Maintenance {
 export interface Warranty {
   warntID: number;
   assetID: number;
+  attID?: number | null;
   warrantyDesc: string;
   fromDate: string;
   toDate: string;

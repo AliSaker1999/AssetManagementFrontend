@@ -20,6 +20,7 @@ import type {
 } from '../types';
 
 type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'attachments' | 'remark';
+type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
 
 // Shared input style
 const inp = 'input-base';
@@ -80,6 +81,106 @@ function IconBarcode() {
     </svg>
   );
 }
+function IconChevronDown() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+}
+
+function StatusIcon({ statusId }: { statusId?: number }) {
+  if (statusId === 0) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    );
+  }
+  if (statusId === 1) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    );
+  }
+  if (statusId === 2) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M7 7h10"/>
+        <path d="M13 3l4 4-4 4"/>
+        <path d="M17 17H7"/>
+        <path d="M11 21l-4-4 4-4"/>
+      </svg>
+    );
+  }
+  if (statusId === 3) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 6 6 18"/>
+        <path d="m6 6 12 12"/>
+      </svg>
+    );
+  }
+  if (statusId === 4) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="8"/>
+        <path d="M10 9h3a2 2 0 1 1 0 4h-2a2 2 0 1 0 0 4h3"/>
+      </svg>
+    );
+  }
+  if (statusId === 6) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="7"/>
+        <path d="m21 21-4.35-4.35"/>
+        <path d="M7 7l8 8"/>
+      </svg>
+    );
+  }
+  if (statusId === 7) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 4 4 10l6 6"/>
+        <path d="M20 20V8a4 4 0 0 0-4-4H4"/>
+      </svg>
+    );
+  }
+  if (statusId === 8) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 12h16"/>
+        <path d="M12 4v16"/>
+      </svg>
+    );
+  }
+  if (statusId === 11) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 8a2 2 0 0 1-2 2H5a2 2 0 0 1 0-4h14a2 2 0 0 1 2 2Z"/>
+        <path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8Z"/>
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="12" r="4"/>
+    </svg>
+  );
+}
+
+function statusTone(statusId?: number) {
+  if (statusId === 0) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (statusId === 3 || statusId === 11) return 'bg-rose-50 text-rose-700 border-rose-200';
+  if (statusId === 4 || statusId === 1 || statusId === 7 || statusId === 8) return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (statusId === 2) return 'bg-sky-50 text-sky-700 border-sky-200';
+  if (statusId === 6) return 'bg-violet-50 text-violet-700 border-violet-200';
+  return 'bg-pearl-50 text-ink-700 border-pearl-200';
+}
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
@@ -105,6 +206,11 @@ export default function AssetDetailPage() {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [openStatusMenu, setOpenStatusMenu] = useState(false);
+  const [statusMaintenanceModalOpen, setStatusMaintenanceModalOpen] = useState(false);
+  const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [statusMaintAttachmentFile, setStatusMaintAttachmentFile] = useState<File | null>(null);
+  const [savingStatusMaintenance, setSavingStatusMaintenance] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const lookupsLoadedRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -122,6 +228,108 @@ export default function AssetDetailPage() {
       .catch((err) => handleApiError(err, 'Failed to load asset'))
       .finally(() => setLoading(false));
   }, [assetId]);
+
+  useEffect(() => {
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-status-menu-root="true"]')) return;
+      setOpenStatusMenu(false);
+    };
+
+    document.addEventListener('mousedown', onDocumentMouseDown);
+    return () => document.removeEventListener('mousedown', onDocumentMouseDown);
+  }, []);
+
+  function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
+    return {
+      attID: null,
+      fromDate: '',
+      toDate: '',
+      supplierContactID: cs[0]?.contactID ?? 0,
+      cost: 0,
+      curCode: ccy[0]?.curCode ?? 'USD',
+      remark: '',
+    };
+  }
+
+  async function openUnderMaintenanceModal() {
+    if (readOnly) return;
+    if (asset?.statusID === 10) return;
+
+    try {
+      let nextContacts = contacts;
+      let nextCurrencies = currencies;
+
+      if (nextContacts.length === 0 || nextCurrencies.length === 0) {
+        const [c, cur] = await Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()]);
+        nextContacts = c.data as Contact[];
+        nextCurrencies = cur.data as Currency[];
+        setContacts(nextContacts);
+        setCurrencies(nextCurrencies);
+        lookupsLoadedRef.current = true;
+      }
+
+      setStatusMaintForm(makeDefaultMaintenanceForm(nextContacts, nextCurrencies));
+      setStatusMaintAttachmentFile(null);
+      setStatusMaintenanceModalOpen(true);
+    } catch (err) {
+      handleApiError(err, 'Failed to load maintenance lookups');
+    }
+  }
+
+  function setStatusMaintField<K extends keyof MaintForm>(key: K, value: MaintForm[K]) {
+    setStatusMaintForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleStatusMaintenanceSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!asset || readOnly) return;
+
+    setSavingStatusMaintenance(true);
+    try {
+      let attID = statusMaintForm.attID ?? null;
+      if (statusMaintAttachmentFile) {
+        const base64 = await toBase64(statusMaintAttachmentFile);
+        const ext = statusMaintAttachmentFile.name.split('.').pop() ?? '';
+        const upload = await attachmentsApi.create({
+          assetID: assetId,
+          attDesc: 'Maintenance Attachment',
+          attFileName: statusMaintAttachmentFile.name,
+          attFileExt: ext,
+          remark: null,
+          fileBase64: base64,
+        });
+        attID = (upload.data as Attachment).attID;
+      }
+
+      const createdMaintenance = await maintenancesApi.create({ assetID: assetId, ...statusMaintForm, attID });
+      setMaintenances((prev) => [...prev, createdMaintenance.data as Maintenance]);
+
+      const today = new Date().toISOString().slice(0, 10);
+      await assetsApi.updateStatus(assetId, {
+        assetStatusID: 8,
+        assetStatusDate: today,
+        statusID: 8,
+        statusDate: today,
+        statusContactID: null,
+        statusSalePrice: 0,
+        statusSaleCurCode: null,
+        statusDesc: null,
+      });
+
+      setAsset((a) => a
+        ? { ...a, statusID: 8, statusName: statuses.find((s) => s.statusID === 8)?.status ?? 'Under Maintenance' }
+        : a);
+      setTab('maintenance');
+      setStatusMaintenanceModalOpen(false);
+      setStatusMaintAttachmentFile(null);
+      toast.success('Asset moved to Under Maintenance');
+    } catch (err) {
+      handleApiError(err, 'Failed to move asset to maintenance');
+    } finally {
+      setSavingStatusMaintenance(false);
+    }
+  }
 
   async function handleStatusChange(newStatusId: number) {
     if (!asset) return;
@@ -295,18 +503,67 @@ export default function AssetDetailPage() {
                 <StatusBadge status={asset.statusName ?? (asset.statusID != null ? `Status ${asset.statusID}` : 'Unknown')} />
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  <Select
-                    value={asset.statusID ?? ''}
-                    onChange={(e) => handleStatusChange(Number(e.target.value))}
-                    disabled={changingStatus}
-                    className="input-base text-[13px] py-1.5 min-w-[160px] disabled:opacity-60"
-                  >
-                    {statuses
-                      .filter((s) => ![5, 8, 9, 10].includes(s.statusID))
-                      .map((s) => (
-                        <option key={s.statusID} value={s.statusID}>{s.status}</option>
-                      ))}
-                  </Select>
+                  <div className="relative inline-flex items-center" data-status-menu-root="true">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (changingStatus) return;
+                        setOpenStatusMenu((prev) => !prev);
+                      }}
+                      className={clsx(
+                        'inline-flex items-center gap-2 min-w-[180px] rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
+                        statusTone(asset.statusID),
+                        'hover:shadow-sm transition-all cursor-pointer',
+                        'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
+                        changingStatus && 'opacity-70 cursor-not-allowed'
+                      )}
+                    >
+                      <span className="inline-flex items-center justify-center w-4 h-4">
+                        {changingStatus
+                          ? <span className="block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                          : <StatusIcon statusId={asset.statusID} />}
+                      </span>
+                      <span className="truncate">{asset.statusName ?? (asset.statusID != null ? `Status ${asset.statusID}` : 'Active')}</span>
+                      <span className="ml-auto text-ink-300"><IconChevronDown /></span>
+                    </button>
+
+                    {openStatusMenu && (
+                      <div className="absolute top-[calc(100%+6px)] left-0 z-30 min-w-[220px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1">
+                        {statuses
+                          .filter((s) => ![5, 9, 10].includes(s.statusID))
+                          .map((s) => (
+                            <button
+                              type="button"
+                              key={s.statusID}
+                              onClick={() => {
+                                if (asset.statusID === s.statusID) {
+                                  setOpenStatusMenu(false);
+                                  return;
+                                }
+                                setOpenStatusMenu(false);
+                                if (s.statusID === 8) {
+                                  void openUnderMaintenanceModal();
+                                  return;
+                                }
+                                void handleStatusChange(s.statusID);
+                              }}
+                              className={clsx(
+                                'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] transition-colors cursor-pointer',
+                                asset.statusID === s.statusID
+                                  ? 'bg-navy-50 text-navy-700'
+                                  : 'hover:bg-pearl-50 text-ink-700'
+                              )}
+                            >
+                              <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusTone(s.statusID))}>
+                                <StatusIcon statusId={s.statusID} />
+                              </span>
+                              <span>{s.status}</span>
+                              {asset.statusID === s.statusID && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-navy-500">Current</span>}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={handleRemoveStatus}
@@ -397,6 +654,49 @@ export default function AssetDetailPage() {
           <RemarkTab readOnly={readOnly} asset={asset} onSaved={(updated) => setAsset(updated)} />
         )}
       </div>
+
+      {!readOnly && statusMaintenanceModalOpen && (
+        <Modal title="Add Maintenance" onClose={() => setStatusMaintenanceModalOpen(false)}>
+          <form onSubmit={handleStatusMaintenanceSubmit}>
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="From Date *">
+                <input className={inp} type="date" value={statusMaintForm.fromDate} onChange={(e) => setStatusMaintField('fromDate', e.target.value)} required />
+              </FormRow>
+              <FormRow label="To Date *">
+                <input className={inp} type="date" value={statusMaintForm.toDate} onChange={(e) => setStatusMaintField('toDate', e.target.value)} required />
+              </FormRow>
+            </div>
+            <FormRow label="Supplier *">
+              <Select value={statusMaintForm.supplierContactID} onChange={(e) => setStatusMaintField('supplierContactID', Number(e.target.value))} required>
+                <option value="">Select…</option>
+                {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
+              </Select>
+            </FormRow>
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="Cost">
+                <input className={inp} type="number" step="0.01" value={statusMaintForm.cost} onChange={(e) => setStatusMaintField('cost', Number(e.target.value))} />
+              </FormRow>
+              <FormRow label="Currency *">
+                <Select value={statusMaintForm.curCode} onChange={(e) => setStatusMaintField('curCode', e.target.value)} required>
+                  {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+                </Select>
+              </FormRow>
+            </div>
+            <FormRow label="Remark">
+              <input className={inp} value={statusMaintForm.remark ?? ''} onChange={(e) => setStatusMaintField('remark', e.target.value)} maxLength={100} />
+            </FormRow>
+            <FormRow label="Attachment">
+              <input
+                className={inp}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                onChange={(e) => setStatusMaintAttachmentFile(e.target.files?.[0] ?? null)}
+              />
+            </FormRow>
+            <ModalActions saving={savingStatusMaintenance} onCancel={() => setStatusMaintenanceModalOpen(false)} />
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -606,8 +906,6 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
 
 // ─── Maintenance Tab ─────────────────────────────────────────────────────────
 
-type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
-
 function MaintenanceTab({
   readOnly, assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange,
 }: {
@@ -623,7 +921,8 @@ function MaintenanceTab({
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Maintenance | null>(null);
-  const [form, setForm] = useState<MaintForm>({ fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [form, setForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [returning, setReturning] = useState<number | null>(null);
 
@@ -642,16 +941,18 @@ function MaintenanceTab({
 
   function openAdd() {
     if (readOnly) return;
-    setForm({ fromDate: '', toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
+    setForm({ attID: null, fromDate: '', toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
+    setAttachmentFile(null);
     setModal('add');
   }
   function openEdit(item: Maintenance) {
     if (readOnly) return;
     setEditing(item);
-    setForm({ fromDate: item.fromDate, toDate: item.toDate, supplierContactID: item.supplierContactID, cost: item.cost, curCode: item.curCode, remark: item.remark ?? '' });
+    setForm({ attID: item.attID ?? null, fromDate: item.fromDate, toDate: item.toDate, supplierContactID: item.supplierContactID, cost: item.cost, curCode: item.curCode, remark: item.remark ?? '' });
+    setAttachmentFile(null);
     setModal('edit');
   }
-  function close() { setModal(null); setEditing(null); }
+  function close() { setModal(null); setEditing(null); setAttachmentFile(null); }
   function setF<K extends keyof MaintForm>(k: K, v: MaintForm[K]) { setForm((p) => ({ ...p, [k]: v })); }
 
   async function handleSubmit(e: FormEvent) {
@@ -659,14 +960,30 @@ function MaintenanceTab({
     if (readOnly) return;
     setSaving(true);
     try {
+      let attID = form.attID ?? null;
+      if (attachmentFile) {
+        const base64 = await toBase64(attachmentFile);
+        const ext = attachmentFile.name.split('.').pop() ?? '';
+        const upload = await attachmentsApi.create({
+          assetID: assetId,
+          attDesc: 'Maintenance Attachment',
+          attFileName: attachmentFile.name,
+          attFileExt: ext,
+          remark: null,
+          fileBase64: base64,
+        });
+        attID = (upload.data as Attachment).attID;
+      }
+
       if (modal === 'add') {
-        const r = await maintenancesApi.create({ assetID: assetId, ...form });
+        const r = await maintenancesApi.create({ assetID: assetId, ...form, attID });
         onChange([...items, r.data as Maintenance]);
         toast.success('Maintenance added');
       } else if (editing) {
         const r = await maintenancesApi.update(editing.maintID, {
-          assetID: assetId, maintID: editing.maintID, ...form,
+          assetID: assetId, maintID: editing.maintID, ...form, attID,
           original_MaintID: editing.maintID, original_AssetID: editing.assetID,
+          isNull_AttID: editing.attID == null ? 1 : 0, original_AttID: editing.attID ?? null,
           original_FromDate: editing.fromDate, original_ToDate: editing.toDate,
           original_SupplierContactID: editing.supplierContactID, original_Cost: editing.cost,
           original_CurCode: editing.curCode, isNull_Remark: editing.remark == null ? 1 : 0,
@@ -686,7 +1003,7 @@ function MaintenanceTab({
     if (!ok) return;
     try {
       await maintenancesApi.delete(item.maintID, {
-        assetID: item.assetID, fromDate: item.fromDate, toDate: item.toDate,
+        assetID: item.assetID, attID: item.attID ?? null, fromDate: item.fromDate, toDate: item.toDate,
         supplierContactID: item.supplierContactID, cost: item.cost,
         curCode: item.curCode, remark: item.remark ?? null,
       });
@@ -710,14 +1027,14 @@ function MaintenanceTab({
 
       {items.length === 0 ? <EmptyState message="No maintenance records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
-            {['From', 'To', 'Supplier', 'Cost', 'Currency', 'Remark', ''].map((h) => (
+          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
+            {['From', 'To', 'Supplier', 'Cost', 'Currency', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((m, i) => (
             <div key={m.maintID} className={clsx(
-              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
+              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-700">{m.fromDate}</div>
@@ -726,6 +1043,14 @@ function MaintenanceTab({
               <div className="num-cost text-[12px] font-medium">{m.cost}</div>
               <div className="text-[12px] font-code text-ink-600">{m.curCode}</div>
               <div className="text-[12px] text-ink-400 truncate">{m.remark ?? '—'}</div>
+              <div>
+                {m.attID ? (
+                  <div className="flex items-center gap-1.5">
+                    <ActionBtn onClick={() => downloadAttachmentById(m.attID!, `maintenance-${m.maintID}-attachment`)}>Download</ActionBtn>
+                    <ActionBtn onClick={() => previewAttachmentById(m.attID!)}>Preview</ActionBtn>
+                  </div>
+                ) : <span className="text-[12px] text-ink-300">—</span>}
+              </div>
               <div className="flex gap-1.5">
                 {!readOnly && <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
@@ -770,6 +1095,17 @@ function MaintenanceTab({
             <FormRow label="Remark">
               <input className={inp} value={form.remark ?? ''} onChange={(e) => setF('remark', e.target.value)} maxLength={100} />
             </FormRow>
+            <FormRow label="Attachment">
+              <input
+                className={inp}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+              />
+              {modal === 'edit' && form.attID && !attachmentFile && (
+                <div className="text-[11px] text-ink-400 mt-1">Current attachment is linked. Choose a file only if you want to replace it.</div>
+              )}
+            </FormRow>
             <ModalActions saving={saving} onCancel={close} />
           </form>
         </Modal>
@@ -786,17 +1122,19 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Warranty | null>(null);
-  const [form, setForm] = useState<WarrForm>({ warrantyDesc: '', fromDate: '', toDate: '', remark: '' });
+  const [form, setForm] = useState<WarrForm>({ attID: null, warrantyDesc: '', fromDate: '', toDate: '', remark: '' });
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
-  function openAdd() { if (readOnly) return; setForm({ warrantyDesc: '', fromDate: '', toDate: '', remark: '' }); setModal('add'); }
+  function openAdd() { if (readOnly) return; setForm({ attID: null, warrantyDesc: '', fromDate: '', toDate: '', remark: '' }); setAttachmentFile(null); setModal('add'); }
   function openEdit(item: Warranty) {
     if (readOnly) return;
     setEditing(item);
-    setForm({ warrantyDesc: item.warrantyDesc, fromDate: item.fromDate, toDate: item.toDate, remark: item.remark ?? '' });
+    setForm({ attID: item.attID ?? null, warrantyDesc: item.warrantyDesc, fromDate: item.fromDate, toDate: item.toDate, remark: item.remark ?? '' });
+    setAttachmentFile(null);
     setModal('edit');
   }
-  function close() { setModal(null); setEditing(null); }
+  function close() { setModal(null); setEditing(null); setAttachmentFile(null); }
   function setF<K extends keyof WarrForm>(k: K, v: WarrForm[K]) { setForm((p) => ({ ...p, [k]: v })); }
 
   async function handleSubmit(e: FormEvent) {
@@ -804,14 +1142,30 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
     if (readOnly) return;
     setSaving(true);
     try {
+      let attID = form.attID ?? null;
+      if (attachmentFile) {
+        const base64 = await toBase64(attachmentFile);
+        const ext = attachmentFile.name.split('.').pop() ?? '';
+        const upload = await attachmentsApi.create({
+          assetID: assetId,
+          attDesc: 'Warranty Attachment',
+          attFileName: attachmentFile.name,
+          attFileExt: ext,
+          remark: null,
+          fileBase64: base64,
+        });
+        attID = (upload.data as Attachment).attID;
+      }
+
       if (modal === 'add') {
-        const r = await warrantiesApi.create({ assetID: assetId, ...form });
+        const r = await warrantiesApi.create({ assetID: assetId, ...form, attID });
         onChange([...items, r.data as Warranty]);
         toast.success('Warranty added');
       } else if (editing) {
         const r = await warrantiesApi.update(editing.warntID, {
-          assetID: assetId, warntID: editing.warntID, ...form,
+          assetID: assetId, warntID: editing.warntID, ...form, attID,
           original_WarntID: editing.warntID, original_AssetID: editing.assetID,
+          isNull_AttID: editing.attID == null ? 1 : 0, original_AttID: editing.attID ?? null,
           original_WarrantyDesc: editing.warrantyDesc, original_FromDate: editing.fromDate,
           original_ToDate: editing.toDate, isNull_Remark: editing.remark == null ? 1 : 0,
           original_Remark: editing.remark ?? null,
@@ -830,7 +1184,7 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
     if (!ok) return;
     try {
       await warrantiesApi.delete(item.warntID, {
-        assetID: item.assetID, warrantyDesc: item.warrantyDesc,
+        assetID: item.assetID, attID: item.attID ?? null, warrantyDesc: item.warrantyDesc,
         fromDate: item.fromDate, toDate: item.toDate, remark: item.remark ?? null,
       });
       onChange(items.filter((i) => i.warntID !== item.warntID));
@@ -849,20 +1203,28 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
 
       {items.length === 0 ? <EmptyState message="No warranty records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
-            {['Description', 'From Date', 'To Date', 'Remark', ''].map((h) => (
+          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
+            {['Description', 'From Date', 'To Date', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((w, i) => (
             <div key={w.warntID} className={clsx(
-              'grid grid-cols-[2fr_1fr_1fr_2fr_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
+              'grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-800 font-medium truncate">{w.warrantyDesc}</div>
               <div className="text-[12px] text-ink-600">{w.fromDate}</div>
               <div className="text-[12px] text-ink-600">{w.toDate}</div>
               <div className="text-[12px] text-ink-400 truncate">{w.remark ?? '—'}</div>
+              <div>
+                {w.attID ? (
+                  <div className="flex items-center gap-1.5">
+                    <ActionBtn onClick={() => downloadAttachmentById(w.attID!, `warranty-${w.warntID}-attachment`)}>Download</ActionBtn>
+                    <ActionBtn onClick={() => previewAttachmentById(w.attID!)}>Preview</ActionBtn>
+                  </div>
+                ) : <span className="text-[12px] text-ink-300">—</span>}
+              </div>
               <div className="flex gap-1.5">
                 {!readOnly && <ActionBtn onClick={() => openEdit(w)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(w)}>Delete</ActionBtn>}
@@ -888,6 +1250,17 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
             </div>
             <FormRow label="Remark">
               <input className={inp} value={form.remark ?? ''} onChange={(e) => setF('remark', e.target.value)} maxLength={100} />
+            </FormRow>
+            <FormRow label="Attachment">
+              <input
+                className={inp}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+              />
+              {modal === 'edit' && form.attID && !attachmentFile && (
+                <div className="text-[11px] text-ink-400 mt-1">Current attachment is linked. Choose a file only if you want to replace it.</div>
+              )}
             </FormRow>
             <ModalActions saving={saving} onCancel={close} />
           </form>
@@ -930,6 +1303,48 @@ async function downloadAttachment(item: Attachment) {
     a.click();
     URL.revokeObjectURL(url);
   } catch (err) { handleApiError(err, 'Download failed'); }
+}
+
+async function downloadAttachmentById(attId: number, fallbackName: string) {
+  try {
+    const res = await attachmentsApi.download(attId);
+    const url = URL.createObjectURL(new Blob([res.data]));
+    const contentDisposition = (res.headers?.['content-disposition'] as string | undefined) ?? undefined;
+    const fileName = getFileNameFromContentDisposition(contentDisposition) ?? fallbackName;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) { handleApiError(err, 'Download failed'); }
+}
+
+function getFileNameFromContentDisposition(contentDisposition?: string): string | null {
+  if (!contentDisposition) return null;
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  if (plainMatch?.[1]) return plainMatch[1].trim();
+
+  return null;
+}
+
+async function previewAttachmentById(attId: number) {
+  try {
+    const res = await attachmentsApi.view(attId);
+    const contentType = (res.headers?.['content-type'] as string | undefined) ?? 'application/octet-stream';
+    const url = URL.createObjectURL(new Blob([res.data], { type: contentType }));
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) { handleApiError(err, 'Preview failed'); }
 }
 
 // ─── Attachments Tab ──────────────────────────────────────────────────────────
