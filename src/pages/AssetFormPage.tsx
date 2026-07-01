@@ -4,14 +4,15 @@ import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
-import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country } from '../types';
+import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType } from '../types';
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
 import { useAuth } from '../contexts/AuthContext';
 
 const inputCls = 'border border-[#ddd] rounded-md px-2.5 py-2 text-sm outline-none focus:border-accent transition-colors w-full';
+const companyOwnerId = 1;
 
-type ModalType = 'group' | 'category' | 'location' | 'locDetail' | 'currency' | 'company' | null;
+type ModalType = 'group' | 'category' | 'location' | 'locDetail' | 'currency' | 'company' | 'brand' | null;
 
 export default function AssetFormPage() {
   const { id } = useParams<{ id?: string }>();
@@ -33,6 +34,8 @@ export default function AssetFormPage() {
   const [categories, setCategories] = useState<CategoryType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
+  const [brands, setBrands] = useState<BrandType[]>([]);
+  const [owners, setOwners] = useState<OwnerType[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -46,6 +49,7 @@ export default function AssetFormPage() {
   const [catForm, setCatForm] = useState({ category: '' });
   const [locForm, setLocForm] = useState({ location: '', companyID: 0 });
   const [locDetailForm, setLocDetailForm] = useState({ locationID: 0, floor: '', zone: '', room: '' });
+  const [brandForm, setBrandForm] = useState({ brandDesc: '' });
   const [curForm, setCurForm] = useState({ curCode: '', curName: '' });
   const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '' });
 
@@ -56,16 +60,20 @@ export default function AssetFormPage() {
       lookupsApi.getCategories(),
       lookupsApi.getLocations(),
       lookupsApi.getLocationDetails(),
+      lookupsApi.getBrands(),
+      lookupsApi.getOwners(),
       lookupsApi.getCurrencies(),
       contactsApi.getLookup(),
       lookupsApi.getCountries(),
-    ]).then(([c, g, cat, l, ld, cur, con, cty]) => {
+    ]).then(([c, g, cat, l, ld, b, o, cur, con, cty]) => {
       const companiesData = c.data as Company[];
       setCompanies(companiesData);
       setGroups(g.data as GroupType[]);
       setCategories(cat.data as CategoryType[]);
       setLocations(l.data as LocationType[]);
       setLocDetails(ld.data as LocationDetail[]);
+      setBrands(b.data as BrandType[]);
+      setOwners(o.data as OwnerType[]);
       setCurrencies(cur.data as Currency[]);
       setContacts(con.data as Contact[]);
       setCountries(cty.data as Country[]);
@@ -103,17 +111,40 @@ export default function AssetFormPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!form.brandID) {
+      toast.error('Select a brand');
+      return;
+    }
+    if (!form.model?.trim()) {
+      toast.error('Model is required');
+      return;
+    }
+    if (!form.ownerID) {
+      toast.error('Select an owner');
+      return;
+    }
+    if (requiresOwnerDesc && !form.ownerDesc?.trim()) {
+      toast.error('Owner description is required for non-company ownership');
+      return;
+    }
+
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        model: form.model?.trim(),
+        ownerDesc: requiresOwnerDesc ? form.ownerDesc?.trim() : undefined,
+      } as Asset;
+
       if (isEdit) {
-        await assetsApi.update(assetId, form as Asset);
+        await assetsApi.update(assetId, payload);
         toast.success('Asset updated');
         navigate(`/assets/${assetId}`);
       } else {
         const countryId = selectedCompany?.countryID?.trim() ?? '';
         const codeRes = await lookupsApi.getAssetCode(true, countryId);
         const assetCode = (codeRes.data as { assetCode: string }).assetCode;
-        const r = await assetsApi.create({ ...form, assetCode, statusID: 0 } as Asset);
+        const r = await assetsApi.create({ ...payload, assetCode, statusID: 0 } as Asset);
         toast.success('Asset created');
         navigate(`/assets/${(r.data as { assetID: number }).assetID}`);
       }
@@ -128,6 +159,8 @@ export default function AssetFormPage() {
   function openModal(type: ModalType) {
     if (type === 'category') {
       setCatForm({ category: '' });
+    } else if (type === 'brand') {
+      setBrandForm({ brandDesc: '' });
     } else if (type === 'location') {
       setLocForm({ location: '', companyID: form.companyID ?? 0 });
     } else if (type === 'locDetail') {
@@ -169,6 +202,20 @@ export default function AssetFormPage() {
       setActiveModal(null);
       toast.success(`Category "${newCat.category}" created`);
     } catch (err) { handleApiError(err, 'Failed to create category'); }
+    finally { setModalSaving(false); }
+  }
+
+  async function saveBrand(e: FormEvent) {
+    e.preventDefault();
+    setModalSaving(true);
+    try {
+      const r = await lookupsApi.createBrand({ brandDesc: brandForm.brandDesc.trim() });
+      const newBrand = r.data as BrandType;
+      setBrands((prev) => [...prev, newBrand]);
+      set('brandID', newBrand.brandID);
+      setActiveModal(null);
+      toast.success(`Brand "${newBrand.brandDesc}" created`);
+    } catch (err) { handleApiError(err, 'Failed to create brand'); }
     finally { setModalSaving(false); }
   }
 
@@ -243,6 +290,7 @@ export default function AssetFormPage() {
   }
 
   const selectedCompany = companies.find((c) => c.companyID === form.companyID);
+  const requiresOwnerDesc = !!form.ownerID && form.ownerID !== companyOwnerId;
   const filteredGroups = selectedCompany ? groups.filter((g) => g.countryID?.trim() === selectedCompany.countryID?.trim()) : groups;
   const filteredCategories = categories;
   const filteredLocations = form.companyID ? locations.filter((l) => l.companyID === form.companyID) : locations;
@@ -288,6 +336,14 @@ export default function AssetFormPage() {
         <QuickAddModal title="New Category" onClose={() => setActiveModal(null)} onSubmit={saveCategory} saving={modalSaving}>
           <MField label="Category Name *">
             <input className={inputCls} value={catForm.category} onChange={(e) => setCatForm((p) => ({ ...p, category: e.target.value }))} required maxLength={50} placeholder="e.g. Laptops" autoFocus />
+          </MField>
+        </QuickAddModal>
+      )}
+
+      {activeModal === 'brand' && (
+        <QuickAddModal title="New Brand" onClose={() => setActiveModal(null)} onSubmit={saveBrand} saving={modalSaving}>
+          <MField label="Brand Name *">
+            <input className={inputCls} value={brandForm.brandDesc} onChange={(e) => setBrandForm((p) => ({ ...p, brandDesc: e.target.value }))} required maxLength={50} placeholder="e.g. Dell" autoFocus />
           </MField>
         </QuickAddModal>
       )}
@@ -436,6 +492,19 @@ export default function AssetFormPage() {
             <input className={inputCls} value={form.assetDesc ?? ''} onChange={(e) => set('assetDesc', e.target.value)} required maxLength={50} />
           </Field>
 
+          <Field label="Brand *">
+            <DropWithAdd onAdd={() => openModal('brand')}>
+              <Select value={form.brandID ?? ''} onChange={(e) => set('brandID', Number(e.target.value))} required searchable>
+                <option value="">Select…</option>
+                {brands.map((b) => <option key={b.brandID} value={b.brandID}>{b.brandDesc}</option>)}
+              </Select>
+            </DropWithAdd>
+          </Field>
+
+          <Field label="Model *">
+            <input className={inputCls} value={form.model ?? ''} onChange={(e) => set('model', e.target.value)} required maxLength={50} />
+          </Field>
+
           {/* Group */}
           <Field label="Group *">
             <DropWithAdd onAdd={() => openModal('group')}>
@@ -524,6 +593,29 @@ export default function AssetFormPage() {
               <option value="">None</option>
               {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
             </Select>
+          </Field>
+          <Field label="Owner *">
+            <Select value={form.ownerID ?? ''} onChange={(e) => {
+              const nextOwnerId = Number(e.target.value);
+              set('ownerID', nextOwnerId);
+              if (nextOwnerId === companyOwnerId) {
+                set('ownerDesc', '');
+              }
+            }} required>
+              <option value="">Select…</option>
+              {owners.map((o) => <option key={o.ownerID} value={o.ownerID}>{o.ownerDesc}</option>)}
+            </Select>
+          </Field>
+          <Field label={requiresOwnerDesc ? 'Owner Description *' : 'Owner Description'}>
+            <input
+              className={inputCls}
+              value={form.ownerDesc ?? ''}
+              onChange={(e) => set('ownerDesc', e.target.value)}
+              maxLength={50}
+              required={requiresOwnerDesc}
+              disabled={!requiresOwnerDesc}
+              placeholder={requiresOwnerDesc ? 'Required for rented / leased / borrowed assets' : 'Only needed when not company-owned'}
+            />
           </Field>
           <Field label="Installed At">
             <input className={inputCls} value={form.installedAt ?? ''} onChange={(e) => set('installedAt', e.target.value)} maxLength={50} />

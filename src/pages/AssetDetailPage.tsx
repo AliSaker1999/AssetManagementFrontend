@@ -722,10 +722,14 @@ function AssetInfo({ asset }: { asset: Asset }) {
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-300 mb-3">Identification</div>
         <InfoField label="Asset Code" value={asset.assetCode} mono />
         <InfoField label="Description" value={asset.assetDesc} />
+        <InfoField label="Brand" value={asset.brandDesc} />
+        <InfoField label="Model" value={asset.model} />
         <InfoField label="Barcode" value={asset.barcodeNumber} mono />
         <InfoField label="Serial Number" value={asset.serialNumber} mono />
         <InfoField label="In Service Date" value={asset.inServiceDate} />
         <InfoField label="Donation" value={asset.donation ? 'Yes' : 'No'} />
+        <InfoField label="Owner" value={asset.ownerTypeDesc} />
+        <InfoField label="Owner Description" value={asset.ownerDesc} />
         <InfoField label="Installed At" value={asset.installedAt} />
       </div>
 

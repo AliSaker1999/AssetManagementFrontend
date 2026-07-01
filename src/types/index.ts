@@ -67,11 +67,17 @@ export interface Asset {
   accountingEntryJVNo?: string;
   barcodeNumber?: string;
   serialNumber?: string;
+  brandID: number;
+  brandDesc?: string;
+  model: string;
   statusID?: number;
   statusName?: string;
   statusDate?: string;
   remark?: string;
   installedAt?: string;
+  ownerID: number;
+  ownerDesc?: string;
+  ownerTypeDesc?: string;
 }
 
 export interface AssetReportItem {
@@ -123,8 +129,12 @@ export interface AssetCreateRequest {
   accountingEntryJVNo?: string;
   barcodeNumber?: string;
   serialNumber?: string;
+  brandID: number;
+  model: string;
   remark?: string;
   installedAt?: string;
+  ownerID: number;
+  ownerDesc?: string;
 }
 
 export interface DepreciationHistoryItem {
@@ -317,6 +327,16 @@ export interface LocationDetail {
 export interface StatusType {
   statusID: number;
   status: string;
+}
+
+export interface BrandType {
+  brandID: number;
+  brandDesc: string;
+}
+
+export interface OwnerType {
+  ownerID: number;
+  ownerDesc: string;
 }
 
 export interface Currency {

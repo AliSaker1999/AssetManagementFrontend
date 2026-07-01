@@ -346,16 +346,13 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-pearl-50">
-      {/* Page header */}
       <div className="bg-white border-b border-pearl-200 px-8 py-5">
         <h1 className="text-[22px] font-extrabold text-ink-800 leading-tight">Reports</h1>
         <p className="text-[12px] text-ink-300 mt-0.5">Generate and download asset management reports in PDF or Excel</p>
       </div>
 
       <div className="px-8 py-6 flex gap-6 items-start">
-        {/* ── Left panel: report type + options ── */}
         <div className="w-[380px] shrink-0 space-y-4">
-          {/* Report type selector */}
           <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
             <div className="px-5 py-3.5 border-b border-pearl-100 bg-pearl-50">
               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Report</span>
@@ -379,9 +376,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="bg-white rounded-xl border border-pearl-200 shadow-card p-4 space-y-2.5">
-            {/* Preview button */}
             <button
               type="button"
               onClick={preview}
@@ -396,7 +391,6 @@ export default function ReportsPage() {
               Preview Report
             </button>
 
-            {/* Divider */}
             <div className="flex items-center gap-2">
               <div className="flex-1 h-px bg-pearl-100" />
               <span className="text-[10px] font-semibold text-ink-300 uppercase tracking-widest">Download</span>
@@ -432,251 +426,247 @@ export default function ReportsPage() {
               </button>
             </div>
           </div>
+
+          <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-pearl-100 bg-pearl-50 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Options</span>
+              <span className="text-[11px] font-semibold text-navy-700 bg-navy-50 border border-navy-100 rounded-full px-3 py-0.5">
+                {REPORT_TYPES.find((r) => r.key === reportType)?.label}
+              </span>
+            </div>
+
+            <div className="px-6 py-4 divide-y divide-pearl-100">
+              <OptionRow label="Inventory" disabled={!isInventory}>
+                <SelectField
+                  value={inventoryId}
+                  onChange={(v) => setInventoryId(Number(v))}
+                  disabled={!isInventory}
+                  placeholder="Select inventory…"
+                >
+                  {inventories.map((inv) => (
+                    <option key={inv.inventoryID} value={inv.inventoryID}>
+                      {inv.inventoryStartDate}
+                      {inv.inventoryEndDate ? ` – ${inv.inventoryEndDate}` : ' (active)'}
+                    </option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Company" disabled={isDepreciation || isNotDepreciated}>
+                <SelectField
+                  value={companyId}
+                  onChange={(v) => setCompanyId(Number(v))}
+                  disabled={isDepreciation || isNotDepreciated}
+                  placeholder="All companies"
+                >
+                  {companies.map((c) => (
+                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Location" disabled={filtersDisabled || isDepreciation}>
+                <SelectField
+                  value={locationId}
+                  onChange={(v) => setLocationId(Number(v))}
+                  disabled={filtersDisabled || isDepreciation}
+                  placeholder="All locations"
+                >
+                  {locations
+                    .filter((l) => !companyId || l.companyID === companyId)
+                    .map((l) => (
+                      <option key={l.locationID} value={l.locationID}>{l.location}</option>
+                    ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Location Detail" disabled={filtersDisabled || isDepreciation || !locationId}>
+                <SelectField
+                  value={locDetailId}
+                  onChange={(v) => setLocDetailId(Number(v))}
+                  disabled={filtersDisabled || isDepreciation || !locationId}
+                  placeholder="All details"
+                >
+                  {locDetails.map((ld) => (
+                    <option key={ld.locDetailID} value={ld.locDetailID}>
+                      {[ld.floor, ld.zone, ld.room].filter(Boolean).join(' · ')}
+                    </option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Group" disabled={filtersDisabled || isDepreciation}>
+                <SelectField
+                  value={groupId}
+                  onChange={(v) => setGroupId(Number(v))}
+                  disabled={filtersDisabled || isDepreciation}
+                  placeholder="All groups"
+                >
+                  {groups.map((g) => (
+                    <option key={g.groupID} value={g.groupID}>{g.groupName}</option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Category" disabled={filtersDisabled || isDepreciation}>
+                <SelectField
+                  value={categoryId}
+                  onChange={(v) => setCategoryId(Number(v))}
+                  disabled={filtersDisabled || isDepreciation}
+                  placeholder="All categories"
+                >
+                  {categories.map((c) => (
+                    <option key={c.categoryID} value={c.categoryID}>{c.category}</option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="List Type" disabled={isDepreciation || isNotDepreciated}>
+                <RadioGroup
+                  name="listType"
+                  options={[
+                    { label: 'ALL', value: 'ALL' },
+                    { label: 'Not Available (Lost)', value: 'NotAvailable' },
+                    { label: 'Relocated', value: 'Relocated' },
+                  ]}
+                  value={listType}
+                  onChange={(v) => setListType(v as ListType)}
+                  disabled={isDepreciation || isNotDepreciated}
+                />
+              </OptionRow>
+
+              <OptionRow label="Depreciation" disabled={!isDepreciation}>
+                <SelectField
+                  value={depId}
+                  onChange={(v) => setDepId(Number(v))}
+                  disabled={!isDepreciation}
+                  placeholder="Select run…"
+                >
+                  {depreciations.map((d) => (
+                    <option key={d.depID} value={d.depID}>
+                      {d.depreciationDate}
+                      {d.remark ? ` — ${d.remark}` : ''}
+                    </option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Additional Detail" disabled={!isAssetsList}>
+                <YesNo
+                  name="additionalDetail"
+                  value={additionalDetail}
+                  onChange={setAdditionalDetail}
+                  disabled={!isAssetsList}
+                />
+              </OptionRow>
+
+              <OptionRow label="Accounting Exclusion" disabled={isDepreciation}>
+                <YesNo
+                  name="accountingExclusion"
+                  value={accountingExclusion}
+                  onChange={setAccountingExclusion}
+                  disabled={isDepreciation}
+                />
+              </OptionRow>
+
+              <OptionRow label="Total Only" disabled={isDepreciation || isNotDepreciated}>
+                <YesNo
+                  name="totalOnly"
+                  value={totalOnly}
+                  onChange={setTotalOnly}
+                  disabled={isDepreciation || isNotDepreciated}
+                />
+              </OptionRow>
+            </div>
+
+            <div className="px-6 py-3.5 bg-pearl-50 border-t border-pearl-100 flex items-center gap-2">
+              <IconDownload />
+              <span className="text-[11px] text-ink-400">
+                Click <strong>Preview Report</strong> to view data inline, or <strong>PDF</strong> / <strong>Excel</strong> to download.
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* ── Right panel: options ── */}
-        <div className="flex-1 bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-pearl-100 bg-pearl-50 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Options</span>
-            <span className="text-[11px] font-semibold text-navy-700 bg-navy-50 border border-navy-100 rounded-full px-3 py-0.5">
-              {REPORT_TYPES.find((r) => r.key === reportType)?.label}
-            </span>
-          </div>
+        <div className="flex-1 min-w-0">
+          {pd ? (
+            <div ref={previewRef} className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
+              <div className="px-6 py-4 border-b border-pearl-100 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-[15px] font-bold text-ink-800">{pd.title}</h2>
+                  <p className="text-[12px] text-ink-400 mt-0.5">{pd.subtitle}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-[11px] font-semibold text-navy-700 bg-navy-50 border border-navy-100 rounded-full px-3 py-0.5">
+                    {pd.totalCount.toLocaleString()} rows
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewData(null)}
+                    className="p-1.5 rounded-lg text-ink-400 hover:bg-pearl-100 hover:text-ink-700 transition-colors border-none cursor-pointer"
+                    title="Close preview"
+                  >
+                    <IconX />
+                  </button>
+                </div>
+              </div>
 
-          <div className="px-6 py-4 divide-y divide-pearl-100">
-
-            {/* Inventory */}
-            <OptionRow label="Inventory" disabled={!isInventory}>
-              <SelectField
-                value={inventoryId}
-                onChange={(v) => setInventoryId(Number(v))}
-                disabled={!isInventory}
-                placeholder="Select inventory…"
-              >
-                {inventories.map((inv) => (
-                  <option key={inv.inventoryID} value={inv.inventoryID}>
-                    {inv.inventoryStartDate}
-                    {inv.inventoryEndDate ? ` – ${inv.inventoryEndDate}` : ' (active)'}
-                  </option>
-                ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* Company */}
-            <OptionRow label="Company" disabled={isDepreciation || isNotDepreciated}>
-              <SelectField
-                value={companyId}
-                onChange={(v) => setCompanyId(Number(v))}
-                disabled={isDepreciation || isNotDepreciated}
-                placeholder="All companies"
-              >
-                {companies.map((c) => (
-                  <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
-                ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* Location */}
-            <OptionRow label="Location" disabled={filtersDisabled || isDepreciation}>
-              <SelectField
-                value={locationId}
-                onChange={(v) => setLocationId(Number(v))}
-                disabled={filtersDisabled || isDepreciation}
-                placeholder="All locations"
-              >
-                {locations
-                  .filter((l) => !companyId || l.companyID === companyId)
-                  .map((l) => (
-                    <option key={l.locationID} value={l.locationID}>{l.location}</option>
-                  ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* Location Detail */}
-            <OptionRow label="Location Detail" disabled={filtersDisabled || isDepreciation || !locationId}>
-              <SelectField
-                value={locDetailId}
-                onChange={(v) => setLocDetailId(Number(v))}
-                disabled={filtersDisabled || isDepreciation || !locationId}
-                placeholder="All details"
-              >
-                {locDetails.map((ld) => (
-                  <option key={ld.locDetailID} value={ld.locDetailID}>
-                    {[ld.floor, ld.zone, ld.room].filter(Boolean).join(' · ')}
-                  </option>
-                ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* Group */}
-            <OptionRow label="Group" disabled={filtersDisabled || isDepreciation}>
-              <SelectField
-                value={groupId}
-                onChange={(v) => setGroupId(Number(v))}
-                disabled={filtersDisabled || isDepreciation}
-                placeholder="All groups"
-              >
-                {groups.map((g) => (
-                  <option key={g.groupID} value={g.groupID}>{g.groupName}</option>
-                ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* Category */}
-            <OptionRow label="Category" disabled={filtersDisabled || isDepreciation}>
-              <SelectField
-                value={categoryId}
-                onChange={(v) => setCategoryId(Number(v))}
-                disabled={filtersDisabled || isDepreciation}
-                placeholder="All categories"
-              >
-                {categories.map((c) => (
-                  <option key={c.categoryID} value={c.categoryID}>{c.category}</option>
-                ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* List Type */}
-            <OptionRow label="List Type" disabled={isDepreciation || isNotDepreciated}>
-              <RadioGroup
-                name="listType"
-                options={[
-                  { label: 'ALL',               value: 'ALL' },
-                  { label: 'Not Available (Lost)', value: 'NotAvailable' },
-                  { label: 'Relocated',          value: 'Relocated' },
-                ]}
-                value={listType}
-                onChange={(v) => setListType(v as ListType)}
-                disabled={isDepreciation || isNotDepreciated}
-              />
-            </OptionRow>
-
-            {/* Depreciation run selector */}
-            <OptionRow label="Depreciation" disabled={!isDepreciation}>
-              <SelectField
-                value={depId}
-                onChange={(v) => setDepId(Number(v))}
-                disabled={!isDepreciation}
-                placeholder="Select run…"
-              >
-                {depreciations.map((d) => (
-                  <option key={d.depID} value={d.depID}>
-                    {d.depreciationDate}
-                    {d.remark ? ` — ${d.remark}` : ''}
-                  </option>
-                ))}
-              </SelectField>
-            </OptionRow>
-
-            {/* Additional Detail */}
-            <OptionRow label="Additional Detail" disabled={!isAssetsList}>
-              <YesNo
-                name="additionalDetail"
-                value={additionalDetail}
-                onChange={setAdditionalDetail}
-                disabled={!isAssetsList}
-              />
-            </OptionRow>
-
-            {/* Accounting Exclusion */}
-            <OptionRow label="Accounting Exclusion" disabled={isDepreciation}>
-              <YesNo
-                name="accountingExclusion"
-                value={accountingExclusion}
-                onChange={setAccountingExclusion}
-                disabled={isDepreciation}
-              />
-            </OptionRow>
-
-            {/* Total Only */}
-            <OptionRow label="Total Only" disabled={isDepreciation || isNotDepreciated}>
-              <YesNo
-                name="totalOnly"
-                value={totalOnly}
-                onChange={setTotalOnly}
-                disabled={isDepreciation || isNotDepreciated}
-              />
-            </OptionRow>
-
-          </div>
-
-          {/* Footer info */}
-          <div className="px-6 py-3.5 bg-pearl-50 border-t border-pearl-100 flex items-center gap-2">
-            <IconDownload />
-            <span className="text-[11px] text-ink-400">
-              Click <strong>Preview Report</strong> to view data inline, or <strong>PDF</strong> / <strong>Excel</strong> to download.
-            </span>
-          </div>
+              <div className="overflow-auto max-h-[calc(100vh-220px)] min-h-[420px]">
+                <table className="w-full text-[12px] border-collapse">
+                  <thead>
+                    <tr>
+                      {pd.headers.map((h, i) => (
+                        <th
+                          key={i}
+                          className="sticky top-0 bg-navy-700 text-white text-left px-4 py-2.5 font-semibold whitespace-nowrap border-r border-navy-600 last:border-r-0"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pd.rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={pd.headers.length} className="px-4 py-6 text-center text-ink-300">
+                          No data found for the selected filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      pd.rows.map((row, ri) => (
+                        <tr
+                          key={ri}
+                          className={ri % 2 === 0 ? 'bg-white' : 'bg-pearl-50'}
+                        >
+                          {row.map((cell, ci) => (
+                            <td key={ci} className="px-4 py-2 text-ink-700 border-r border-pearl-100 last:border-r-0 whitespace-nowrap">
+                              {cell ?? '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-dashed border-pearl-300 shadow-card min-h-[420px] flex items-center justify-center px-10 text-center">
+              <div className="max-w-md space-y-3">
+                <div className="mx-auto w-12 h-12 rounded-2xl bg-navy-50 text-navy-700 flex items-center justify-center">
+                  <IconEye />
+                </div>
+                <div>
+                  <h2 className="text-[16px] font-bold text-ink-800">Preview appears here</h2>
+                  <p className="text-[12px] text-ink-400 mt-1">
+                    Choose a report, adjust the options on the left, then click <strong>Preview Report</strong> to load the result here.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* ── Inline Preview ─────────────────────────────────────────────────── */}
-      {pd && (
-        <div ref={previewRef} className="px-8 pb-8">
-          <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-            {/* Header bar */}
-            <div className="px-6 py-4 border-b border-pearl-100 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-[15px] font-bold text-ink-800">{pd.title}</h2>
-                <p className="text-[12px] text-ink-400 mt-0.5">{pd.subtitle}</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="text-[11px] font-semibold text-navy-700 bg-navy-50 border border-navy-100 rounded-full px-3 py-0.5">
-                  {pd.totalCount.toLocaleString()} rows
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPreviewData(null)}
-                  className="p-1.5 rounded-lg text-ink-400 hover:bg-pearl-100 hover:text-ink-700 transition-colors border-none cursor-pointer"
-                  title="Close preview"
-                >
-                  <IconX />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable table */}
-            <div className="overflow-auto max-h-[60vh]">
-              <table className="w-full text-[12px] border-collapse">
-                <thead>
-                  <tr>
-                    {pd.headers.map((h, i) => (
-                      <th
-                        key={i}
-                        className="sticky top-0 bg-navy-700 text-white text-left px-4 py-2.5 font-semibold whitespace-nowrap border-r border-navy-600 last:border-r-0"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pd.rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={pd.headers.length} className="px-4 py-6 text-center text-ink-300">
-                        No data found for the selected filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    pd.rows.map((row, ri) => (
-                      <tr
-                        key={ri}
-                        className={ri % 2 === 0 ? 'bg-white' : 'bg-pearl-50'}
-                      >
-                        {row.map((cell, ci) => (
-                          <td key={ci} className="px-4 py-2 text-ink-700 border-r border-pearl-100 last:border-r-0 whitespace-nowrap">
-                            {cell ?? '—'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

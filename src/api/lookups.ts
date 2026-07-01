@@ -10,6 +10,8 @@ export const lookupsApi = {
   getLocationDetails: (locationId?: number) =>
     client.get('/lookups/location-details', { params: locationId ? { locationId } : {} }),
   getStatuses: () => client.get('/lookups/statuses'),
+  getBrands: () => client.get('/lookups/brands'),
+  getOwners: () => client.get('/lookups/owners'),
   getCurrencies: () => client.get('/lookups/currencies'),
   getCountries: () => client.get('/lookups/countries'),
   getContactTypes: () => client.get('/lookups/contact-types'),
@@ -36,6 +38,9 @@ export const lookupsApi = {
   createGroup: (data: object) => client.post('/lookups/groups', data),
   updateGroup: (id: number, data: object) => client.put(`/lookups/groups/${id}`, data),
   deleteGroup: (id: number) => client.delete(`/lookups/groups/${id}`),
+
+  // Brands
+  createBrand: (data: { brandDesc: string }) => client.post('/lookups/brands', data),
 
   // Categories
   createCategory: (data: object) => client.post('/lookups/categories', data),
