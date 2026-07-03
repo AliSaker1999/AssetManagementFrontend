@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 
 interface OptionItem {
@@ -32,10 +33,13 @@ interface SelectProps {
   searchable?: boolean;
 }
 
-export default function Select({ value, onChange, children, required, disabled, className, searchable = false }: SelectProps) {
+export default function Select({ value, onChange, children, required, disabled, className, searchable = true }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const options = parseOptions(children);
   const selectedOption = options.find((o) => o.value === String(value ?? ''));
@@ -43,20 +47,68 @@ export default function Select({ value, onChange, children, required, disabled, 
     ? options.filter((opt) => opt.label.toLowerCase().includes(query.trim().toLowerCase()))
     : options;
 
+  function updateMenuPosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const estimatedMenuHeight = searchable ? 270 : 220;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const openUpward = spaceBelow < estimatedMenuHeight && rect.top > spaceBelow;
+
+    setMenuStyle({
+      position: 'fixed',
+      left: rect.left,
+      width: rect.width,
+      zIndex: 250,
+      top: openUpward ? undefined : rect.bottom + 6,
+      bottom: openUpward ? viewportHeight - rect.top + 6 : undefined,
+    });
+  }
+
   useEffect(() => {
     if (!open) return;
     function handleOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     }
+
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+    const handleReposition = () => updateMenuPosition();
+
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [open, searchable, options.length]);
+
+  useEffect(() => {
     if (open) {
-      if (searchable) searchRef.current?.focus();
+      if (searchable && searchRef.current) {
+        try {
+          searchRef.current.focus({ preventScroll: true });
+        } catch {
+          // Older browsers may not support focus options.
+          searchRef.current.focus();
+        }
+      }
       return;
     }
     setQuery('');
@@ -76,7 +128,7 @@ export default function Select({ value, onChange, children, required, disabled, 
   }
 
   return (
-    <div ref={containerRef} className={clsx('relative w-full', className)}>
+    <div ref={containerRef} className={clsx('relative w-full', className)} data-am-select-root="true">
       {/* Hidden native select keeps form validation working */}
       <select
         value={String(value ?? '')}
@@ -92,6 +144,7 @@ export default function Select({ value, onChange, children, required, disabled, 
 
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
@@ -120,8 +173,12 @@ export default function Select({ value, onChange, children, required, disabled, 
       </button>
 
       {/* Dropdown list */}
-      {open && (
-        <div className="absolute z-50 w-full mt-1.5 bg-white border border-[#e5e7eb] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.13)] overflow-hidden">
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          style={menuStyle}
+          className="bg-white border border-[#e5e7eb] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.13)] overflow-hidden"
+        >
           {searchable && (
             <div className="p-2 border-b border-[#eef0f3]">
               <input
@@ -157,7 +214,8 @@ export default function Select({ value, onChange, children, required, disabled, 
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

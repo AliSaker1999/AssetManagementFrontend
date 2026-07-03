@@ -3,7 +3,7 @@ import type { AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetLis
 
 export const assetsApi = {
   getList: (companyId?: number) => client.get('/assets', { params: companyId ? { companyId } : {} }),
-  getListPaginated: (pageNumber: number = 1, pageSize: number = 25, companyId?: number) =>
+  getListPaginated: (pageNumber: number = 1, pageSize: number = 10, companyId?: number) =>
     client.get<PaginatedResponse<AssetListItem>>('/assets/paginated', { params: { pageNumber, pageSize, ...(companyId ? { companyId } : {}) } }),
   get: (id: number) => client.get(`/assets/${id}`),
   getReport: (filter: AssetReportFilter) => client.post('/assets/report', filter),

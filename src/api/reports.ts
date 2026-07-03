@@ -8,6 +8,11 @@ export interface ReportPreview {
   totalCount: number;
 }
 
+export interface PreviewPagingRequest {
+  pageNumber?: number;
+  pageSize?: number;
+}
+
 async function downloadBlob(
   promise: Promise<{ data: ArrayBuffer; headers: Record<string, string> }>,
   fallbackName: string
@@ -52,12 +57,12 @@ export const reportsApi = {
     ),
 
   // ── Preview (returns JSON) ─────────────────────────────────────────────────
-  previewAssetsList: (data: object) =>
+  previewAssetsList: (data: object & PreviewPagingRequest) =>
     client.post<ReportPreview>('/reports/assets-list/preview', data),
-  previewAssetsListInventory: (data: object) =>
+  previewAssetsListInventory: (data: object & PreviewPagingRequest) =>
     client.post<ReportPreview>('/reports/assets-list-inventory/preview', data),
-  previewDepreciation: (data: object) =>
+  previewDepreciation: (data: object & PreviewPagingRequest) =>
     client.post<ReportPreview>('/reports/depreciation/preview', data),
-  previewAssetsNotDepreciated: (data: object) =>
+  previewAssetsNotDepreciated: (data: object & PreviewPagingRequest) =>
     client.post<ReportPreview>('/reports/assets-not-depreciated/preview', data),
 };

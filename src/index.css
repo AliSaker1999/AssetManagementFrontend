@@ -117,6 +117,50 @@
   }
 }
 
+.am-validation-summary {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #f6c6ca;
+  background: linear-gradient(180deg, #fff7f8 0%, #fffafb 100%);
+  box-shadow: 0 1px 2px rgba(185, 28, 28, 0.08);
+}
+
+.am-validation-summary-title {
+  color: #8b1f2d;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.am-validation-summary-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #9f1239;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.am-show-validation input.am-invalid-field,
+.am-show-validation textarea.am-invalid-field,
+.am-show-validation select.am-invalid-field {
+  border-color: #dc2626 !important;
+  background-color: #fff8f8 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14) !important;
+}
+
+.am-show-validation [data-am-select-root][data-am-invalid="true"] button {
+  border-color: #dc2626 !important;
+  background-color: #fff8f8 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14) !important;
+}
+
+.am-show-validation .am-invalid-field:focus,
+.am-show-validation [data-am-select-root][data-am-invalid="true"] button:focus {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18) !important;
+}
+
 /* ─── Print: Barcode Label Only ─────────────────────────────────────────── */
 @media print {
   body > * {

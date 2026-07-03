@@ -26,6 +26,7 @@ export default function AssetFormPage() {
     donation: false,
     inServiceDate: new Date().toISOString().slice(0, 10),
     purchaseCurCode: 'USD',
+    ownerID: !isEdit ? companyOwnerId : undefined,
     ...(ctxCompanyId != null && !isEdit ? { companyID: ctxCompanyId } : {}),
   });
 
@@ -96,6 +97,10 @@ export default function AssetFormPage() {
   }
   function reset(...keys: (keyof Asset)[]) {
     setForm((prev) => { const next = { ...prev }; keys.forEach((k) => delete next[k]); return next; });
+  }
+
+  function normalizeText(value?: string | null) {
+    return (value ?? '').trim().toLowerCase();
   }
 
   async function generateCode() {
@@ -223,14 +228,20 @@ export default function AssetFormPage() {
     e.preventDefault();
     setModalSaving(true);
     try {
-      const r = await lookupsApi.createLocation(locForm);
-      const returned = r.data as Partial<LocationType>;
-      const newLoc: LocationType = {
-        locationID: returned.locationID ?? (returned as { id?: number }).id ?? 0,
-        location: locForm.location,
-        companyID: locForm.companyID,
-      };
-      setLocations((prev) => [...prev, newLoc]);
+      await lookupsApi.createLocation(locForm);
+      const refreshed = (await lookupsApi.getLocations()).data as LocationType[];
+      setLocations(refreshed);
+
+      const newLoc = refreshed
+        .filter((l) => l.companyID === locForm.companyID && normalizeText(l.location) === normalizeText(locForm.location))
+        .sort((a, b) => b.locationID - a.locationID)[0];
+
+      if (!newLoc) {
+        toast.error('Location created, but could not auto-select it. Please select it manually.');
+        setActiveModal(null);
+        return;
+      }
+
       set('locationID', newLoc.locationID);
       reset('locDetailID');
       setActiveModal(null);
@@ -243,16 +254,25 @@ export default function AssetFormPage() {
     e.preventDefault();
     setModalSaving(true);
     try {
-      const r = await lookupsApi.createLocationDetail(locDetailForm);
-      const returned = r.data as Partial<LocationDetail>;
-      const newDet: LocationDetail = {
-        locDetailID: returned.locDetailID ?? (returned as { id?: number }).id ?? 0,
-        locationID: locDetailForm.locationID,
-        floor: locDetailForm.floor,
-        zone: locDetailForm.zone || undefined,
-        room: locDetailForm.room || undefined,
-      };
-      setLocDetails((prev) => [...prev, newDet]);
+      await lookupsApi.createLocationDetail(locDetailForm);
+      const refreshed = (await lookupsApi.getLocationDetails()).data as LocationDetail[];
+      setLocDetails(refreshed);
+
+      const newDet = refreshed
+        .filter((d) =>
+          d.locationID === locDetailForm.locationID &&
+          normalizeText(d.floor) === normalizeText(locDetailForm.floor) &&
+          normalizeText(d.zone) === normalizeText(locDetailForm.zone) &&
+          normalizeText(d.room) === normalizeText(locDetailForm.room)
+        )
+        .sort((a, b) => b.locDetailID - a.locDetailID)[0];
+
+      if (!newDet) {
+        toast.error('Location detail created, but could not auto-select it. Please select it manually.');
+        setActiveModal(null);
+        return;
+      }
+
       set('locDetailID', newDet.locDetailID);
       setActiveModal(null);
       toast.success('Location detail created');
@@ -290,11 +310,25 @@ export default function AssetFormPage() {
   }
 
   const selectedCompany = companies.find((c) => c.companyID === form.companyID);
-  const requiresOwnerDesc = !!form.ownerID && form.ownerID !== companyOwnerId;
+  const resolvedCompanyOwnerId = owners.find((o) => o.ownerDesc.trim().toLowerCase() === 'company')?.ownerID ?? companyOwnerId;
+  const ownersOrdered = [
+    ...owners.filter((o) => o.ownerID === resolvedCompanyOwnerId),
+    ...owners.filter((o) => o.ownerID !== resolvedCompanyOwnerId),
+  ];
+  const requiresOwnerDesc = !!form.ownerID && form.ownerID !== resolvedCompanyOwnerId;
   const filteredGroups = selectedCompany ? groups.filter((g) => g.countryID?.trim() === selectedCompany.countryID?.trim()) : groups;
   const filteredCategories = categories;
   const filteredLocations = form.companyID ? locations.filter((l) => l.companyID === form.companyID) : locations;
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
+
+  useEffect(() => {
+    if (isEdit) return;
+    if (!owners.length) return;
+    setForm((prev) => {
+      if (prev.ownerID) return prev;
+      return { ...prev, ownerID: resolvedCompanyOwnerId };
+    });
+  }, [isEdit, owners, resolvedCompanyOwnerId]);
 
   return (
     <div className="px-8 py-6 max-w-[900px]">
@@ -545,6 +579,30 @@ export default function AssetFormPage() {
             </DropWithAdd>
           </Field>
 
+          <Field label="Owner *">
+            <Select value={form.ownerID ?? ''} onChange={(e) => {
+              const nextOwnerId = Number(e.target.value);
+              set('ownerID', nextOwnerId);
+              if (nextOwnerId === resolvedCompanyOwnerId) {
+                set('ownerDesc', '');
+              }
+            }} required>
+              {ownersOrdered.map((o) => <option key={o.ownerID} value={o.ownerID}>{o.ownerDesc}</option>)}
+            </Select>
+          </Field>
+
+          <Field label={requiresOwnerDesc ? 'Owner Description *' : 'Owner Description'}>
+            <input
+              className={inputCls}
+              value={form.ownerDesc ?? ''}
+              onChange={(e) => set('ownerDesc', e.target.value)}
+              maxLength={50}
+              required={requiresOwnerDesc}
+              disabled={!requiresOwnerDesc}
+              placeholder={requiresOwnerDesc ? 'Required for rented / leased / borrowed assets' : 'Only needed when not company-owned'}
+            />
+          </Field>
+
           {/* In Service Date */}
           <Field label="In Service Date *">
             <input className={inputCls} type="date" value={form.inServiceDate ?? ''} onChange={(e) => set('inServiceDate', e.target.value)} required />
@@ -593,29 +651,6 @@ export default function AssetFormPage() {
               <option value="">None</option>
               {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
             </Select>
-          </Field>
-          <Field label="Owner *">
-            <Select value={form.ownerID ?? ''} onChange={(e) => {
-              const nextOwnerId = Number(e.target.value);
-              set('ownerID', nextOwnerId);
-              if (nextOwnerId === companyOwnerId) {
-                set('ownerDesc', '');
-              }
-            }} required>
-              <option value="">Select…</option>
-              {owners.map((o) => <option key={o.ownerID} value={o.ownerID}>{o.ownerDesc}</option>)}
-            </Select>
-          </Field>
-          <Field label={requiresOwnerDesc ? 'Owner Description *' : 'Owner Description'}>
-            <input
-              className={inputCls}
-              value={form.ownerDesc ?? ''}
-              onChange={(e) => set('ownerDesc', e.target.value)}
-              maxLength={50}
-              required={requiresOwnerDesc}
-              disabled={!requiresOwnerDesc}
-              placeholder={requiresOwnerDesc ? 'Required for rented / leased / borrowed assets' : 'Only needed when not company-owned'}
-            />
           </Field>
           <Field label="Installed At">
             <input className={inputCls} value={form.installedAt ?? ''} onChange={(e) => set('installedAt', e.target.value)} maxLength={50} />
@@ -734,3 +769,5 @@ function QuickAddModal({ title, onClose, onSubmit, saving, children }: {
     </div>
   );
 }
+
+

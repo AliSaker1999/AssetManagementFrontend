@@ -6,8 +6,11 @@ import { depreciationsApi } from '../api/depreciations';
 import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import { useAuth } from '../contexts/AuthContext';
-import type { Company, Depreciation, DepreciationReportItem } from '../types';
+import type { Company, Depreciation, DepreciationReportItem, PaginatedResponse } from '../types';
 import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 export default function DepreciationsPage() {
   const { activeCompanyId, isAuditor } = useAuth();
@@ -18,6 +21,10 @@ export default function DepreciationsPage() {
   const [lastDate, setLastDate] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [report, setReport] = useState<DepreciationReportItem[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10));
@@ -46,6 +53,8 @@ export default function DepreciationsPage() {
     if (companyId === 0) return;
     setSelected(null);
     setReport([]);
+    setTotalCount(0);
+    setTotalPages(1);
     Promise.all([depreciationsApi.getAll(companyId), depreciationsApi.getLastDate(companyId)])
       .then(([all, last]) => {
         setDepreciations(all.data as Depreciation[]);
@@ -54,23 +63,63 @@ export default function DepreciationsPage() {
       .catch((err) => handleApiError(err, 'Failed to load depreciations'));
   }, [companyId]);
 
-  async function selectDep(depId: number) {
+  async function selectDep(depId: number, nextPageNumber: number = 1, nextPageSize: number = pageSize) {
     setSelected(depId);
     setReport([]);
     setReportLoading(true);
     try {
-      const r = await depreciationsApi.getReport(depId);
-      setReport(r.data as DepreciationReportItem[]);
+      const r = await depreciationsApi.getReportPaginated(depId, nextPageNumber, nextPageSize);
+      const data = r.data as PaginatedResponse<DepreciationReportItem>;
+      setReport(data.data);
+      setTotalPages(data.totalPages);
+      setTotalCount(data.totalCount);
     } catch (err) { handleApiError(err, 'Failed to load report'); }
     finally { setReportLoading(false); }
   }
 
+  useEffect(() => {
+    if (!selected) return;
+    void selectDep(selected, pageNumber, pageSize);
+  }, [selected, pageNumber, pageSize]);
+
   async function runDepreciation() {
     if (readOnly) return;
     const company = companies.find((c) => c.companyID === companyId);
-    const ok = await confirm(`Run depreciation for ${company?.companyName ?? ''} on ${runDate}?`, { title: 'Run Depreciation', confirmLabel: 'Run', danger: false });
-    if (!ok) return;
+
+    const sortedByLatest = [...depreciations].sort((a, b) => b.depID - a.depID);
+    const latestRun = sortedByLatest[0] ?? null;
+    const sameDayRun = depreciations.find((d) => d.depreciationDate === runDate) ?? null;
+
+    if (sameDayRun) {
+      const overwrite = await confirm(`A depreciation run already exists for ${runDate}. Overwrite it?`, {
+        title: 'Depreciation Already Exists',
+        confirmLabel: 'Overwrite',
+        danger: true,
+      });
+      if (!overwrite) {
+        toast('Please select another date to run depreciation.');
+        return;
+      }
+
+      if (!latestRun || latestRun.depID !== sameDayRun.depID) {
+        toast.error('Cannot overwrite this date because it is not the latest run. Delete newer runs first or pick another date.');
+        return;
+      }
+    } else {
+      const ok = await confirm(`Run depreciation for ${company?.companyName ?? ''} on ${runDate}?`, {
+        title: 'Run Depreciation',
+        confirmLabel: 'Run',
+        danger: false,
+      });
+      if (!ok) return;
+    }
+
     try {
+      if (sameDayRun) {
+        await depreciationsApi.deleteLast(companyId);
+        toast.success('Existing same-day run deleted. Running depreciation again...');
+      }
+
       await depreciationsApi.run({ depreciationDate: runDate, companyID: companyId });
       toast.success('Depreciation run successfully');
       const [all, last] = await Promise.all([
@@ -105,6 +154,8 @@ export default function DepreciationsPage() {
       setLastDate(last.data as string | null);
       setSelected(null);
       setReport([]);
+      setTotalCount(0);
+      setTotalPages(1);
     } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
@@ -186,7 +237,10 @@ export default function DepreciationsPage() {
             depreciations.map((d) => (
               <button
                 key={d.depID}
-                onClick={() => selectDep(d.depID)}
+                onClick={() => {
+                  setPageNumber(1);
+                  setSelected(d.depID);
+                }}
                 className={clsx(
                   'w-full text-left px-4 py-3 border-none cursor-pointer border-b border-[#f0f0f0] text-sm transition-colors',
                   selected === d.depID ? 'bg-[#e8f0fe] text-accent' : 'bg-transparent text-[#333] hover:bg-surface'
@@ -204,8 +258,25 @@ export default function DepreciationsPage() {
           {reportLoading ? (
             <div className="text-center mt-16 text-[#bbb]"><p>Loading report…</p></div>
           ) : selected && report.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
-              <table className="w-full border-collapse">
+            <>
+              <TablePagination
+                summary={totalCount > 0
+                  ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} items`
+                  : 'No depreciation details'}
+                pageNumber={pageNumber}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPageNumber(1);
+                }}
+                onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
+                onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+              />
+
+              <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
+                <table className="w-full border-collapse">
                 <thead>
                   <tr>
                     {['Asset Code', 'Description', 'Rate %', 'Dep. Value', 'Net Book Value', 'Acct. Entry Date'].map((h) => (
@@ -225,8 +296,9 @@ export default function DepreciationsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+            </>
           ) : (
             <div className="text-center mt-16 text-[#bbb]">
               <p>{selected ? 'No assets were depreciated in this run.' : 'Select a depreciation run to view the report.'}</p>

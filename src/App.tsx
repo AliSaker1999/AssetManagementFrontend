@@ -15,8 +15,11 @@ import SettingsPage from './pages/SettingsPage';
 import UsersPage from './pages/UsersPage';
 import CompaniesPage from './pages/CompaniesPage';
 import ReportsPage from './pages/ReportsPage';
+import useGlobalFormValidation from './hooks/useGlobalFormValidation';
 
 export default function App() {
+  useGlobalFormValidation();
+
   return (
     <ErrorBoundary>
     <AuthProvider>

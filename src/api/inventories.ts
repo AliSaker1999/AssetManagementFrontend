@@ -1,4 +1,5 @@
 import client from './client';
+import type { InventoryDetail, PaginatedResponse } from '../types';
 
 export const inventoriesApi = {
   getHistory:   (companyId: number) => client.get('/inventories/history',   { params: { companyId } }),
@@ -8,6 +9,8 @@ export const inventoriesApi = {
   getGenerated: (companyId: number) => client.get('/inventories/generated', { params: { companyId } }),
   getFinishInfo: ()                  => client.get('/inventories/finish-info'),
   getDetails:   (filter: object)    => client.post('/inventories/details', filter),
+  getDetailsPaginated: (filter: object, pageNumber: number = 1, pageSize: number = 10) =>
+    client.post<PaginatedResponse<InventoryDetail>>('/inventories/details/paginated', filter, { params: { pageNumber, pageSize } }),
   getRelocated: (id: number)        => client.get(`/inventories/${id}/relocated`),
   getReport:    (filter: object)    => client.post('/inventories/report', filter),
   start:        (data: object)      => client.post('/inventories/start', data),

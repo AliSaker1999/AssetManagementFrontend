@@ -6,6 +6,8 @@ import { reportsApi, type ReportPreview } from '../api/reports';
 import { lookupsApi } from '../api/lookups';
 import { inventoriesApi } from '../api/inventories';
 import { depreciationsApi } from '../api/depreciations';
+import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
 import type {
   Company, LocationType, LocationDetail, CategoryType, GroupType,
@@ -24,6 +26,7 @@ const REPORT_TYPES: { key: ReportType; label: string }[] = [
   { key: 'depreciation',             label: 'Depreciation' },
   { key: 'assets-not-depreciated',   label: 'Assets Not Depreciated' },
 ];
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -146,17 +149,16 @@ function SelectField({
   children: React.ReactNode;
 }) {
   return (
-    <select
+    <Select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className={clsx(
-        'w-full max-w-xs input-base text-[12px] py-1.5 disabled:opacity-50 disabled:bg-pearl-100 disabled:cursor-not-allowed'
-      )}
+      searchable
+      className="max-w-xs"
     >
       {placeholder && <option value="">{placeholder}</option>}
       {children}
-    </select>
+    </Select>
   );
 }
 
@@ -169,6 +171,8 @@ export default function ReportsPage() {
   const [downloading, setDownloading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<ReportPreview | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const previewRef = useRef<HTMLDivElement>(null);
 
   // Lookup data
@@ -272,7 +276,7 @@ export default function ReportsPage() {
     return true;
   };
 
-  function buildPayload(format = 'pdf') {
+  function buildPayload(format = 'pdf', previewPageNumber: number = pageNumber, previewPageSize: number = pageSize) {
     const base = {
       format,
       locationID:       locationId   || -1,
@@ -281,6 +285,8 @@ export default function ReportsPage() {
       groupID:          groupId      || -1,
       locationDetailID: locDetailId  || -1,
       accountingExclusion,
+      pageNumber: previewPageNumber,
+      pageSize: previewPageSize,
     };
     if (reportType === 'assets-list')
       return { ...base, listType, additionalDetail, totalOnly };
@@ -291,20 +297,22 @@ export default function ReportsPage() {
     return { format, accountingExclusion };
   }
 
-  async function preview() {
+  async function preview(previewPageNumber: number = pageNumber, previewPageSize: number = pageSize) {
     if (!canDownload()) {
       toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
       return;
     }
     setPreviewing(true);
     try {
-      const payload = buildPayload();
+      const payload = buildPayload('pdf', previewPageNumber, previewPageSize);
       let res;
       if (reportType === 'assets-list')             res = await reportsApi.previewAssetsList(payload);
       else if (reportType === 'assets-list-inventory') res = await reportsApi.previewAssetsListInventory(payload);
       else if (reportType === 'depreciation')       res = await reportsApi.previewDepreciation(payload);
       else                                          res = await reportsApi.previewAssetsNotDepreciated(payload);
       setPreviewData(res.data);
+      setPageNumber(previewPageNumber);
+      setPageSize(previewPageSize);
       setTimeout(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     } catch (err) {
       handleApiError(err, 'Failed to load preview');
@@ -334,7 +342,10 @@ export default function ReportsPage() {
   }
 
   // Clear preview when report type changes
-  useEffect(() => { setPreviewData(null); }, [reportType]);
+  useEffect(() => {
+    setPreviewData(null);
+    setPageNumber(1);
+  }, [reportType]);
 
   const isAssetsList     = reportType === 'assets-list';
   const isInventory      = reportType === 'assets-list-inventory';
@@ -379,7 +390,7 @@ export default function ReportsPage() {
           <div className="bg-white rounded-xl border border-pearl-200 shadow-card p-4 space-y-2.5">
             <button
               type="button"
-              onClick={preview}
+              onClick={() => void preview(1, pageSize)}
               disabled={busy || !canDownload()}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-navy-600 hover:bg-navy-700 text-white text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -611,6 +622,25 @@ export default function ReportsPage() {
                 </div>
               </div>
 
+              <div className="px-4 pt-3 border-b border-pearl-100">
+                <TablePagination
+                  summary={pd.totalCount > 0
+                    ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, pd.totalCount)} of ${pd.totalCount}`
+                    : 'No rows'}
+                  pageNumber={pageNumber}
+                  totalPages={Math.max(1, Math.ceil(pd.totalCount / pageSize))}
+                  pageSize={pageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageSizeChange={(size) => void preview(1, size)}
+                  onPrevious={() => void preview(Math.max(1, pageNumber - 1), pageSize)}
+                  onNext={() => {
+                    const maxPage = Math.max(1, Math.ceil(pd.totalCount / pageSize));
+                    void preview(Math.min(maxPage, pageNumber + 1), pageSize);
+                  }}
+                  disabled={previewing}
+                />
+              </div>
+
               <div className="overflow-auto max-h-[calc(100vh-220px)] min-h-[420px]">
                 <table className="w-full text-[12px] border-collapse">
                   <thead>
@@ -649,6 +679,7 @@ export default function ReportsPage() {
                   </tbody>
                 </table>
               </div>
+
             </div>
           ) : (
             <div className="bg-white rounded-xl border border-dashed border-pearl-300 shadow-card min-h-[420px] flex items-center justify-center px-10 text-center">

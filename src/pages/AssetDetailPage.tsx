@@ -284,6 +284,10 @@ export default function AssetDetailPage() {
   async function handleStatusMaintenanceSubmit(e: FormEvent) {
     e.preventDefault();
     if (!asset || readOnly) return;
+    if (statusMaintForm.fromDate && statusMaintForm.toDate && statusMaintForm.fromDate > statusMaintForm.toDate) {
+      toast.error('From Date must be before or equal to To Date');
+      return;
+    }
 
     setSavingStatusMaintenance(true);
     try {
@@ -447,6 +451,7 @@ export default function AssetDetailPage() {
     { key: 'attachments', label: 'Attachments' },
     { key: 'remark', label: 'Remark' },
   ];
+  const isUnderInventory = asset.statusID === 10;
 
   return (
     <div>
@@ -589,14 +594,31 @@ export default function AssetDetailPage() {
             </button>
             {!readOnly && (
               <>
-                <Link
-                  to={`/assets/${assetId}/edit`}
-                  className="btn-secondary no-underline"
+                {isUnderInventory ? (
+                  <button
+                    type="button"
+                    disabled
+                    title="Edit is disabled while asset is under inventory"
+                    className="btn-secondary no-underline opacity-50 cursor-not-allowed"
+                  >
+                    <IconEdit />
+                    Edit
+                  </button>
+                ) : (
+                  <Link
+                    to={`/assets/${assetId}/edit`}
+                    className="btn-secondary no-underline"
+                  >
+                    <IconEdit />
+                    Edit
+                  </Link>
+                )}
+                <button
+                  onClick={handleDelete}
+                  disabled={isUnderInventory}
+                  title={isUnderInventory ? 'Delete is disabled while asset is under inventory' : undefined}
+                  className={clsx('btn-danger', isUnderInventory && 'opacity-50 cursor-not-allowed')}
                 >
-                  <IconEdit />
-                  Edit
-                </Link>
-                <button onClick={handleDelete} className="btn-danger">
                   <IconTrash />
                   Delete
                 </button>
@@ -660,10 +682,10 @@ export default function AssetDetailPage() {
           <form onSubmit={handleStatusMaintenanceSubmit}>
             <div className="grid grid-cols-2 gap-4">
               <FormRow label="From Date *">
-                <input className={inp} type="date" value={statusMaintForm.fromDate} onChange={(e) => setStatusMaintField('fromDate', e.target.value)} required />
+                <input className={inp} type="date" value={statusMaintForm.fromDate} max={statusMaintForm.toDate || undefined} onChange={(e) => setStatusMaintField('fromDate', e.target.value)} required />
               </FormRow>
               <FormRow label="To Date *">
-                <input className={inp} type="date" value={statusMaintForm.toDate} onChange={(e) => setStatusMaintField('toDate', e.target.value)} required />
+                <input className={inp} type="date" value={statusMaintForm.toDate} min={statusMaintForm.fromDate || undefined} onChange={(e) => setStatusMaintField('toDate', e.target.value)} required />
               </FormRow>
             </div>
             <FormRow label="Supplier *">
@@ -962,6 +984,10 @@ function MaintenanceTab({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (readOnly) return;
+    if (form.fromDate && form.toDate && form.fromDate > form.toDate) {
+      toast.error('From Date must be before or equal to To Date');
+      return;
+    }
     setSaving(true);
     try {
       let attID = form.attID ?? null;
@@ -1074,10 +1100,10 @@ function MaintenanceTab({
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4">
               <FormRow label="From Date *">
-                <input className={inp} type="date" value={form.fromDate} onChange={(e) => setF('fromDate', e.target.value)} required />
+                <input className={inp} type="date" value={form.fromDate} max={form.toDate || undefined} onChange={(e) => setF('fromDate', e.target.value)} required />
               </FormRow>
               <FormRow label="To Date *">
-                <input className={inp} type="date" value={form.toDate} onChange={(e) => setF('toDate', e.target.value)} required />
+                <input className={inp} type="date" value={form.toDate} min={form.fromDate || undefined} onChange={(e) => setF('toDate', e.target.value)} required />
               </FormRow>
             </div>
             <FormRow label="Supplier *">
@@ -1144,6 +1170,10 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (readOnly) return;
+    if (form.fromDate && form.toDate && form.fromDate > form.toDate) {
+      toast.error('From Date must be before or equal to To Date');
+      return;
+    }
     setSaving(true);
     try {
       let attID = form.attID ?? null;
@@ -1246,10 +1276,10 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
             </FormRow>
             <div className="grid grid-cols-2 gap-4">
               <FormRow label="From Date *">
-                <input className={inp} type="date" value={form.fromDate} onChange={(e) => setF('fromDate', e.target.value)} required />
+                <input className={inp} type="date" value={form.fromDate} max={form.toDate || undefined} onChange={(e) => setF('fromDate', e.target.value)} required />
               </FormRow>
               <FormRow label="To Date *">
-                <input className={inp} type="date" value={form.toDate} onChange={(e) => setF('toDate', e.target.value)} required />
+                <input className={inp} type="date" value={form.toDate} min={form.fromDate || undefined} onChange={(e) => setF('toDate', e.target.value)} required />
               </FormRow>
             </div>
             <FormRow label="Remark">

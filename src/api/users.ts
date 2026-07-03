@@ -1,7 +1,10 @@
 import client from './client';
+import type { PaginatedResponse, UserListItem } from '../types';
 
 export const usersApi = {
   getUsers: () => client.get('/users'),
+  getUsersPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<UserListItem>>('/users/paginated', { params: { pageNumber, pageSize } }),
 
   createUser: (data: { userName: string; password: string; fullName: string; emailAddress: string; roleID: number }) =>
     client.post('/users', data),

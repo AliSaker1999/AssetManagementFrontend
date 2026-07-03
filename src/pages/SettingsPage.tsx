@@ -8,6 +8,9 @@ import Modal from '../components/Modal';
 import { useConfirm } from '../hooks/useConfirm';
 import type { GroupType, CategoryType, LocationType, LocationDetail, Company, Country, Currency, Setting } from '../types';
 import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'currencies' | 'countries';
 
@@ -29,7 +32,6 @@ export default function SettingsPage() {
   const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
   const [groups, setGroups] = useState<GroupType[]>([]);
-  const [categories, setCategories] = useState<CategoryType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -39,9 +41,8 @@ export default function SettingsPage() {
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
-    const [g, c, l, ld, co, cou, cur] = await Promise.all([
+    const [g, l, ld, co, cou, cur] = await Promise.all([
       lookupsApi.getGroupsFull(),
-      lookupsApi.getCategories(),
       lookupsApi.getLocations(),
       lookupsApi.getLocationDetails(),
       lookupsApi.getCompanies(),
@@ -49,7 +50,6 @@ export default function SettingsPage() {
       lookupsApi.getCurrencies(),
     ]);
     setGroups(g.data as GroupType[]);
-    setCategories(c.data as CategoryType[]);
     setLocations(l.data as LocationType[]);
     setLocDetails(ld.data as LocationDetail[]);
     setCompanies(co.data as Company[]);
@@ -58,7 +58,7 @@ export default function SettingsPage() {
   }
 
   async function reloadGroups() { const r = await lookupsApi.getGroupsFull(); setGroups(r.data as GroupType[]); }
-  async function reloadCategories() { const r = await lookupsApi.getCategories(); setCategories(r.data as CategoryType[]); }
+  async function reloadCategories() { /* categories are loaded in section scope */ }
   async function reloadLocations() { const r = await lookupsApi.getLocations(); setLocations(r.data as LocationType[]); }
   async function reloadLocDetails() { const r = await lookupsApi.getLocationDetails(); setLocDetails(r.data as LocationDetail[]); }
   async function reloadCurrencies() { const r = await lookupsApi.getCurrencies(); setCurrencies(r.data as Currency[]); }
@@ -86,11 +86,11 @@ export default function SettingsPage() {
       {section === 'asset-code' && isAdmin() && <AssetCodeSettingsSection />}
       {section === 'notifications' && isAdmin() && <NotificationSettingsSection />}
       {section === 'groups' && <GroupsSection groups={groups} countries={countries} onReload={reloadGroups} />}
-      {section === 'categories' && <CategoriesSection categories={categories} onReload={reloadCategories} />}
+      {section === 'categories' && <CategoriesSection onReload={reloadCategories} />}
       {section === 'locations' && <LocationsSection locations={locations} companies={companies} onReload={reloadLocations} />}
       {section === 'location-details' && <LocationDetailsSection locDetails={locDetails} locations={locations} onReload={reloadLocDetails} />}
       {section === 'currencies' && <CurrenciesSection currencies={currencies} onReload={reloadCurrencies} />}
-      {section === 'countries' && <CountriesSection countries={countries} onReload={reloadCountries} />}
+      {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
     </div>
   );
 }
@@ -449,14 +449,30 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
 
 const emptyCat = { category: '' };
 
-function CategoriesSection({ categories, onReload }: { categories: CategoryType[]; onReload: () => Promise<void> }) {
+function CategoriesSection({ onReload }: { onReload: () => Promise<void> }) {
   const { isAuditor } = useAuth();
   const canManage = !isAuditor();
+  const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyCat);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
+
+  useEffect(() => {
+    lookupsApi.getCategoriesPaginated(pageNumber, pageSize)
+      .then((r) => {
+        setCategories(r.data.data as CategoryType[]);
+        setTotalPages(r.data.totalPages as number);
+        setTotalCount(r.data.totalCount as number);
+      })
+      .catch((err) => handleApiError(err, 'Failed to load categories'));
+  }, [pageNumber, pageSize, reloadKey]);
 
   function startAdd() { setForm(emptyCat); setEditId(null); setMode('add'); }
   function startEdit(c: CategoryType) { setForm({ category: c.category }); setEditId(c.categoryID); setMode('edit'); }
@@ -474,6 +490,7 @@ function CategoriesSection({ categories, onReload }: { categories: CategoryType[
         toast.success('Category created');
       }
       cancel();
+      setReloadKey((k) => k + 1);
       await onReload();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
@@ -484,6 +501,7 @@ function CategoriesSection({ categories, onReload }: { categories: CategoryType[
     if (!ok) return;
     try {
       await lookupsApi.deleteCategory(c.categoryID);
+      setReloadKey((k) => k + 1);
       await onReload();
       toast.success('Category deleted');
     } catch (err) { handleApiError(err, 'Delete failed — category may be in use'); }
@@ -504,6 +522,21 @@ function CategoriesSection({ categories, onReload }: { categories: CategoryType[
           </form>
         </Modal>
       )}
+      <TablePagination
+        summary={totalCount > 0
+          ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} categories`
+          : 'No categories'}
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
+        onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+      />
       <DataTable
         columns={['Category']}
         rows={categories.map(c => [c.category])}
@@ -750,10 +783,10 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
 // â"€â"€ Countries â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const emptyCountry = { countryID: '', country: '', nationality: '', zipCode: '', workingCountry: false, activeCountry: true };
-const PAGE_SIZE = 10;
-
-function CountriesSection({ countries, onReload }: { countries: Country[]; onReload: () => Promise<void> }) {
-  const { isAdmin } = useAuth();
+function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
+  const { isAdmin, isAuditor, isFullAccess } = useAuth();
+  const canSeeActiveOnlyFilter = !isAuditor() && !isFullAccess();
+  const [countries, setCountries] = useState<Country[]>([]);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editID, setEditID] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCountry);
@@ -761,20 +794,54 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
   const [toggling, setToggling] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeOnly, setActiveOnly] = useState(false);
-  const [page, setPage] = useState(1);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [allCountriesCache, setAllCountriesCache] = useState<Country[] | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const filtered = countries.filter(c => {
-    if (activeOnly && !c.activeCountry) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return c.countryID.toLowerCase().includes(q) || c.country.toLowerCase().includes(q);
+  useEffect(() => {
+    if (!search.trim() && !activeOnly) {
+      lookupsApi.getCountriesPaginated(pageNumber, pageSize)
+        .then((r) => {
+          setCountries(r.data.data as Country[]);
+          setTotalPages(r.data.totalPages as number);
+          setTotalCount(r.data.totalCount as number);
+          setAllCountriesCache(null);
+        })
+        .catch((err) => handleApiError(err, 'Failed to load countries'));
+      return;
     }
-    return true;
-  });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const loadFiltered = async () => {
+      try {
+        let all = allCountriesCache;
+        if (!all) {
+          const r = await lookupsApi.getCountries();
+          all = r.data as Country[];
+          setAllCountriesCache(all);
+        }
+
+        const q = search.toLowerCase();
+        const filtered = all.filter((c) => {
+          if (activeOnly && !c.activeCountry) return false;
+          if (!q) return true;
+          return c.countryID.toLowerCase().includes(q) || c.country.toLowerCase().includes(q);
+        });
+
+        const computedTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        const start = (pageNumber - 1) * pageSize;
+        setCountries(filtered.slice(start, start + pageSize));
+        setTotalCount(filtered.length);
+        setTotalPages(computedTotalPages);
+      } catch (err) {
+        handleApiError(err, 'Failed to load countries');
+      }
+    };
+
+    void loadFiltered();
+  }, [pageNumber, pageSize, search, activeOnly, reloadKey]);
 
   function startAdd() { setForm(emptyCountry); setEditID(null); setMode('add'); }
   function startEdit(c: Country) {
@@ -797,6 +864,8 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
         toast.success('Country created');
       }
       cancel();
+      setReloadKey((k) => k + 1);
+      setAllCountriesCache(null);
       await onReload();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
@@ -806,6 +875,8 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
     setToggling(c.countryID);
     try {
       await lookupsApi.toggleCountryActive(c.countryID.trim(), !c.activeCountry);
+      setReloadKey((k) => k + 1);
+      setAllCountriesCache(null);
       await onReload();
       toast.success(c.activeCountry ? 'Country deactivated' : 'Country activated');
     } catch (err) { handleApiError(err, 'Failed to update status'); }
@@ -821,12 +892,14 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
             className="px-3 py-[7px] border border-[#ddd] rounded-md text-sm outline-none focus:border-accent transition-colors w-[220px]"
             placeholder="Search by code or name…"
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            onChange={e => { setSearch(e.target.value); setPageNumber(1); }}
           />
-          <label className="flex items-center gap-1.5 text-[13px] text-[#555] cursor-pointer select-none">
-            <input type="checkbox" checked={activeOnly} onChange={e => { setActiveOnly(e.target.checked); setPage(1); }} />
-            Active only
-          </label>
+          {canSeeActiveOnlyFilter && (
+            <label className="flex items-center gap-1.5 text-[13px] text-[#555] cursor-pointer select-none">
+              <input type="checkbox" checked={activeOnly} onChange={e => { setActiveOnly(e.target.checked); setPageNumber(1); }} />
+              Active only
+            </label>
+          )}
         </div>
         {isAdmin() && mode === null && (
           <button onClick={startAdd} className="bg-[#9a7c4b] text-white border-none rounded-md px-4 py-[7px] text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors">
@@ -871,6 +944,22 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
       )}
 
       {/* Table */}
+      <TablePagination
+        summary={totalCount > 0
+          ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} countries`
+          : 'No countries'}
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
+        onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+      />
+
       <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] mt-1">
         <table className="w-full border-collapse bg-white">
           <thead>
@@ -881,10 +970,10 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
             </tr>
           </thead>
           <tbody>
-            {paged.length === 0 ? (
+            {countries.length === 0 ? (
               <tr><td colSpan={7} className="p-5 text-center text-[#bbb] text-[13px]">No countries found.</td></tr>
             ) : (
-              paged.map(c => (
+              countries.map(c => (
                 <tr key={c.countryID} className={clsx('border-b border-[#f0f0f0]', editID === c.countryID.trim() && 'bg-[#eef2ff]')}>
                   <td className="px-3.5 py-2.5 text-[13px] font-semibold text-[#6b7280]">{c.countryID.trim()}</td>
                   <td className="px-3.5 py-2.5 text-[13px] text-[#333]">{c.country}</td>
@@ -927,15 +1016,6 @@ function CountriesSection({ countries, onReload }: { countries: Country[]; onRel
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-3 text-[13px] text-[#666]">
-          <span>{filtered.length} countries آ· page {safePage} of {totalPages}</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} className="px-3 py-1 rounded-md border border-[#ddd] bg-white disabled:opacity-40 hover:bg-surface cursor-pointer">‹ Prev</button>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="px-3 py-1 rounded-md border border-[#ddd] bg-white disabled:opacity-40 hover:bg-surface cursor-pointer">Next ›</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

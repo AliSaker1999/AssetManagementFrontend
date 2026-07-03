@@ -8,6 +8,7 @@ import { assetsApi } from '../api/assets';
 import { useAuth } from '../contexts/AuthContext';
 import { handleApiError } from '../utils/errors';
 import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
 import type {
   Asset,
   Company,
@@ -19,6 +20,8 @@ import type {
   LocationType,
   StatusHistoryItem,
 } from '../types';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -747,6 +750,8 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
   const [details, setDetails] = useState<InventoryDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [innerDetail, setInnerDetail] = useState<InventoryDetail | null>(null);
 
   useEffect(() => {
@@ -770,6 +775,18 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
       d.assetCode.toLowerCase().includes(search.toLowerCase()) ||
       d.assetDesc.toLowerCase().includes(search.toLowerCase()),
   );
+  const totalCount = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safePageNumber = Math.min(pageNumber, totalPages);
+  const paged = filtered.slice((safePageNumber - 1) * pageSize, safePageNumber * pageSize);
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    if (pageNumber > totalPages) setPageNumber(totalPages);
+  }, [pageNumber, totalPages]);
 
   const total = details.length;
   const found = details.filter((d) => d.isAvailable).length;
@@ -777,13 +794,13 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4"
+      className="fixed inset-0 bg-black/45 backdrop-blur-[2px] flex items-center justify-center z-[110] p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {innerDetail && <AssetDetailModal item={innerDetail} onClose={() => setInnerDetail(null)} />}
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-[950px] max-h-[90vh] flex flex-col">
+      <div className="bg-white border border-pearl-200 rounded-2xl shadow-[0_24px_56px_rgba(15,23,42,0.28)] w-full max-w-[980px] max-h-[90vh] flex flex-col overflow-hidden">
         {/* header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-pearl-200 shrink-0">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-pearl-200 shrink-0 bg-gradient-to-r from-white to-pearl-50">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <span className="w-6 h-6 rounded-md bg-navy-100 flex items-center justify-center">
@@ -799,7 +816,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
               <p className="text-[12px] text-ink-400">Closed by {item.endCreatedByFullName}</p>
             )}
           </div>
-          <button onClick={onClose} className="text-ink-300 hover:text-ink-800 p-1 rounded-md hover:bg-pearl-100 transition-colors ml-4 mt-0.5 shrink-0">
+          <button onClick={onClose} className="text-ink-300 hover:text-ink-800 p-2 rounded-full hover:bg-pearl-100 transition-colors ml-4 mt-0.5 shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -817,7 +834,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
         )}
 
         {/* search */}
-        <div className="px-6 py-3 border-b border-pearl-200 shrink-0">
+        <div className="px-6 py-3 border-b border-pearl-200 shrink-0 bg-white">
           <div className="relative max-w-[360px]">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -839,13 +856,26 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
             <p className="text-center text-ink-400 text-[13px] py-10">No assets match.</p>
           ) : (
             <>
-              <div className="grid grid-cols-[150px_1fr_130px_200px_60px_60px] bg-pearl-100 border-b border-pearl-200 px-4 py-2">
+              <div className="px-4 pt-3 pb-2">
+                <TablePagination
+                  summary={`Showing ${((safePageNumber - 1) * pageSize) + 1}-${Math.min(safePageNumber * pageSize, totalCount)} of ${totalCount} assets`}
+                  pageNumber={safePageNumber}
+                  totalPages={totalPages}
+                  pageSize={pageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageSizeChange={(size) => setPageSize(size)}
+                  onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+                  onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+                />
+              </div>
+
+              <div className="grid grid-cols-[150px_1fr_130px_200px_60px_60px] bg-pearl-100 border-y border-pearl-200 px-4 py-2">
                 {['Code', 'Description', 'Group', 'Location', 'Found', 'Relocated'].map((h) => (
                   <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
                 ))}
               </div>
               <div className="divide-y divide-pearl-100">
-                {filtered.map((d) => (
+                {paged.map((d) => (
                   <div
                     key={d.invDetailID}
                     onClick={() => setInnerDetail(d)}
@@ -988,6 +1018,10 @@ export default function InventoriesPage() {
   const [details, setDetails]               = useState<InventoryDetail[]>([]);
   const [lastDate, setLastDate]             = useState<string | null>(null);
   const [search, setSearch]                 = useState('');
+  const [pageNumber, setPageNumber]         = useState(1);
+  const [pageSize, setPageSize]             = useState<number>(10);
+  const [totalPages, setTotalPages]         = useState(1);
+  const [totalCount, setTotalCount]         = useState(0);
   const [loading, setLoading]               = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [actionLoading, setActionLoading]   = useState(false);
@@ -1037,9 +1071,12 @@ export default function InventoriesPage() {
       setLastDate(lastRes.data as string | null);
       setPastInventories(historyRes.data as InventoryListItem[]);
       if (active?.inventoryID) {
-        await loadDetails(active.inventoryID);
+        setPageNumber(1);
+        await loadDetails(active.inventoryID, 1, pageSize);
       } else {
         setDetails([]);
+        setTotalCount(0);
+        setTotalPages(1);
       }
     } catch (err) {
       handleApiError(err, 'Failed to load inventory data');
@@ -1048,8 +1085,8 @@ export default function InventoriesPage() {
     }
   }
 
-  async function loadDetails(inventoryId: number) {
-    const r = await inventoriesApi.getDetails({
+  async function loadDetails(inventoryId: number, nextPageNumber: number = pageNumber, nextPageSize: number = pageSize) {
+    const filter = {
       inventoryID: inventoryId,
       locationID: -1,
       companyID: -1,
@@ -1057,9 +1094,39 @@ export default function InventoriesPage() {
       groupID: -1,
       locationDetailID: -1,
       accountingExclusion: false,
-    });
-    setDetails(r.data as InventoryDetail[]);
+    };
+
+    if (search.trim() === '') {
+      const r = await inventoriesApi.getDetailsPaginated(filter, nextPageNumber, nextPageSize);
+      const data = r.data;
+      setDetails(data.data as InventoryDetail[]);
+      setTotalCount(data.totalCount as number);
+      setTotalPages(data.totalPages as number);
+      return;
+    }
+
+    const r = await inventoriesApi.getDetails(filter);
+    const all = r.data as InventoryDetail[];
+    const q = search.toLowerCase();
+    const filtered = all.filter(
+      (d) =>
+        d.assetCode.toLowerCase().includes(q) ||
+        d.assetDesc.toLowerCase().includes(q),
+    );
+    const computedTotalPages = Math.max(1, Math.ceil(filtered.length / nextPageSize));
+    const start = (nextPageNumber - 1) * nextPageSize;
+    setDetails(filtered.slice(start, start + nextPageSize));
+    setTotalCount(filtered.length);
+    setTotalPages(computedTotalPages);
   }
+
+  useEffect(() => {
+    if (!session?.inventoryID) return;
+    setDetailsLoading(true);
+    void loadDetails(session.inventoryID)
+      .catch((err) => handleApiError(err, 'Failed to load inventory details'))
+      .finally(() => setDetailsLoading(false));
+  }, [session?.inventoryID, pageNumber, pageSize, search]);
 
   // ── start inventory ───────────────────────────────────────────────────────
   async function handleStart() {
@@ -1371,7 +1438,10 @@ export default function InventoriesPage() {
                     className="input-base pl-8 w-full text-sm"
                     placeholder="Search by code or description…"
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPageNumber(1);
+                    }}
                   />
                 </div>
 
@@ -1430,6 +1500,24 @@ export default function InventoriesPage() {
               </div>
 
               {/* table */}
+              {!detailsLoading && (
+                <TablePagination
+                  summary={totalCount > 0
+                    ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} assets`
+                    : 'No assets'}
+                  pageNumber={pageNumber}
+                  totalPages={totalPages}
+                  pageSize={pageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setPageNumber(1);
+                  }}
+                  onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+                  onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+                />
+              )}
+
               {detailsLoading ? (
                 <div className="space-y-2">
                   {Array.from({ length: 6 }).map((_, i) => (

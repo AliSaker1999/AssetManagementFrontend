@@ -7,6 +7,7 @@ import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import type { UserListItem, UserPermission, Company } from '../types';
 import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
 
 const ROLES = [
   { id: 1, name: 'Administrator' },
@@ -15,6 +16,7 @@ const ROLES = [
 ];
 
 const emptyForm = { userName: '', password: '', fullName: '', emailAddress: '', roleID: 3 };
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
 const labelCls = 'block text-xs font-semibold text-[#374151] mb-1 mt-3';
@@ -25,6 +27,11 @@ export default function UsersPage() {
   const [users, setUsers] = useState<UserListItem[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -38,13 +45,22 @@ export default function UsersPage() {
   const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
-    Promise.all([usersApi.getUsers(), lookupsApi.getCompanies()])
-      .then(([usersRes, companiesRes]) => {
-        setUsers(usersRes.data);
-        setCompanies(companiesRes.data);
-      }).catch((err) => handleApiError(err, 'Failed to load data'))
-      .finally(() => setLoading(false));
+    lookupsApi.getCompanies()
+      .then((companiesRes) => setCompanies(companiesRes.data))
+      .catch((err) => handleApiError(err, 'Failed to load companies'));
   }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    usersApi.getUsersPaginated(pageNumber, pageSize)
+      .then((usersRes) => {
+        setUsers(usersRes.data.data);
+        setTotalPages(usersRes.data.totalPages);
+        setTotalCount(usersRes.data.totalCount);
+      })
+      .catch((err) => handleApiError(err, 'Failed to load users'))
+      .finally(() => setLoading(false));
+  }, [pageNumber, pageSize, reloadKey]);
 
   async function loadPermissions(user: UserListItem) {
     setSelectedUser(user);
@@ -115,8 +131,7 @@ export default function UsersPage() {
         await syncPermissions(newUserId);
         toast.success('User created');
       }
-      const usersRes = await usersApi.getUsers();
-      setUsers(usersRes.data);
+      setReloadKey((k) => k + 1);
       if (selectedUser && editingId === selectedUser.userID) {
         const permsRes = await usersApi.getPermissions(selectedUser.userID);
         setPermissions(permsRes.data);
@@ -135,6 +150,7 @@ export default function UsersPage() {
     try {
       await usersApi.deleteUser(id);
       setUsers(u => u.filter(x => x.userID !== id));
+      setTotalCount((c) => Math.max(0, c - 1));
       if (selectedUser?.userID === id) setSelectedUser(null);
       toast.success('User deleted');
     } catch (err) {
@@ -182,6 +198,22 @@ export default function UsersPage() {
         {/* User list */}
         <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
           <h2 className="text-[15px] font-semibold text-[#374151] mb-4">Users</h2>
+          <TablePagination
+            summary={totalCount > 0
+              ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} users`
+              : 'No users'}
+            pageNumber={pageNumber}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageNumber(1);
+            }}
+            onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
+            onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+          />
+
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -210,6 +242,7 @@ export default function UsersPage() {
               ))}
             </tbody>
           </table>
+
         </div>
 
         {/* Permissions panel */}

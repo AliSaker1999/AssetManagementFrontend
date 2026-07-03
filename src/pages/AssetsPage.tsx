@@ -11,11 +11,14 @@ import { lookupsApi } from '../api/lookups';
 import type { AssetListItem, Attachment, Contact, Currency, Maintenance, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
+import Select from '../components/ui/Select';
 import StatusBadge from '../components/ui/StatusBadge';
+import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 const inp = 'input-base';
+const metricShapeCls = 'rounded-[14px] border-[#d5ddef] border-t-0 shadow-[inset_0_3px_0_0_#1f2b7b,0_1px_2px_rgba(15,23,42,0.06)]';
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
 
 function IconSearch() {
@@ -32,21 +35,6 @@ function IconPlus() {
     </svg>
   );
 }
-function IconChevronLeft() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6"/>
-    </svg>
-  );
-}
-function IconChevronRight() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6"/>
-    </svg>
-  );
-}
-
 function IconBarcode() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -222,6 +210,7 @@ export default function AssetsPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
@@ -363,7 +352,7 @@ export default function AssetsPage() {
       try {
         const companyFilter = activeCompanyId ?? undefined;
         if (search.trim() === '') {
-          const response = await assetsApi.getListPaginated(pageNumber, PAGE_SIZE, companyFilter);
+          const response = await assetsApi.getListPaginated(pageNumber, pageSize, companyFilter);
           const data = response.data as PaginatedResponse<AssetListItem>;
           setAssets(data.data);
           setTotalPages(data.totalPages);
@@ -384,9 +373,9 @@ export default function AssetsPage() {
               a.assetDesc.toLowerCase().includes(search.toLowerCase()) ||
               (a.barcodeNumber ?? '').toLowerCase().includes(search.toLowerCase())
           );
-          const newTotalPages = Math.ceil(filtered.length / PAGE_SIZE);
-          const start = (pageNumber - 1) * PAGE_SIZE;
-          setAssets(filtered.slice(start, start + PAGE_SIZE));
+          const newTotalPages = Math.ceil(filtered.length / pageSize);
+          const start = (pageNumber - 1) * pageSize;
+          setAssets(filtered.slice(start, start + pageSize));
           setTotalPages(newTotalPages);
           setTotalCount(filtered.length);
         }
@@ -402,7 +391,7 @@ export default function AssetsPage() {
 
     loadData();
     return () => controller.abort();
-  }, [pageNumber, search, activeCompanyId]);
+  }, [pageNumber, pageSize, search, activeCompanyId]);
 
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
@@ -501,24 +490,28 @@ export default function AssetsPage() {
           value={loading ? '—' : totalCount.toLocaleString()}
           sub="in this view"
           accent="navy"
+          className={metricShapeCls}
         />
         <MetricCard
           label="Active"
           value={loading ? '—' : activeCount.toLocaleString()}
           sub="not in maintenance"
           accent="none"
+          className={metricShapeCls}
         />
         <MetricCard
           label="In Maintenance"
           value={loading ? '—' : maintenanceCount.toLocaleString()}
           sub="currently"
           accent={maintenanceCount > 0 ? 'warning' : 'none'}
+          className={metricShapeCls}
         />
         <MetricCard
           label="Page"
           value={loading ? '—' : `${pageNumber} / ${totalPages}`}
-          sub={`${PAGE_SIZE} per page`}
+          sub={`${pageSize} per page`}
           accent="none"
+          className={metricShapeCls}
         />
       </div>
 
@@ -548,11 +541,30 @@ export default function AssetsPage() {
         </div>
 
         {/* Table */}
+        <TablePagination
+          summary={totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount.toLocaleString()} assets`
+            : 'No assets to display'}
+          pageNumber={pageNumber}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPageNumber(1);
+          }}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          disabled={loading}
+        />
+
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-visible">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_3fr_2fr_2fr_1.6fr_auto] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-            {['Code', 'Description', 'Category', 'Location', 'Status', ''].map((h) => (
-              <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
+          <div className="grid grid-cols-[1.8fr_2.8fr_1.8fr_2fr_2.2fr_1fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+            {['Code', 'Description', 'Category', 'Location', 'Status', 'Barcode'].map((h) => (
+              <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
+                {h}
+              </div>
             ))}
           </div>
 
@@ -579,7 +591,7 @@ export default function AssetsPage() {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[2fr_3fr_2fr_2fr_1.6fr_auto] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid grid-cols-[1.8fr_2.8fr_1.8fr_2fr_2.2fr_1fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
@@ -690,7 +702,7 @@ export default function AssetsPage() {
                   </div>
 
                   {/* Barcode action */}
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center">
                     {a.barcodeNumber && (
                       <Link
                         to={`/assets/${a.assetID}?print=1`}
@@ -708,53 +720,6 @@ export default function AssetsPage() {
           )}
         </div>
 
-        {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 px-1">
-            <span className="text-[12px] text-ink-300">
-              Showing {((pageNumber - 1) * PAGE_SIZE) + 1}–{Math.min(pageNumber * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString()} assets
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handlePrevious}
-                disabled={pageNumber === 1}
-                className="flex items-center justify-center w-8 h-8 rounded-lg border border-pearl-200 bg-white text-ink-500
-                           hover:bg-pearl-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-              >
-                <IconChevronLeft />
-              </button>
-
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let page = i + 1;
-                if (pageNumber > 3 && totalPages > 5) page = pageNumber - 2 + i;
-                if (page > totalPages) return null;
-                return (
-                  <button
-                    key={page}
-                    onClick={() => setPageNumber(page)}
-                    className={clsx(
-                      'w-8 h-8 rounded-lg text-[13px] font-medium border transition-colors cursor-pointer',
-                      page === pageNumber
-                        ? 'bg-navy-600 text-white border-navy-600'
-                        : 'bg-white text-ink-500 border-pearl-200 hover:bg-pearl-50'
-                    )}
-                  >
-                    {page}
-                  </button>
-                );
-              })}
-
-              <button
-                onClick={handleNext}
-                disabled={pageNumber === totalPages}
-                className="flex items-center justify-center w-8 h-8 rounded-lg border border-pearl-200 bg-white text-ink-500
-                           hover:bg-pearl-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-              >
-                <IconChevronRight />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {!readOnly && maintenanceModalAsset && (
@@ -769,19 +734,19 @@ export default function AssetsPage() {
               </FormRow>
             </div>
             <FormRow label="Supplier *">
-              <select className={inp} value={maintenanceForm.supplierContactID} onChange={(e) => setMaintenanceField('supplierContactID', Number(e.target.value))} required>
+              <Select value={maintenanceForm.supplierContactID} onChange={(e) => setMaintenanceField('supplierContactID', Number(e.target.value))} required>
                 <option value="">Select…</option>
                 {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
-              </select>
+              </Select>
             </FormRow>
             <div className="grid grid-cols-2 gap-4">
               <FormRow label="Cost">
                 <input className={inp} type="number" step="0.01" value={maintenanceForm.cost} onChange={(e) => setMaintenanceField('cost', Number(e.target.value))} />
               </FormRow>
               <FormRow label="Currency *">
-                <select className={inp} value={maintenanceForm.curCode} onChange={(e) => setMaintenanceField('curCode', e.target.value)} required>
+                <Select value={maintenanceForm.curCode} onChange={(e) => setMaintenanceField('curCode', e.target.value)} required>
                   {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
-                </select>
+                </Select>
               </FormRow>
             </div>
             <FormRow label="Remark">

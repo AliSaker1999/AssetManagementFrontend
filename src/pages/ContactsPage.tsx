@@ -6,8 +6,11 @@ import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { useConfirm } from '../hooks/useConfirm';
-import type { Contact, Country } from '../types';
+import type { Contact, Country, PaginatedResponse } from '../types';
 import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
+
+const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 interface ContactType {
   contactTypeID: number;
@@ -41,6 +44,12 @@ export default function ContactsPage() {
   const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [search, setSearch] = useState('');
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [allContactsCache, setAllContactsCache] = useState<Contact[] | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
@@ -51,12 +60,10 @@ export default function ContactsPage() {
 
   useEffect(() => {
     Promise.all([
-      contactsApi.getList(),
       lookupsApi.getContactTypes(),
       lookupsApi.getCountries(),
     ])
-      .then(([c, ct, co]) => {
-        setContacts(c.data as Contact[]);
+      .then(([ct, co]) => {
         setContactTypes(ct.data as ContactType[]);
         setCountries(co.data as Country[]);
       })
@@ -64,9 +71,55 @@ export default function ContactsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    setPageNumber(1);
+    setAllContactsCache(null);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    setLoading(true);
+    const load = async () => {
+      try {
+        if (search.trim() === '') {
+          const r = await contactsApi.getListPaginated(pageNumber, pageSize);
+          const data = r.data as PaginatedResponse<Contact>;
+          setContacts(data.data);
+          setTotalPages(data.totalPages);
+          setTotalCount(data.totalCount);
+          setAllContactsCache(null);
+          return;
+        }
+
+        let allData = allContactsCache;
+        if (!allData) {
+          const r = await contactsApi.getList();
+          allData = r.data as Contact[];
+          setAllContactsCache(allData);
+        }
+
+        const q = search.toLowerCase();
+        const filtered = allData.filter((c) =>
+          c.contactName.toLowerCase().includes(q) ||
+          c.telephone1.includes(search)
+        );
+        const newTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        const start = (pageNumber - 1) * pageSize;
+        setContacts(filtered.slice(start, start + pageSize));
+        setTotalPages(newTotalPages);
+        setTotalCount(filtered.length);
+      } catch (err) {
+        handleApiError(err, 'Failed to load contacts');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, [pageNumber, pageSize, search, reloadKey]);
+
   async function reload() {
-    const r = await contactsApi.getList();
-    setContacts(r.data as Contact[]);
+    setAllContactsCache(null);
+    setReloadKey((k) => k + 1);
   }
 
   function startAdd() {
@@ -147,11 +200,6 @@ export default function ContactsPage() {
       toast.success('Contact deleted');
     } catch (err) { handleApiError(err, 'Delete failed — contact may be in use'); }
   }
-
-  const filtered = contacts.filter(c =>
-    c.contactName.toLowerCase().includes(search.toLowerCase()) ||
-    c.telephone1.includes(search)
-  );
 
   function typeName(id: number) {
     return contactTypes.find(t => t.contactTypeID === id)?.contactType ?? '—';
@@ -281,8 +329,25 @@ export default function ContactsPage() {
       {loading ? (
         <p className="text-[#999]">Loading…</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
-          <table className="w-full border-collapse">
+        <>
+          <TablePagination
+            summary={totalCount > 0
+              ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} contacts`
+              : 'No contacts'}
+            pageNumber={pageNumber}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageNumber(1);
+            }}
+            onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
+            onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+          />
+
+          <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
+            <table className="w-full border-collapse">
             <thead>
               <tr>
                 {['Name', 'Contact Type', 'Contact Person', 'Country', 'Telephone', 'Mobile', ...(readOnly ? [] : [''])].map(h => (
@@ -291,10 +356,10 @@ export default function ContactsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {contacts.length === 0 ? (
                 <tr><td colSpan={readOnly ? 6 : 7} className="p-5 text-center text-[#bbb]">No contacts found.</td></tr>
               ) : (
-                filtered.map(c => (
+                contacts.map(c => (
                   <tr key={c.contactID} className="border-b border-[#f0f0f0] hover:bg-[#fafbff]">
                     <td className="px-3.5 py-2.5 text-[13px] font-semibold text-[#333]">{c.contactName}</td>
                     <td className="px-3.5 py-2.5 text-[13px] text-[#555]">{typeName(c.contactTypeID)}</td>
@@ -324,8 +389,9 @@ export default function ContactsPage() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
