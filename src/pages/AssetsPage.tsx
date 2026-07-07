@@ -20,6 +20,17 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 const inp = 'input-base';
 const metricShapeCls = 'rounded-[14px] border-[#d5ddef] border-t-0 shadow-[inset_0_3px_0_0_#1f2b7b,0_1px_2px_rgba(15,23,42,0.06)]';
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
+type StatusChangeForm = {
+  statusDate: string;
+  statusDesc: string;
+  statusContactID: number | '';
+  statusSalePrice: number | '';
+  statusSaleCurCode: string;
+};
+
+const STATUSES_WITH_MODAL = new Set([1, 2, 3, 4, 7]);
+const BLOCKED_ATTACHMENT_EXTENSIONS = new Set(['csv', 'txt', 'gif', 'webp']);
+const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg';
 
 function IconSearch() {
   return (
@@ -145,6 +156,16 @@ function statusTone(statusId?: number) {
   return 'bg-pearl-50 text-ink-700 border-pearl-200';
 }
 
+function statusFilterSelectedClass(statusId?: number) {
+  if (statusId === 0) return 'bg-emerald-500 text-white border-emerald-500 shadow-sm';
+  if (statusId === 3 || statusId === 11) return 'bg-rose-500 text-white border-rose-500 shadow-sm';
+  if (statusId === 1 || statusId === 4 || statusId === 7) return 'bg-amber-500 text-white border-amber-500 shadow-sm';
+  if (statusId === 2) return 'bg-sky-500 text-white border-sky-500 shadow-sm';
+  if (statusId === 6) return 'bg-violet-500 text-white border-violet-500 shadow-sm';
+  if (statusId === 8) return 'bg-orange-500 text-white border-orange-500 shadow-sm';
+  return 'bg-ink-600 text-white border-ink-600 shadow-sm';
+}
+
 function TableSkeleton() {
   return (
     <div className="animate-pulse">
@@ -223,7 +244,17 @@ export default function AssetsPage() {
   const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [maintenanceAttachmentFile, setMaintenanceAttachmentFile] = useState<File | null>(null);
   const [savingMaintenanceModal, setSavingMaintenanceModal] = useState(false);
+  const [statusModalAsset, setStatusModalAsset] = useState<AssetListItem | null>(null);
+  const [statusModalStatusId, setStatusModalStatusId] = useState<number | null>(null);
+  const [statusChangeForm, setStatusChangeForm] = useState<StatusChangeForm>({
+    statusDate: new Date().toISOString().slice(0, 10),
+    statusDesc: '',
+    statusContactID: '',
+    statusSalePrice: '',
+    statusSaleCurCode: 'USD',
+  });
   const statusesLoadedRef = useRef(false);
+  const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set());
 
   // Load status types once
   useEffect(() => {
@@ -274,6 +305,45 @@ export default function AssetsPage() {
     setMaintenanceForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function makeDefaultStatusChangeForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): StatusChangeForm {
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      statusDate: today,
+      statusDesc: '',
+      statusContactID: cs[0]?.contactID ?? '',
+      statusSalePrice: '',
+      statusSaleCurCode: ccy[0]?.curCode ?? 'USD',
+    };
+  }
+
+  function setStatusChangeField<K extends keyof StatusChangeForm>(key: K, value: StatusChangeForm[K]) {
+    setStatusChangeForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function openStatusChangeModal(asset: AssetListItem, nextStatusId: number) {
+    if (readOnly) return;
+
+    const needsLookups = nextStatusId === 1 || nextStatusId === 4;
+    try {
+      let nextContacts = contacts;
+      let nextCurrencies = currencies;
+
+      if (needsLookups && (nextContacts.length === 0 || nextCurrencies.length === 0)) {
+        const [c, cur] = await Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()]);
+        nextContacts = c.data as Contact[];
+        nextCurrencies = cur.data as Currency[];
+        setContacts(nextContacts);
+        setCurrencies(nextCurrencies);
+      }
+
+      setStatusModalAsset(asset);
+      setStatusModalStatusId(nextStatusId);
+      setStatusChangeForm(makeDefaultStatusChangeForm(nextContacts, nextCurrencies));
+    } catch (err) {
+      handleApiError(err, 'Failed to load status lookups');
+    }
+  }
+
   async function handleUnderMaintenanceSubmit(e: FormEvent) {
     e.preventDefault();
     if (!maintenanceModalAsset || readOnly) return;
@@ -284,7 +354,11 @@ export default function AssetsPage() {
       let attID = maintenanceForm.attID ?? null;
       if (maintenanceAttachmentFile) {
         const base64 = await toBase64(maintenanceAttachmentFile);
-        const ext = maintenanceAttachmentFile.name.split('.').pop() ?? '';
+        const ext = getNormalizedFileExtension(maintenanceAttachmentFile.name);
+        if (isBlockedAttachmentExtension(ext)) {
+          toast.error('This file type is not allowed.');
+          return;
+        }
         const upload = await attachmentsApi.create({
           assetID: assetId,
           attDesc: 'Maintenance Attachment',
@@ -343,6 +417,8 @@ export default function AssetsPage() {
 
   // Reset to page 1 and clear cache when search or active company changes
   useEffect(() => { setPageNumber(1); setAllAssetsCache(null); }, [search, activeCompanyId]);
+  // Reset to page 1 when status filter changes (keep cache — it holds all assets regardless of filter)
+  useEffect(() => { setPageNumber(1); }, [selectedStatusIds]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -351,7 +427,7 @@ export default function AssetsPage() {
     const loadData = async () => {
       try {
         const companyFilter = activeCompanyId ?? undefined;
-        if (search.trim() === '') {
+        if (search.trim() === '' && selectedStatusIds.size === 0) {
           const response = await assetsApi.getListPaginated(pageNumber, pageSize, companyFilter);
           const data = response.data as PaginatedResponse<AssetListItem>;
           setAssets(data.data);
@@ -367,12 +443,18 @@ export default function AssetsPage() {
           } else {
             allData = allAssetsCache;
           }
-          const filtered = allData.filter(
-            (a) =>
-              a.assetCode.toLowerCase().includes(search.toLowerCase()) ||
-              a.assetDesc.toLowerCase().includes(search.toLowerCase()) ||
-              (a.barcodeNumber ?? '').toLowerCase().includes(search.toLowerCase())
-          );
+          let filtered = allData;
+          if (search.trim()) {
+            filtered = filtered.filter(
+              (a) =>
+                a.assetCode.toLowerCase().includes(search.toLowerCase()) ||
+                a.assetDesc.toLowerCase().includes(search.toLowerCase()) ||
+                (a.barcodeNumber ?? '').toLowerCase().includes(search.toLowerCase())
+            );
+          }
+          if (selectedStatusIds.size > 0) {
+            filtered = filtered.filter((a) => selectedStatusIds.has(a.statusID ?? 0));
+          }
           const newTotalPages = Math.ceil(filtered.length / pageSize);
           const start = (pageNumber - 1) * pageSize;
           setAssets(filtered.slice(start, start + pageSize));
@@ -391,7 +473,7 @@ export default function AssetsPage() {
 
     loadData();
     return () => controller.abort();
-  }, [pageNumber, pageSize, search, activeCompanyId]);
+  }, [pageNumber, pageSize, search, activeCompanyId, selectedStatusIds]);
 
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
@@ -423,6 +505,59 @@ export default function AssetsPage() {
           prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: newCurrentStatusId, status: newStatusName } : a) : prev
         );
       }
+      toast.success('Status updated');
+    } catch (err) {
+      handleApiError(err, 'Failed to update status');
+    } finally {
+      setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
+    }
+  }
+
+  async function handleStatusModalSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (readOnly || !statusModalAsset || statusModalStatusId == null) return;
+
+    const assetId = statusModalAsset.assetID;
+    const salePrice = Number(statusChangeForm.statusSalePrice || 0);
+
+    if (!statusChangeForm.statusDate) {
+      toast.error('Status date is required');
+      return;
+    }
+    if (statusModalStatusId === 4 && salePrice < 0) {
+      toast.error('Sale price cannot be negative');
+      return;
+    }
+
+    setChangingStatus((prev) => new Set(prev).add(assetId));
+    try {
+      const newStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status;
+      const contactId = statusModalStatusId === 1 || statusModalStatusId === 4
+        ? (statusChangeForm.statusContactID === '' ? null : Number(statusChangeForm.statusContactID))
+        : null;
+
+      await assetsApi.updateStatus(assetId, {
+        assetStatusID: statusModalStatusId,
+        assetStatusDate: statusChangeForm.statusDate,
+        statusID: statusModalStatusId,
+        statusDate: statusChangeForm.statusDate,
+        statusContactID: contactId,
+        statusSalePrice: statusModalStatusId === 4 ? salePrice : 0,
+        statusSaleCurCode: statusModalStatusId === 4 ? statusChangeForm.statusSaleCurCode : null,
+        statusDesc: statusChangeForm.statusDesc.trim() || null,
+      });
+
+      setAssets((prev) =>
+        prev.map((a) => a.assetID === assetId ? { ...a, statusID: statusModalStatusId, status: newStatusName } : a)
+      );
+      if (allAssetsCache) {
+        setAllAssetsCache((prev) =>
+          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: statusModalStatusId, status: newStatusName } : a) : prev
+        );
+      }
+
+      setStatusModalAsset(null);
+      setStatusModalStatusId(null);
       toast.success('Status updated');
     } catch (err) {
       handleApiError(err, 'Failed to update status');
@@ -463,9 +598,12 @@ export default function AssetsPage() {
     }
   }
 
-  const visibleAssets = search.trim() ? (allAssetsCache ?? assets) : assets;
+  const visibleAssets = (search.trim() || selectedStatusIds.size > 0) ? (allAssetsCache ?? assets) : assets;
   const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
-  const activeCount = visibleAssets.filter((a) => (a.statusID ?? 0) !== 8).length;
+  const activeCount = visibleAssets.filter((a) => a.statusID === 0).length;
+  const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
+  const isDonationStatus = statusModalStatusId === 1;
+  const isSoldStatus = statusModalStatusId === 4;
 
   return (
     <div>
@@ -495,7 +633,7 @@ export default function AssetsPage() {
         <MetricCard
           label="Active"
           value={loading ? '—' : activeCount.toLocaleString()}
-          sub="not in maintenance"
+          sub="active status only"
           accent="none"
           className={metricShapeCls}
         />
@@ -517,8 +655,9 @@ export default function AssetsPage() {
 
       {/* Search + table */}
       <div className="px-8 pb-8">
-        {/* Search bar */}
+        {/* Search bar + status filter */}
         <div className="bg-white border border-pearl-200 rounded-xl p-4 mb-4 shadow-card">
+          {/* Search input */}
           <div className="relative">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none">
               <IconSearch />
@@ -533,9 +672,84 @@ export default function AssetsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {search && (
+
+          {/* Status filter chips */}
+          {statuses.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-pearl-100">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300 pr-1 shrink-0">
+                  Status
+                </span>
+
+                {/* All chip */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatusIds(new Set())}
+                  className={clsx(
+                    'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border transition-all duration-150',
+                    selectedStatusIds.size === 0
+                      ? 'bg-[#1f2b7b] text-white border-[#1f2b7b] shadow-sm'
+                      : 'bg-white text-ink-400 border-pearl-200 hover:border-pearl-300 hover:bg-pearl-50 hover:text-ink-600'
+                  )}
+                >
+                  All
+                </button>
+
+                {/* Per-status chips */}
+                {statuses
+                  .filter((s) => ![5, 9, 10].includes(s.statusID))
+                  .map((s) => {
+                    const isSelected = selectedStatusIds.has(s.statusID);
+                    return (
+                      <button
+                        key={s.statusID}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStatusIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(s.statusID)) next.delete(s.statusID);
+                            else next.add(s.statusID);
+                            return next;
+                          });
+                        }}
+                        className={clsx(
+                          'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border transition-all duration-150',
+                          isSelected
+                            ? statusFilterSelectedClass(s.statusID)
+                            : 'bg-white text-ink-400 border-pearl-200 hover:border-pearl-300 hover:bg-pearl-50 hover:text-ink-600'
+                        )}
+                      >
+                        <span className="inline-flex w-3 h-3 items-center justify-center shrink-0">
+                          <StatusIcon statusId={s.statusID} />
+                        </span>
+                        {s.status}
+                      </button>
+                    );
+                  })}
+
+                {/* Clear filters */}
+                {selectedStatusIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatusIds(new Set())}
+                    className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] text-ink-300 border border-transparent hover:bg-rose-50 hover:text-rose-500 hover:border-rose-100 transition-colors"
+                  >
+                    <IconClose />
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Context hint */}
+          {(search || selectedStatusIds.size > 0) && (
             <p className="text-[11px] text-ink-300 mt-2 ml-1">
-              Searching all assets · {totalCount} result{totalCount !== 1 ? 's' : ''}
+              {search && selectedStatusIds.size > 0
+                ? `Searching & filtering · ${totalCount} result${totalCount !== 1 ? 's' : ''}`
+                : search
+                ? `Searching all assets · ${totalCount} result${totalCount !== 1 ? 's' : ''}`
+                : `Filtered by status · ${totalCount} result${totalCount !== 1 ? 's' : ''}`}
             </p>
           )}
         </div>
@@ -560,7 +774,7 @@ export default function AssetsPage() {
 
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-visible">
           {/* Table header */}
-          <div className="grid grid-cols-[1.8fr_2.8fr_1.8fr_2fr_2.2fr_1fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+          <div className="grid grid-cols-[1.6fr_2.4fr_1.6fr_1.8fr_2.8fr_0.8fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
             {['Code', 'Description', 'Category', 'Location', 'Status', 'Barcode'].map((h) => (
               <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
                 {h}
@@ -578,10 +792,14 @@ export default function AssetsPage() {
                 </svg>
               </div>
               <div className="text-[14px] font-semibold text-ink-600 mb-1">
-                {search ? 'No matching assets' : 'No assets yet'}
+                {search || selectedStatusIds.size > 0 ? 'No matching assets' : 'No assets yet'}
               </div>
               <div className="text-[12px] text-ink-300">
-                {search ? `No results for "${search}"` : 'Add your first asset to get started'}
+                {search
+                  ? `No results for "${search}"`
+                  : selectedStatusIds.size > 0
+                  ? 'No assets match the selected status filter'
+                  : 'Add your first asset to get started'}
               </div>
             </div>
           ) : (
@@ -591,29 +809,29 @@ export default function AssetsPage() {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[1.8fr_2.8fr_1.8fr_2fr_2.2fr_1fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid grid-cols-[1.6fr_2.4fr_1.6fr_1.8fr_2.8fr_0.8fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
                 >
                   {/* Code */}
-                  <div className="font-code text-[12px] text-navy-600 font-medium">{a.assetCode}</div>
+                  <div className="font-code text-[12px] text-navy-600 font-medium min-w-0 truncate">{a.assetCode}</div>
 
                   {/* Description */}
-                  <div className="text-[13px] text-ink-800 font-medium truncate pr-4">{a.assetDesc}</div>
+                  <div className="text-[13px] text-ink-800 font-medium truncate pr-4 min-w-0">{a.assetDesc}</div>
 
                   {/* Category */}
-                  <div className="text-[12px] text-ink-400 truncate pr-4">{a.category ?? '—'}</div>
+                  <div className="text-[12px] text-ink-400 truncate pr-4 min-w-0">{a.category ?? '—'}</div>
 
                   {/* Location */}
-                  <div className="text-[12px] text-ink-400 truncate pr-4">
+                  <div className="text-[12px] text-ink-400 truncate pr-4 min-w-0">
                     {a.location ?? '—'}
                     {a.floor ? ` · ${a.floor}` : ''}
                     {a.room ? ` · ${a.room}` : ''}
                   </div>
 
                   {/* Status */}
-                  <div className="pr-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="pr-3 min-w-0" onClick={(e) => e.stopPropagation()}>
                     {a.statusID === 10 ? (
                       <div className="flex items-center gap-1.5">
                         <StatusBadge status={a.status ?? 'Under Inventory'} />
@@ -622,8 +840,8 @@ export default function AssetsPage() {
                     ) : readOnly ? (
                       <StatusBadge status={a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')} />
                     ) : (
-                      <div className="flex items-center gap-1.5">
-                        <div className="relative inline-flex items-center" data-status-menu-root="true">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="relative flex-1 min-w-0" data-status-menu-root="true">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -632,7 +850,7 @@ export default function AssetsPage() {
                               setOpenStatusMenuAssetId((prev) => prev === a.assetID ? null : a.assetID);
                             }}
                             className={clsx(
-                              'inline-flex items-center gap-2 min-w-[150px] rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
+                              'flex items-center gap-2 w-full rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
                               statusTone(a.statusID),
                               'hover:shadow-sm transition-all cursor-pointer',
                               'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
@@ -644,7 +862,7 @@ export default function AssetsPage() {
                                 ? <span className="block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
                                 : <StatusIcon statusId={a.statusID} />}
                             </span>
-                            <span className="truncate">{a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')}</span>
+                            <span className="truncate flex-1 min-w-0">{a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')}</span>
                             <span className="ml-auto text-ink-300"><IconChevronDown /></span>
                           </button>
 
@@ -667,6 +885,10 @@ export default function AssetsPage() {
                                       setOpenStatusMenuAssetId(null);
                                       if (s.statusID === 8) {
                                         void openUnderMaintenanceModal(a);
+                                        return;
+                                      }
+                                      if (STATUSES_WITH_MODAL.has(s.statusID)) {
+                                        void openStatusChangeModal(a, s.statusID);
                                         return;
                                       }
                                       void handleStatusChange(a.assetID, s.statusID);
@@ -693,7 +915,7 @@ export default function AssetsPage() {
                           type="button"
                           onClick={() => handleRemoveStatus(a.assetID)}
                           disabled={changingStatus.has(a.assetID) || a.statusID === 0}
-                          className="text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Remove Status
                         </button>
@@ -756,11 +978,73 @@ export default function AssetsPage() {
               <input
                 className={inp}
                 type="file"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => setMaintenanceAttachmentFile(e.target.files?.[0] ?? null)}
               />
             </FormRow>
             <ModalActions saving={savingMaintenanceModal} onCancel={() => setMaintenanceModalAsset(null)} />
+          </form>
+        </Modal>
+      )}
+
+      {!readOnly && statusModalAsset && statusModalStatusId != null && (
+        <Modal title={`${statusModalStatusName} · ${statusModalAsset.assetCode}`} onClose={() => { setStatusModalAsset(null); setStatusModalStatusId(null); }}>
+          <form onSubmit={handleStatusModalSubmit}>
+            <FormRow label="Date *">
+              <input
+                className={inp}
+                type="date"
+                value={statusChangeForm.statusDate}
+                onChange={(e) => setStatusChangeField('statusDate', e.target.value)}
+                required
+              />
+            </FormRow>
+
+            <FormRow label="Description">
+              <input
+                className={inp}
+                value={statusChangeForm.statusDesc}
+                onChange={(e) => setStatusChangeField('statusDesc', e.target.value)}
+                maxLength={50}
+              />
+            </FormRow>
+
+            {(isDonationStatus || isSoldStatus) && (
+              <FormRow label="Contact">
+                <Select
+                  value={statusChangeForm.statusContactID}
+                  onChange={(e) => setStatusChangeField('statusContactID', e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <option value="">Select…</option>
+                  {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
+                </Select>
+              </FormRow>
+            )}
+
+            {isSoldStatus && (
+              <div className="grid grid-cols-2 gap-4">
+                <FormRow label="Price">
+                  <input
+                    className={inp}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={statusChangeForm.statusSalePrice}
+                    onChange={(e) => setStatusChangeField('statusSalePrice', e.target.value === '' ? '' : Number(e.target.value))}
+                  />
+                </FormRow>
+                <FormRow label="Currency">
+                  <Select value={statusChangeForm.statusSaleCurCode} onChange={(e) => setStatusChangeField('statusSaleCurCode', e.target.value)}>
+                    {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+                  </Select>
+                </FormRow>
+              </div>
+            )}
+
+            <ModalActions
+              saving={changingStatus.has(statusModalAsset.assetID)}
+              onCancel={() => { setStatusModalAsset(null); setStatusModalStatusId(null); }}
+            />
           </form>
         </Modal>
       )}
@@ -775,4 +1059,12 @@ function toBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function getNormalizedFileExtension(fileName: string): string {
+  return (fileName.split('.').pop() ?? '').trim().toLowerCase();
+}
+
+function isBlockedAttachmentExtension(ext: string): boolean {
+  return BLOCKED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
 }

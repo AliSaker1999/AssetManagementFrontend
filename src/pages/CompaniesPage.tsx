@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import { useAuth } from '../contexts/AuthContext';
-import type { Company, Country, Currency } from '../types';
+import type { Company, Country, Currency, HrCompanyProfile } from '../types';
 import Select from '../components/ui/Select';
 
 const emptyForm = {
@@ -14,6 +14,7 @@ const emptyForm = {
   companyPrmCurCode: '',
   companyScdCurCode: '',
   countryID: '',
+  hrCompanyProfileID: '',
 };
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
@@ -28,6 +29,8 @@ export default function CompaniesPage() {
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [hrCompanies, setHrCompanies] = useState<HrCompanyProfile[]>([]);
+  const [loadingHrCompanies, setLoadingHrCompanies] = useState(false);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
   const auditorMode = isAuditor();
@@ -74,9 +77,38 @@ export default function CompaniesPage() {
     setCompanies(r.data as Company[]);
   }
 
+  const selectedCountry = countries.find((c) => c.countryID.trim() === form.countryID.trim());
+  const shouldShowHrCompany = !!selectedCountry?.hrConnect && !!selectedCountry?.hrDatabase;
+
+  useEffect(() => {
+    if (!mode || !form.countryID || !shouldShowHrCompany) {
+      setHrCompanies([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingHrCompanies(true);
+    lookupsApi.getHrCompanies(form.countryID.trim())
+      .then((r) => {
+        if (!isMounted) return;
+        setHrCompanies(r.data as HrCompanyProfile[]);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setHrCompanies([]);
+        handleApiError(err, 'Failed to load HR companies');
+      })
+      .finally(() => {
+        if (isMounted) setLoadingHrCompanies(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [mode, form.countryID, shouldShowHrCompany]);
+
   function startAdd() {
     if (!canManage) return;
     setForm(emptyForm);
+    setHrCompanies([]);
     setEditId(null);
     setMode('add');
   }
@@ -88,17 +120,25 @@ export default function CompaniesPage() {
       companyPrmCurCode: c.companyPrmCurCode,
       companyScdCurCode: c.companyScdCurCode,
       countryID: c.countryID,
+      hrCompanyProfileID: c.hrCompanyProfileID != null ? String(c.hrCompanyProfileID) : '',
     });
     setEditId(c.companyID);
     setMode('edit');
   }
-  function cancel() { setMode(null); setEditId(null); }
+  function cancel() {
+    setMode(null);
+    setEditId(null);
+    setHrCompanies([]);
+  }
 
   async function handleSave(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!canManage) return;
     setSaving(true);
-    const payload = { ...form };
+    const payload = {
+      ...form,
+      hrCompanyProfileID: form.hrCompanyProfileID ? Number(form.hrCompanyProfileID) : null,
+    };
     try {
       if (mode === 'edit' && editId !== null) {
         await lookupsApi.updateCompany(editId, payload);
@@ -174,11 +214,29 @@ export default function CompaniesPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className={labelCls}>Country *</label>
-                <Select value={form.countryID} onChange={e => setForm(f => ({ ...f, countryID: e.target.value }))} required>
+                <Select value={form.countryID} onChange={e => setForm(f => ({ ...f, countryID: e.target.value, hrCompanyProfileID: '' }))} required>
                   <option value="">Select country…</option>
                   {countries.filter(c => c.activeCountry).map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
                 </Select>
               </div>
+              {shouldShowHrCompany && (
+                <div className="flex flex-col gap-1">
+                  <label className={labelCls}>HR Company *</label>
+                  <Select
+                    value={form.hrCompanyProfileID}
+                    onChange={e => setForm(f => ({ ...f, hrCompanyProfileID: e.target.value }))}
+                    required
+                    disabled={loadingHrCompanies}
+                  >
+                    <option value="">{loadingHrCompanies ? 'Loading HR companies…' : 'Select HR company…'}</option>
+                    {hrCompanies.map(h => (
+                      <option key={h.companyProfileID} value={h.companyProfileID}>
+                        {h.prmName} ({h.companyProfileID})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 mt-4">
               <button type="submit" className="px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70" disabled={saving}>
@@ -196,7 +254,7 @@ export default function CompaniesPage() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', 'Counter', ...(canManage ? [''] : [])].map(h => (
+              {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', 'HR Profile ID', 'Counter', ...(canManage ? [''] : [])].map(h => (
                 <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
               ))}
             </tr>
@@ -211,6 +269,7 @@ export default function CompaniesPage() {
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyPrmCurCode}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyScdCurCode}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{countries.find(co => co.countryID === c.countryID)?.country ?? c.countryID}</td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.hrCompanyProfileID ?? '—'}</td>
                   <td className="px-3 py-2.5 border-b border-[#f3f4f6]">
                     <span className="inline-block bg-[#f3f4f6] text-[#374151] font-mono font-semibold text-[13px] px-2.5 py-0.5 rounded-md">{counter}</span>
                   </td>
@@ -225,7 +284,7 @@ export default function CompaniesPage() {
               );
             })}
             {visibleCompanies.length === 0 && (
-              <tr><td colSpan={canManage ? 7 : 6} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
+              <tr><td colSpan={canManage ? 8 : 7} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
             )}
           </tbody>
         </table>

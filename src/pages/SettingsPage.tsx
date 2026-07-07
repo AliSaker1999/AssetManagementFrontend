@@ -782,7 +782,16 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
 
 // â"€â"€ Countries â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-const emptyCountry = { countryID: '', country: '', nationality: '', zipCode: '', workingCountry: false, activeCountry: true };
+const emptyCountry = {
+  countryID: '',
+  country: '',
+  nationality: '',
+  zipCode: '',
+  workingCountry: false,
+  activeCountry: true,
+  hrConnect: false,
+  hrDatabase: '',
+};
 function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
   const { isAdmin, isAuditor, isFullAccess } = useAuth();
   const canSeeActiveOnlyFilter = !isAuditor() && !isFullAccess();
@@ -845,7 +854,16 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
 
   function startAdd() { setForm(emptyCountry); setEditID(null); setMode('add'); }
   function startEdit(c: Country) {
-    setForm({ countryID: c.countryID.trim(), country: c.country, nationality: c.nationality, zipCode: c.zipCode ?? '', workingCountry: c.workingCountry, activeCountry: c.activeCountry });
+    setForm({
+      countryID: c.countryID.trim(),
+      country: c.country,
+      nationality: c.nationality,
+      zipCode: c.zipCode ?? '',
+      workingCountry: c.workingCountry,
+      activeCountry: c.activeCountry,
+      hrConnect: c.hrConnect,
+      hrDatabase: c.hrDatabase ?? '',
+    });
     setEditID(c.countryID.trim());
     setMode('edit');
   }
@@ -853,9 +871,17 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (form.hrConnect && !form.hrDatabase.trim()) {
+      toast.error('HR Database is required when HR Connect is enabled');
+      return;
+    }
     setSaving(true);
     try {
-      const payload = { ...form, zipCode: form.zipCode || null };
+      const payload = {
+        ...form,
+        zipCode: form.zipCode || null,
+        hrDatabase: form.hrConnect ? (form.hrDatabase.trim() || null) : null,
+      };
       if (mode === 'edit' && editID) {
         await lookupsApi.updateCountry(editID, payload);
         toast.success('Country updated');
@@ -935,8 +961,28 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
                     <input type="checkbox" checked={form.activeCountry} onChange={e => setForm(f => ({ ...f, activeCountry: e.target.checked }))} />
                     Active
                   </label>
+                  <label className="flex items-center gap-1.5 text-[13px] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.hrConnect}
+                      onChange={e => setForm(f => ({ ...f, hrConnect: e.target.checked, hrDatabase: e.target.checked ? f.hrDatabase : '' }))}
+                    />
+                    HR Connect
+                  </label>
                 </div>
               </Field>
+              {form.hrConnect && (
+                <Field label="HR Database *">
+                  <input
+                    className={inputCls}
+                    value={form.hrDatabase}
+                    onChange={e => setForm(f => ({ ...f, hrDatabase: e.target.value }))}
+                    required
+                    maxLength={50}
+                    placeholder="e.g. HRLEB"
+                  />
+                </Field>
+              )}
             </div>
             <FormActions saving={saving} mode={mode} onCancel={cancel} />
           </form>
@@ -981,8 +1027,11 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
                   <td className="px-3.5 py-2.5 text-[13px] text-[#333]">{c.zipCode ?? '—'}</td>
                   <td className="px-3.5 py-2.5 text-[13px] text-[#333]">{c.workingCountry ? '✓' : '—'}</td>
                   <td className="px-3.5 py-2.5">
-                    <span className={clsx('inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold', c.activeCountry ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#f3f4f6] text-[#9ca3af]')}>
+                    <span className={clsx('inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold mr-1.5', c.activeCountry ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#f3f4f6] text-[#9ca3af]')}>
                       {c.activeCountry ? 'Active' : 'Inactive'}
+                    </span>
+                    <span className={clsx('inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold', c.hrConnect ? 'bg-[#dbeafe] text-[#1d4ed8]' : 'bg-[#f3f4f6] text-[#9ca3af]')}>
+                      {c.hrConnect ? `HR: ${c.hrDatabase ?? 'On'}` : 'HR: Off'}
                     </span>
                   </td>
                   <td className="px-3 py-2">

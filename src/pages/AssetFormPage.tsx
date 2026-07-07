@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
-import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType } from '../types';
+import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee } from '../types';
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +40,8 @@ export default function AssetFormPage() {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
+  const [hrEmployees, setHrEmployees] = useState<HrEmployee[]>([]);
+  const [loadingHrEmployees, setLoadingHrEmployees] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingCode, setGeneratingCode] = useState(false);
 
@@ -52,7 +54,9 @@ export default function AssetFormPage() {
   const [locDetailForm, setLocDetailForm] = useState({ locationID: 0, floor: '', zone: '', room: '' });
   const [brandForm, setBrandForm] = useState({ brandDesc: '' });
   const [curForm, setCurForm] = useState({ curCode: '', curName: '' });
-  const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '' });
+  const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrCompanyProfileID: '' });
+  const [hrCompanies, setHrCompanies] = useState<HrCompanyProfile[]>([]);
+  const [loadingHrCompanies, setLoadingHrCompanies] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -175,7 +179,8 @@ export default function AssetFormPage() {
     } else if (type === 'currency') {
       setCurForm({ curCode: '', curName: '' });
     } else if (type === 'company') {
-      setCompForm({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '' });
+      setCompForm({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrCompanyProfileID: '' });
+      setHrCompanies([]);
     }
     setActiveModal(type);
   }
@@ -298,7 +303,11 @@ export default function AssetFormPage() {
     e.preventDefault();
     setModalSaving(true);
     try {
-      const r = await lookupsApi.createCompany(compForm);
+      const payload = {
+        ...compForm,
+        hrCompanyProfileID: compForm.hrCompanyProfileID ? Number(compForm.hrCompanyProfileID) : null,
+      };
+      const r = await lookupsApi.createCompany(payload);
       const newComp = r.data as Company;
       setCompanies((prev) => [...prev, newComp]);
       set('companyID', newComp.companyID);
@@ -310,6 +319,9 @@ export default function AssetFormPage() {
   }
 
   const selectedCompany = companies.find((c) => c.companyID === form.companyID);
+  const shouldLoadHrEmployees = !!selectedCompany?.hrCompanyProfileID;
+  const selectedCompCountry = countries.find((c) => c.countryID.trim() === compForm.countryID.trim());
+  const shouldShowHrCompany = !!selectedCompCountry?.hrConnect && !!selectedCompCountry?.hrDatabase;
   const resolvedCompanyOwnerId = owners.find((o) => o.ownerDesc.trim().toLowerCase() === 'company')?.ownerID ?? companyOwnerId;
   const ownersOrdered = [
     ...owners.filter((o) => o.ownerID === resolvedCompanyOwnerId),
@@ -329,6 +341,58 @@ export default function AssetFormPage() {
       return { ...prev, ownerID: resolvedCompanyOwnerId };
     });
   }, [isEdit, owners, resolvedCompanyOwnerId]);
+
+  useEffect(() => {
+    if (!form.companyID || !shouldLoadHrEmployees) {
+      setHrEmployees([]);
+      set('hrEmpIDUsedBy', '');
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingHrEmployees(true);
+    lookupsApi.getHrEmployees(form.companyID)
+      .then((r) => {
+        if (!isMounted) return;
+        setHrEmployees(r.data as HrEmployee[]);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setHrEmployees([]);
+        set('hrEmpIDUsedBy', '');
+        handleApiError(err, 'Failed to load HR employees');
+      })
+      .finally(() => {
+        if (isMounted) setLoadingHrEmployees(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [form.companyID, shouldLoadHrEmployees]);
+
+  useEffect(() => {
+    if (activeModal !== 'company' || !compForm.countryID || !shouldShowHrCompany) {
+      setHrCompanies([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingHrCompanies(true);
+    lookupsApi.getHrCompanies(compForm.countryID.trim())
+      .then((r) => {
+        if (!isMounted) return;
+        setHrCompanies(r.data as HrCompanyProfile[]);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setHrCompanies([]);
+        handleApiError(err, 'Failed to load HR companies');
+      })
+      .finally(() => {
+        if (isMounted) setLoadingHrCompanies(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [activeModal, compForm.countryID, shouldShowHrCompany]);
 
   return (
     <div className="px-8 py-6 max-w-[900px]">
@@ -440,11 +504,26 @@ export default function AssetFormPage() {
             <input className={inputCls} value={compForm.companyAbbreviation} onChange={(e) => setCompForm((p) => ({ ...p, companyAbbreviation: e.target.value }))} required maxLength={10} placeholder="e.g. GT" />
           </MField>
           <MField label="Country *">
-            <Select value={compForm.countryID} onChange={(e) => setCompForm((p) => ({ ...p, countryID: e.target.value }))} required>
+            <Select value={compForm.countryID} onChange={(e) => setCompForm((p) => ({ ...p, countryID: e.target.value, hrCompanyProfileID: '' }))} required>
               <option value="">Select country…</option>
               {countries.filter((c) => c.workingCountry).map((c) => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
             </Select>
           </MField>
+          {shouldShowHrCompany && (
+            <MField label="HR Company *">
+              <Select
+                value={compForm.hrCompanyProfileID}
+                onChange={(e) => setCompForm((p) => ({ ...p, hrCompanyProfileID: e.target.value }))}
+                required
+                disabled={loadingHrCompanies}
+              >
+                <option value="">{loadingHrCompanies ? 'Loading HR companies…' : 'Select HR company…'}</option>
+                {hrCompanies.map((h) => (
+                  <option key={h.companyProfileID} value={h.companyProfileID}>{h.prmName} ({h.companyProfileID})</option>
+                ))}
+              </Select>
+            </MField>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <MField label="Primary Currency *">
               <Select value={compForm.companyPrmCurCode} onChange={(e) => setCompForm((p) => ({ ...p, companyPrmCurCode: e.target.value }))} required>
@@ -487,6 +566,7 @@ export default function AssetFormPage() {
               <Select value={form.companyID ?? ''} onChange={(e) => {
                 const newCompanyId = Number(e.target.value);
                 set('companyID', newCompanyId);
+                set('hrEmpIDUsedBy', '');
                 reset('groupID', 'locationID', 'locDetailID');
                 if (!isEdit) {
                   const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
@@ -503,6 +583,24 @@ export default function AssetFormPage() {
               </Select>
             </DropWithAdd>
           </Field>
+
+          {shouldLoadHrEmployees && (
+            <Field label="Used By (HR Employee)">
+              <Select
+                value={form.hrEmpIDUsedBy ?? ''}
+                onChange={(e) => set('hrEmpIDUsedBy', e.target.value || undefined)}
+                disabled={loadingHrEmployees}
+                searchable
+              >
+                <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
+                {hrEmployees.map((emp) => (
+                  <option key={emp.empID} value={emp.empID}>
+                    {emp.fullName} ({emp.empID})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
           {/* Asset Code */}
           <Field label="Asset Code *">

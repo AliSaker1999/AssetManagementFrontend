@@ -21,6 +21,17 @@ import type {
 
 type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'attachments' | 'remark';
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
+type StatusChangeForm = {
+  statusDate: string;
+  statusDesc: string;
+  statusContactID: number | '';
+  statusSalePrice: number | '';
+  statusSaleCurCode: string;
+};
+
+const STATUSES_WITH_MODAL = new Set([1, 2, 3, 4, 7]);
+const BLOCKED_ATTACHMENT_EXTENSIONS = new Set(['csv', 'txt', 'gif', 'webp']);
+const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg';
 
 // Shared input style
 const inp = 'input-base';
@@ -211,6 +222,15 @@ export default function AssetDetailPage() {
   const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [statusMaintAttachmentFile, setStatusMaintAttachmentFile] = useState<File | null>(null);
   const [savingStatusMaintenance, setSavingStatusMaintenance] = useState(false);
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [statusModalStatusId, setStatusModalStatusId] = useState<number | null>(null);
+  const [statusChangeForm, setStatusChangeForm] = useState<StatusChangeForm>({
+    statusDate: new Date().toISOString().slice(0, 10),
+    statusDesc: '',
+    statusContactID: '',
+    statusSalePrice: '',
+    statusSaleCurCode: 'USD',
+  });
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const lookupsLoadedRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -281,6 +301,48 @@ export default function AssetDetailPage() {
     setStatusMaintForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function makeDefaultStatusChangeForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): StatusChangeForm {
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      statusDate: today,
+      statusDesc: '',
+      statusContactID: cs[0]?.contactID ?? '',
+      statusSalePrice: '',
+      statusSaleCurCode: ccy[0]?.curCode ?? 'USD',
+    };
+  }
+
+  function setStatusChangeField<K extends keyof StatusChangeForm>(key: K, value: StatusChangeForm[K]) {
+    setStatusChangeForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function openStatusChangeModal(nextStatusId: number) {
+    if (readOnly) return;
+    if (!asset) return;
+    if (asset.statusID === 10) return;
+
+    const needsLookups = nextStatusId === 1 || nextStatusId === 4;
+    try {
+      let nextContacts = contacts;
+      let nextCurrencies = currencies;
+
+      if (needsLookups && (nextContacts.length === 0 || nextCurrencies.length === 0)) {
+        const [c, cur] = await Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()]);
+        nextContacts = c.data as Contact[];
+        nextCurrencies = cur.data as Currency[];
+        setContacts(nextContacts);
+        setCurrencies(nextCurrencies);
+        lookupsLoadedRef.current = true;
+      }
+
+      setStatusModalStatusId(nextStatusId);
+      setStatusChangeForm(makeDefaultStatusChangeForm(nextContacts, nextCurrencies));
+      setStatusModalOpen(true);
+    } catch (err) {
+      handleApiError(err, 'Failed to load status lookups');
+    }
+  }
+
   async function handleStatusMaintenanceSubmit(e: FormEvent) {
     e.preventDefault();
     if (!asset || readOnly) return;
@@ -294,7 +356,11 @@ export default function AssetDetailPage() {
       let attID = statusMaintForm.attID ?? null;
       if (statusMaintAttachmentFile) {
         const base64 = await toBase64(statusMaintAttachmentFile);
-        const ext = statusMaintAttachmentFile.name.split('.').pop() ?? '';
+        const ext = getNormalizedFileExtension(statusMaintAttachmentFile.name);
+        if (isBlockedAttachmentExtension(ext)) {
+          toast.error('This file type is not allowed.');
+          return;
+        }
         const upload = await attachmentsApi.create({
           assetID: assetId,
           attDesc: 'Maintenance Attachment',
@@ -353,6 +419,58 @@ export default function AssetDetailPage() {
         statusDesc: null,
       });
       setAsset((a) => a ? { ...a, statusID: newStatusId, statusName: statuses.find((s) => s.statusID === newStatusId)?.status } : a);
+      toast.success('Status updated');
+    } catch (err) {
+      handleApiError(err, 'Failed to update status');
+    } finally {
+      setChangingStatus(false);
+    }
+  }
+
+  async function handleStatusModalSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!asset) return;
+    if (readOnly) return;
+    if (asset.statusID === 10) return;
+    if (statusModalStatusId == null) return;
+
+    const salePrice = Number(statusChangeForm.statusSalePrice || 0);
+
+    if (!statusChangeForm.statusDate) {
+      toast.error('Status date is required');
+      return;
+    }
+    if (statusModalStatusId === 4 && salePrice < 0) {
+      toast.error('Sale price cannot be negative');
+      return;
+    }
+
+    setChangingStatus(true);
+    try {
+      const contactId = statusModalStatusId === 1 || statusModalStatusId === 4
+        ? (statusChangeForm.statusContactID === '' ? null : Number(statusChangeForm.statusContactID))
+        : null;
+
+      await assetsApi.updateStatus(assetId, {
+        assetStatusID: statusModalStatusId,
+        assetStatusDate: statusChangeForm.statusDate,
+        statusID: statusModalStatusId,
+        statusDate: statusChangeForm.statusDate,
+        statusContactID: contactId,
+        statusSalePrice: statusModalStatusId === 4 ? salePrice : 0,
+        statusSaleCurCode: statusModalStatusId === 4 ? statusChangeForm.statusSaleCurCode : null,
+        statusDesc: statusChangeForm.statusDesc.trim() || null,
+      });
+
+      setAsset((a) => a
+        ? {
+            ...a,
+            statusID: statusModalStatusId,
+            statusName: statuses.find((s) => s.statusID === statusModalStatusId)?.status,
+          }
+        : a);
+      setStatusModalOpen(false);
+      setStatusModalStatusId(null);
       toast.success('Status updated');
     } catch (err) {
       handleApiError(err, 'Failed to update status');
@@ -452,6 +570,9 @@ export default function AssetDetailPage() {
     { key: 'remark', label: 'Remark' },
   ];
   const isUnderInventory = asset.statusID === 10;
+  const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
+  const isDonationStatus = statusModalStatusId === 1;
+  const isSoldStatus = statusModalStatusId === 4;
 
   return (
     <div>
@@ -548,6 +669,10 @@ export default function AssetDetailPage() {
                                 setOpenStatusMenu(false);
                                 if (s.statusID === 8) {
                                   void openUnderMaintenanceModal();
+                                  return;
+                                }
+                                if (STATUSES_WITH_MODAL.has(s.statusID)) {
+                                  void openStatusChangeModal(s.statusID);
                                   return;
                                 }
                                 void handleStatusChange(s.statusID);
@@ -711,11 +836,73 @@ export default function AssetDetailPage() {
               <input
                 className={inp}
                 type="file"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => setStatusMaintAttachmentFile(e.target.files?.[0] ?? null)}
               />
             </FormRow>
             <ModalActions saving={savingStatusMaintenance} onCancel={() => setStatusMaintenanceModalOpen(false)} />
+          </form>
+        </Modal>
+      )}
+
+      {!readOnly && statusModalOpen && statusModalStatusId != null && (
+        <Modal title={statusModalStatusName} onClose={() => { setStatusModalOpen(false); setStatusModalStatusId(null); }}>
+          <form onSubmit={handleStatusModalSubmit}>
+            <FormRow label="Date *">
+              <input
+                className={inp}
+                type="date"
+                value={statusChangeForm.statusDate}
+                onChange={(e) => setStatusChangeField('statusDate', e.target.value)}
+                required
+              />
+            </FormRow>
+
+            <FormRow label="Description">
+              <input
+                className={inp}
+                value={statusChangeForm.statusDesc}
+                onChange={(e) => setStatusChangeField('statusDesc', e.target.value)}
+                maxLength={50}
+              />
+            </FormRow>
+
+            {(isDonationStatus || isSoldStatus) && (
+              <FormRow label="Contact">
+                <Select
+                  value={statusChangeForm.statusContactID}
+                  onChange={(e) => setStatusChangeField('statusContactID', e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <option value="">Select…</option>
+                  {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
+                </Select>
+              </FormRow>
+            )}
+
+            {isSoldStatus && (
+              <div className="grid grid-cols-2 gap-4">
+                <FormRow label="Price">
+                  <input
+                    className={inp}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={statusChangeForm.statusSalePrice}
+                    onChange={(e) => setStatusChangeField('statusSalePrice', e.target.value === '' ? '' : Number(e.target.value))}
+                  />
+                </FormRow>
+                <FormRow label="Currency">
+                  <Select value={statusChangeForm.statusSaleCurCode} onChange={(e) => setStatusChangeField('statusSaleCurCode', e.target.value)}>
+                    {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+                  </Select>
+                </FormRow>
+              </div>
+            )}
+
+            <ModalActions
+              saving={changingStatus}
+              onCancel={() => { setStatusModalOpen(false); setStatusModalStatusId(null); }}
+            />
           </form>
         </Modal>
       )}
@@ -949,8 +1136,34 @@ function MaintenanceTab({
   const [editing, setEditing] = useState<Maintenance | null>(null);
   const [form, setForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [returning, setReturning] = useState<number | null>(null);
+
+  useEffect(() => {
+    const linkedIds = new Set(
+      items
+        .map((x) => x.attID)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+    );
+
+    if (linkedIds.size === 0) {
+      setAttachmentNames({});
+      return;
+    }
+
+    attachmentsApi.getByAsset(assetId)
+      .then((r) => {
+        const map: Record<number, string> = {};
+        (r.data as Attachment[]).forEach((att) => {
+          if (linkedIds.has(att.attID)) {
+            map[att.attID] = att.attFileName;
+          }
+        });
+        setAttachmentNames(map);
+      })
+      .catch(() => setAttachmentNames({}));
+  }, [assetId, items]);
 
   async function handleReturn(m: Maintenance) {
     if (readOnly) return;
@@ -993,7 +1206,11 @@ function MaintenanceTab({
       let attID = form.attID ?? null;
       if (attachmentFile) {
         const base64 = await toBase64(attachmentFile);
-        const ext = attachmentFile.name.split('.').pop() ?? '';
+        const ext = getNormalizedFileExtension(attachmentFile.name);
+        if (isBlockedAttachmentExtension(ext)) {
+          toast.error('This file type is not allowed.');
+          return;
+        }
         const upload = await attachmentsApi.create({
           assetID: assetId,
           attDesc: 'Maintenance Attachment',
@@ -1129,11 +1346,32 @@ function MaintenanceTab({
               <input
                 className={inp}
                 type="file"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
               />
               {modal === 'edit' && form.attID && !attachmentFile && (
-                <div className="text-[11px] text-ink-400 mt-1">Current attachment is linked. Choose a file only if you want to replace it.</div>
+                <div className="mt-2 rounded-md border border-pearl-200 bg-pearl-50 px-3 py-2.5">
+                  <div className="text-[11px] text-ink-600">
+                    Current file: <span className="font-semibold">{attachmentNames[form.attID] ?? `Attachment #${form.attID}`}</span>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => downloadAttachmentById(form.attID!, `maintenance-${editing?.maintID ?? 'attachment'}-attachment`)}
+                    >
+                      Download
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => previewAttachmentById(form.attID!)}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-ink-400 mt-2">Choose a file only if you want to replace it.</div>
+                </div>
               )}
             </FormRow>
             <ModalActions saving={saving} onCancel={close} />
@@ -1154,7 +1392,33 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
   const [editing, setEditing] = useState<Warranty | null>(null);
   const [form, setForm] = useState<WarrForm>({ attID: null, warrantyDesc: '', fromDate: '', toDate: '', remark: '' });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const linkedIds = new Set(
+      items
+        .map((x) => x.attID)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+    );
+
+    if (linkedIds.size === 0) {
+      setAttachmentNames({});
+      return;
+    }
+
+    attachmentsApi.getByAsset(assetId)
+      .then((r) => {
+        const map: Record<number, string> = {};
+        (r.data as Attachment[]).forEach((att) => {
+          if (linkedIds.has(att.attID)) {
+            map[att.attID] = att.attFileName;
+          }
+        });
+        setAttachmentNames(map);
+      })
+      .catch(() => setAttachmentNames({}));
+  }, [assetId, items]);
 
   function openAdd() { if (readOnly) return; setForm({ attID: null, warrantyDesc: '', fromDate: '', toDate: '', remark: '' }); setAttachmentFile(null); setModal('add'); }
   function openEdit(item: Warranty) {
@@ -1179,7 +1443,11 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
       let attID = form.attID ?? null;
       if (attachmentFile) {
         const base64 = await toBase64(attachmentFile);
-        const ext = attachmentFile.name.split('.').pop() ?? '';
+        const ext = getNormalizedFileExtension(attachmentFile.name);
+        if (isBlockedAttachmentExtension(ext)) {
+          toast.error('This file type is not allowed.');
+          return;
+        }
         const upload = await attachmentsApi.create({
           assetID: assetId,
           attDesc: 'Warranty Attachment',
@@ -1289,11 +1557,32 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
               <input
                 className={inp}
                 type="file"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg"
+                accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
               />
               {modal === 'edit' && form.attID && !attachmentFile && (
-                <div className="text-[11px] text-ink-400 mt-1">Current attachment is linked. Choose a file only if you want to replace it.</div>
+                <div className="mt-2 rounded-md border border-pearl-200 bg-pearl-50 px-3 py-2.5">
+                  <div className="text-[11px] text-ink-600">
+                    Current file: <span className="font-semibold">{attachmentNames[form.attID] ?? `Attachment #${form.attID}`}</span>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => downloadAttachmentById(form.attID!, `warranty-${editing?.warntID ?? 'attachment'}-attachment`)}
+                    >
+                      Download
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => previewAttachmentById(form.attID!)}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-ink-400 mt-2">Choose a file only if you want to replace it.</div>
+                </div>
               )}
             </FormRow>
             <ModalActions saving={saving} onCancel={close} />
@@ -1312,8 +1601,6 @@ function getMimeTypeFromExt(ext: string): string {
     png: 'image/png',
     jpg: 'image/jpeg',
     jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
     bmp: 'image/bmp',
     svg: 'image/svg+xml',
     avif: 'image/avif',
@@ -1321,8 +1608,6 @@ function getMimeTypeFromExt(ext: string): string {
     xls: 'application/vnd.ms-excel',
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     doc: 'application/msword',
-    txt: 'text/plain',
-    csv: 'text/csv',
   };
   return map[(ext ?? '').trim().toLowerCase().replace(/^\./, '')] ?? 'application/octet-stream';
 }
@@ -1422,7 +1707,11 @@ function AttachmentsTab({ readOnly, assetId, items, onChange }: { readOnly: bool
     setSaving(true);
     try {
       const base64 = await toBase64(file);
-      const ext = file.name.split('.').pop() ?? '';
+      const ext = getNormalizedFileExtension(file.name);
+      if (isBlockedAttachmentExtension(ext)) {
+        toast.error('This file type is not allowed.');
+        return;
+      }
       const r = await attachmentsApi.create({ assetID: assetId, attDesc, attFileName: file.name, attFileExt: ext, remark: remark || null, fileBase64: base64 });
       onChange([...items, r.data as Attachment]);
       toast.success('Attachment uploaded');
@@ -1486,6 +1775,7 @@ function AttachmentsTab({ readOnly, assetId, items, onChange }: { readOnly: bool
             <FormRow label="File *">
               <input
                 type="file"
+                accept={ATTACHMENT_ACCEPT}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)}
                 required
                 className="text-sm text-ink-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-navy-100 file:text-xs file:font-semibold file:bg-navy-50 file:text-navy-600 hover:file:bg-navy-100 cursor-pointer transition-colors"
@@ -1510,9 +1800,8 @@ function AttachmentsTab({ readOnly, assetId, items, onChange }: { readOnly: bool
 
 function AttachmentPreviewModal({ item, url, onClose }: { item: Attachment; url: string; onClose: () => void }) {
   const ext = (item.attFileExt ?? '').trim().toLowerCase().replace(/^\./, '');
-  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext);
+  const isImage = ['png', 'jpg', 'jpeg', 'bmp', 'svg', 'avif'].includes(ext);
   const isPdf   = ext === 'pdf';
-  const isText  = ['txt', 'csv'].includes(ext);
 
   return (
     <Modal title={item.attFileName} onClose={onClose} width="max-w-4xl">
@@ -1522,8 +1811,7 @@ function AttachmentPreviewModal({ item, url, onClose }: { item: Attachment; url:
       {isPdf && (
         <iframe src={url} title={item.attFileName} className="w-full rounded border border-pearl-200" style={{ height: '70vh' }} />
       )}
-      {isText && <TextPreview url={url} />}
-      {!isImage && !isPdf && !isText && (
+      {!isImage && !isPdf && (
         <div className="py-10 text-center text-ink-400 text-sm">
           <p className="mb-2">Preview is not available for <span className="font-semibold uppercase">.{ext}</span> files.</p>
           <p>Use the <span className="font-semibold">Download</span> button to open this file.</p>
@@ -1533,10 +1821,12 @@ function AttachmentPreviewModal({ item, url, onClose }: { item: Attachment; url:
   );
 }
 
-function TextPreview({ url }: { url: string }) {
-  const [text, setText] = useState('');
-  useEffect(() => { fetch(url).then((r) => r.text()).then(setText); }, [url]);
-  return <pre className="text-xs text-ink-700 overflow-auto max-h-[60vh] bg-pearl-50 rounded p-4 whitespace-pre-wrap">{text}</pre>;
+function getNormalizedFileExtension(fileName: string): string {
+  return (fileName.split('.').pop() ?? '').trim().toLowerCase();
+}
+
+function isBlockedAttachmentExtension(ext: string): boolean {
+  return BLOCKED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
 }
 
 // ─── Remark Tab ───────────────────────────────────────────────────────────────

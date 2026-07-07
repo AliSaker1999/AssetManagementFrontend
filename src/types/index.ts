@@ -78,6 +78,14 @@ export interface Asset {
   ownerID: number;
   ownerDesc?: string;
   ownerTypeDesc?: string;
+  hrEmpIDUsedBy?: string;
+}
+
+export interface HrEmployee {
+  empID: string;
+  fullName: string;
+  companyProfileID: number;
+  prmName?: string;
 }
 
 export interface AssetReportItem {
@@ -135,6 +143,7 @@ export interface AssetCreateRequest {
   installedAt?: string;
   ownerID: number;
   ownerDesc?: string;
+  hrEmpIDUsedBy?: string;
 }
 
 export interface DepreciationHistoryItem {
@@ -293,6 +302,12 @@ export interface Company {
   companyPrmCurCode: string;
   companyScdCurCode: string;
   countryID: string;
+  hrCompanyProfileID?: number | null;
+}
+
+export interface HrCompanyProfile {
+  companyProfileID: number;
+  prmName: string;
 }
 
 export interface CategoryType {
@@ -352,6 +367,8 @@ export interface Country {
   workingCountry: boolean;
   activeCountry: boolean;
   assetCodeCounter: number;
+  hrConnect: boolean;
+  hrDatabase?: string | null;
 }
 
 // Users & Permissions

@@ -154,12 +154,21 @@ function SelectField({
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
       searchable
-      className="max-w-xs"
+      className="w-full"
     >
       {placeholder && <option value="">{placeholder}</option>}
       {children}
     </Select>
   );
+}
+
+function formatInventoryLabel(inv: InventoryListItem): string {
+  const start = String(inv.inventoryStartDate ?? '').replace(/,\s*$/, '').trim();
+  const end = String(inv.inventoryEndDate ?? '').replace(/,\s*$/, '').trim();
+
+  if (!end) return `${start} (active)`;
+  if (start === end) return start;
+  return `${start} - ${end}`;
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -271,6 +280,7 @@ export default function ReportsPage() {
   }, [companyId]);
 
   const canDownload = (): boolean => {
+    if (!companyId) return false;
     if (reportType === 'depreciation') return depId > 0;
     if (reportType === 'assets-list-inventory') return inventoryId > 0;
     return true;
@@ -299,7 +309,8 @@ export default function ReportsPage() {
 
   async function preview(previewPageNumber: number = pageNumber, previewPageSize: number = pageSize) {
     if (!canDownload()) {
-      toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
+      if (!companyId) toast.error('Select a company first');
+      else toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
       return;
     }
     setPreviewing(true);
@@ -323,7 +334,8 @@ export default function ReportsPage() {
 
   async function download(format: Format) {
     if (!canDownload()) {
-      toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
+      if (!companyId) toast.error('Select a company first');
+      else toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
       return;
     }
     setDownloading(true);
@@ -351,7 +363,8 @@ export default function ReportsPage() {
   const isInventory      = reportType === 'assets-list-inventory';
   const isDepreciation   = reportType === 'depreciation';
   const isNotDepreciated = reportType === 'assets-not-depreciated';
-  const filtersDisabled  = isNotDepreciated;
+  const companyNotSelected = !companyId;
+  const filtersDisabled  = isNotDepreciated || companyNotSelected;
   const busy             = downloading || previewing;
   const pd               = previewData; // local const for TS narrowing
 
@@ -447,31 +460,29 @@ export default function ReportsPage() {
             </div>
 
             <div className="px-6 py-4 divide-y divide-pearl-100">
-              <OptionRow label="Inventory" disabled={!isInventory}>
+              <OptionRow label="Company">
                 <SelectField
-                  value={inventoryId}
-                  onChange={(v) => setInventoryId(Number(v))}
-                  disabled={!isInventory}
-                  placeholder="Select inventory…"
+                  value={companyId}
+                  onChange={(v) => setCompanyId(Number(v))}
+                  placeholder="Select company…"
                 >
-                  {inventories.map((inv) => (
-                    <option key={inv.inventoryID} value={inv.inventoryID}>
-                      {inv.inventoryStartDate}
-                      {inv.inventoryEndDate ? ` – ${inv.inventoryEndDate}` : ' (active)'}
-                    </option>
+                  {companies.map((c) => (
+                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
                   ))}
                 </SelectField>
               </OptionRow>
 
-              <OptionRow label="Company" disabled={isDepreciation || isNotDepreciated}>
+              <OptionRow label="Inventory" disabled={!isInventory || companyNotSelected}>
                 <SelectField
-                  value={companyId}
-                  onChange={(v) => setCompanyId(Number(v))}
-                  disabled={isDepreciation || isNotDepreciated}
-                  placeholder="All companies"
+                  value={inventoryId}
+                  onChange={(v) => setInventoryId(Number(v))}
+                  disabled={!isInventory || companyNotSelected}
+                  placeholder="Select inventory…"
                 >
-                  {companies.map((c) => (
-                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+                  {inventories.map((inv) => (
+                    <option key={inv.inventoryID} value={inv.inventoryID}>
+                      {formatInventoryLabel(inv)}
+                    </option>
                   ))}
                 </SelectField>
               </OptionRow>
@@ -532,7 +543,7 @@ export default function ReportsPage() {
                 </SelectField>
               </OptionRow>
 
-              <OptionRow label="List Type" disabled={isDepreciation || isNotDepreciated}>
+              <OptionRow label="List Type" disabled={isAssetsList || isDepreciation || isNotDepreciated || companyNotSelected}>
                 <RadioGroup
                   name="listType"
                   options={[
@@ -542,15 +553,15 @@ export default function ReportsPage() {
                   ]}
                   value={listType}
                   onChange={(v) => setListType(v as ListType)}
-                  disabled={isDepreciation || isNotDepreciated}
+                  disabled={isAssetsList || isDepreciation || isNotDepreciated || companyNotSelected}
                 />
               </OptionRow>
 
-              <OptionRow label="Depreciation" disabled={!isDepreciation}>
+              <OptionRow label="Depreciation" disabled={!isDepreciation || companyNotSelected}>
                 <SelectField
                   value={depId}
                   onChange={(v) => setDepId(Number(v))}
-                  disabled={!isDepreciation}
+                  disabled={!isDepreciation || companyNotSelected}
                   placeholder="Select run…"
                 >
                   {depreciations.map((d) => (
@@ -562,30 +573,30 @@ export default function ReportsPage() {
                 </SelectField>
               </OptionRow>
 
-              <OptionRow label="Additional Detail" disabled={!isAssetsList}>
+              <OptionRow label="Additional Detail" disabled={!isAssetsList || companyNotSelected}>
                 <YesNo
                   name="additionalDetail"
                   value={additionalDetail}
                   onChange={setAdditionalDetail}
-                  disabled={!isAssetsList}
+                  disabled={!isAssetsList || companyNotSelected}
                 />
               </OptionRow>
 
-              <OptionRow label="Accounting Exclusion" disabled={isDepreciation}>
+              <OptionRow label="Accounting Exclusion" disabled={isDepreciation || isNotDepreciated || companyNotSelected}>
                 <YesNo
                   name="accountingExclusion"
                   value={accountingExclusion}
                   onChange={setAccountingExclusion}
-                  disabled={isDepreciation}
+                  disabled={isDepreciation || isNotDepreciated || companyNotSelected}
                 />
               </OptionRow>
 
-              <OptionRow label="Total Only" disabled={isDepreciation || isNotDepreciated}>
+              <OptionRow label="Total Only" disabled={isDepreciation || isNotDepreciated || companyNotSelected}>
                 <YesNo
                   name="totalOnly"
                   value={totalOnly}
                   onChange={setTotalOnly}
-                  disabled={isDepreciation || isNotDepreciated}
+                  disabled={isDepreciation || isNotDepreciated || companyNotSelected}
                 />
               </OptionRow>
             </div>
