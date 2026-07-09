@@ -27,6 +27,35 @@ const SECTIONS: { key: Section; label: string }[] = [
 
 const inputCls = 'w-full px-2.5 py-[7px] border border-[#ddd] rounded-md text-sm outline-none focus:border-accent transition-colors box-border';
 
+function RadioGroup({
+  name, options, value, onChange, disabled,
+}: {
+  name: string;
+  options: { label: string; value: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={clsx('flex flex-wrap gap-4', disabled && 'opacity-40 pointer-events-none')}>
+      {options.map((opt) => (
+        <label key={opt.value} className="inline-flex items-center gap-1.5 cursor-pointer text-[12px] text-ink-700">
+          <input
+            type="radio"
+            name={name}
+            value={opt.value}
+            checked={value === opt.value}
+            onChange={() => onChange(opt.value)}
+            disabled={disabled}
+            className="accent-navy-600 w-3.5 h-3.5 cursor-pointer"
+          />
+          {opt.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
@@ -241,6 +270,22 @@ function NotificationSettingsSection() {
   const [savingWarranty, setSavingWarranty] = useState(false);
   const [savingMaintenance, setSavingMaintenance] = useState(false);
 
+  const warrantyOptions = [
+    { label: '2 Week', value: '2 Week' },
+    { label: '1 Week', value: '1 Week' },
+    { label: '3 Days', value: '3 Days' },
+    { label: '1 Day', value: '1 Day' },
+    { label: 'Same Day', value: 'Same Day' },
+  ];
+
+  const maintenanceOptions = [
+    { label: '2 Week', value: '2 Week' },
+    { label: '1 Week', value: '1 Week' },
+    { label: '3 Days', value: '3 Days' },
+    { label: '1 Day', value: '1 Day' },
+    { label: 'Same Day', value: 'Same Day' },
+  ];
+
   useEffect(() => { load(); }, []);
 
   async function load() {
@@ -257,6 +302,10 @@ function NotificationSettingsSection() {
 
   async function saveWarranty(e: { preventDefault(): void }) {
     e.preventDefault();
+    if (!warrantyVal.trim()) {
+      toast.error('Select one warranty interval');
+      return;
+    }
     setSavingWarranty(true);
     try {
       await lookupsApi.updateAtSetting(4, warrantyVal.trim());
@@ -267,6 +316,10 @@ function NotificationSettingsSection() {
 
   async function saveMaintenance(e: { preventDefault(): void }) {
     e.preventDefault();
+    if (!maintenanceVal.trim()) {
+      toast.error('Select one maintenance interval');
+      return;
+    }
     setSavingMaintenance(true);
     try {
       await lookupsApi.updateAtSetting(5, maintenanceVal.trim());
@@ -282,7 +335,6 @@ function NotificationSettingsSection() {
   const titleCls = 'text-[14px] font-semibold text-[#111827] mb-0.5';
   const hintCls = 'text-[13px] text-[#6b7280] leading-relaxed mb-3';
   const codeCls = 'bg-[#f3f4f6] px-1 rounded';
-  const inputCls2 = 'flex-1 px-3 py-2 border border-[#ddd] rounded-lg text-sm font-mono outline-none focus:border-accent transition-all';
   const btnCls = 'bg-[#9a7c4b] text-white border-none rounded-lg px-4 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-60 whitespace-nowrap';
 
   return (
@@ -290,49 +342,39 @@ function NotificationSettingsSection() {
       <div className={card}>
 
         <div className={rowCls}>
-          <p className={titleCls}>Warranty Alert Intervals</p>
+          <p className={titleCls}>Warranty Alert Interval</p>
           <p className={hintCls}>
-            {'Comma-separated. Accepted formats: '}
-            <code className={codeCls}>2 Week</code>
-            {', '}
-            <code className={codeCls}>3 Days</code>
-            {', '}
-            <code className={codeCls}>Same Day</code>
+            {'Select one option. Notifications start at the selected threshold and repeat every 24 hours.'}
           </p>
-          <form onSubmit={saveWarranty} className="flex gap-2">
-            <input
-              className={inputCls2}
+          <form onSubmit={saveWarranty} className="flex flex-col gap-3">
+            <RadioGroup
+              name="warranty"
+              options={warrantyOptions}
               value={warrantyVal}
-              onChange={e => setWarrantyVal(e.target.value)}
-              placeholder="2 Week, 1 Week, 3 Days, Same Day"
-              required
+              onChange={setWarrantyVal}
+              disabled={savingWarranty}
             />
-            <button type="submit" disabled={savingWarranty} className={btnCls}>
+            <button type="submit" disabled={savingWarranty || !warrantyVal} className={btnCls}>
               {savingWarranty ? 'Saving...' : 'Save'}
             </button>
           </form>
         </div>
 
         <div className={rowCls}>
-          <p className={titleCls}>Maintenance Alert Intervals</p>
+          <p className={titleCls}>Maintenance Alert Interval</p>
           <p className={hintCls}>
-            {'Comma-separated. Accepted formats: '}
-            <code className={codeCls}>1 Week</code>
-            {', '}
-            <code className={codeCls}>2 Days</code>
-            {', '}
-            <code className={codeCls}>1 Day</code>
-            {'. Once overdue, daily reminders fire automatically until Return From Maintenance is set.'}
+            {'Select one option. Notifications start at the selected threshold and repeat every 24 hours until Return From Maintenance.'}
           </p>
-          <form onSubmit={saveMaintenance} className="flex gap-2">
-            <input
-              className={inputCls2}
+         
+          <form onSubmit={saveMaintenance} className="flex flex-col gap-3">
+            <RadioGroup
+              name="maintenance"
+              options={maintenanceOptions}
               value={maintenanceVal}
-              onChange={e => setMaintenanceVal(e.target.value)}
-              placeholder="1 Week, 2 Days, 1 Day"
-              required
+              onChange={setMaintenanceVal}
+              disabled={savingMaintenance}
             />
-            <button type="submit" disabled={savingMaintenance} className={btnCls}>
+            <button type="submit" disabled={savingMaintenance || !maintenanceVal} className={btnCls}>
               {savingMaintenance ? 'Saving...' : 'Save'}
             </button>
           </form>
@@ -801,6 +843,9 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
   const [form, setForm] = useState(emptyCountry);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [hrDatabases, setHrDatabases] = useState<string[]>([]);
+  const [hrDatabasesLoading, setHrDatabasesLoading] = useState(false);
+  const [hrDatabasesLoaded, setHrDatabasesLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [activeOnly, setActiveOnly] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
@@ -852,6 +897,28 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
     void loadFiltered();
   }, [pageNumber, pageSize, search, activeOnly, reloadKey]);
 
+  useEffect(() => {
+    if (mode !== null && form.hrConnect) {
+      void loadHrDatabases();
+    }
+  }, [mode, form.hrConnect]);
+
+  async function loadHrDatabases(force = false) {
+    if (hrDatabasesLoading) return;
+    if (hrDatabasesLoaded && !force) return;
+
+    setHrDatabasesLoading(true);
+    try {
+      const r = await lookupsApi.getHrDatabases();
+      setHrDatabases((r.data as string[]) ?? []);
+      setHrDatabasesLoaded(true);
+    } catch (err) {
+      handleApiError(err, 'Failed to load HR databases');
+    } finally {
+      setHrDatabasesLoading(false);
+    }
+  }
+
   function startAdd() { setForm(emptyCountry); setEditID(null); setMode('add'); }
   function startEdit(c: Country) {
     setForm({
@@ -866,6 +933,9 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
     });
     setEditID(c.countryID.trim());
     setMode('edit');
+    if (c.hrConnect) {
+      void loadHrDatabases();
+    }
   }
   function cancel() { setMode(null); setEditID(null); }
 
@@ -973,14 +1043,26 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
               </Field>
               {form.hrConnect && (
                 <Field label="HR Database *">
-                  <input
-                    className={inputCls}
+                  <Select
                     value={form.hrDatabase}
                     onChange={e => setForm(f => ({ ...f, hrDatabase: e.target.value }))}
                     required
-                    maxLength={50}
-                    placeholder="e.g. HRLEB"
-                  />
+                    searchable
+                  >
+                    <option value="">
+                      {hrDatabasesLoading
+                        ? 'Loading databases...'
+                        : hrDatabases.length === 0
+                          ? 'No eligible databases found'
+                          : 'Select HR database'}
+                    </option>
+                    {form.hrDatabase && !hrDatabases.includes(form.hrDatabase) && (
+                      <option value={form.hrDatabase}>{form.hrDatabase}</option>
+                    )}
+                    {hrDatabases.map(dbName => (
+                      <option key={dbName} value={dbName}>{dbName}</option>
+                    ))}
+                  </Select>
                 </Field>
               )}
             </div>

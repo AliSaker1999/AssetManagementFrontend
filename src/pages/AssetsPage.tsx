@@ -914,7 +914,7 @@ export default function AssetsPage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveStatus(a.assetID)}
-                          disabled={changingStatus.has(a.assetID) || a.statusID === 0}
+                          disabled={changingStatus.has(a.assetID) || a.statusID === 0 || a.statusID === 12}
                           className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Remove Status

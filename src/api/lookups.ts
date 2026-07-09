@@ -17,6 +17,7 @@ export const lookupsApi = {
   getOwners: () => client.get('/lookups/owners'),
   getCurrencies: () => client.get('/lookups/currencies'),
   getCountries: () => client.get('/lookups/countries'),
+  getHrDatabases: () => client.get<string[]>('/lookups/hr-databases'),
   getHrCompanies: (countryId: string) =>
     client.get<HrCompanyProfile[]>('/lookups/hr-companies', { params: { countryId } }),
   getHrEmployees: (companyId: number) =>

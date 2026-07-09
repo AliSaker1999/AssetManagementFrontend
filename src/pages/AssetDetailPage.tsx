@@ -697,7 +697,7 @@ export default function AssetDetailPage() {
                   <button
                     type="button"
                     onClick={handleRemoveStatus}
-                    disabled={changingStatus || asset.statusID === 0}
+                    disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12}
                     className="text-[11px] font-semibold px-2.5 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Remove Status

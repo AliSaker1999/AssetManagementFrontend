@@ -4,6 +4,7 @@ import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
 import type { Country } from '../types';
+import Select from '../components/ui/Select';
 
 const emptyForm = {
   countryID: '',
@@ -12,6 +13,8 @@ const emptyForm = {
   zipCode: '',
   workingCountry: false,
   activeCountry: true,
+  hrConnect: false,
+  hrDatabase: '',
 };
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
@@ -24,8 +27,16 @@ export default function CountriesPage() {
   const [editID, setEditID] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [hrDatabases, setHrDatabases] = useState<string[]>([]);
+  const [hrDatabasesLoading, setHrDatabasesLoading] = useState(false);
+  const [hrDatabasesLoaded, setHrDatabasesLoaded] = useState(false);
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (mode !== null && form.hrConnect) {
+      void loadHrDatabases();
+    }
+  }, [mode, form.hrConnect]);
 
   async function load() {
     try {
@@ -40,17 +51,53 @@ export default function CountriesPage() {
 
   function startAdd() { setForm(emptyForm); setEditID(null); setMode('add'); }
   function startEdit(c: Country) {
-    setForm({ countryID: c.countryID, country: c.country, nationality: c.nationality, zipCode: c.zipCode ?? '', workingCountry: c.workingCountry, activeCountry: c.activeCountry });
+    setForm({
+      countryID: c.countryID,
+      country: c.country,
+      nationality: c.nationality,
+      zipCode: c.zipCode ?? '',
+      workingCountry: c.workingCountry,
+      activeCountry: c.activeCountry,
+      hrConnect: c.hrConnect,
+      hrDatabase: c.hrDatabase ?? '',
+    });
     setEditID(c.countryID);
     setMode('edit');
+    if (c.hrConnect) {
+      void loadHrDatabases();
+    }
   }
   function cancel() { setMode(null); setEditID(null); }
 
+  async function loadHrDatabases(force = false) {
+    if (hrDatabasesLoading) return;
+    if (hrDatabasesLoaded && !force) return;
+
+    setHrDatabasesLoading(true);
+    try {
+      const r = await lookupsApi.getHrDatabases();
+      setHrDatabases((r.data as string[]) ?? []);
+      setHrDatabasesLoaded(true);
+    } catch (err) {
+      handleApiError(err, 'Failed to load HR databases');
+    } finally {
+      setHrDatabasesLoading(false);
+    }
+  }
+
   async function handleSave(e: FormEvent) {
     e.preventDefault();
+    if (form.hrConnect && !form.hrDatabase.trim()) {
+      toast.error('HR Database is required when HR Connect is enabled');
+      return;
+    }
     setSaving(true);
     try {
-      const payload = { ...form, zipCode: form.zipCode || null };
+      const payload = {
+        ...form,
+        zipCode: form.zipCode || null,
+        hrDatabase: form.hrConnect ? (form.hrDatabase.trim() || null) : null,
+      };
       if (mode === 'edit' && editID) {
         await lookupsApi.updateCountry(editID, payload);
         toast.success('Country updated');
@@ -114,8 +161,41 @@ export default function CountriesPage() {
                     <input type="checkbox" checked={form.activeCountry} onChange={e => setForm(f => ({ ...f, activeCountry: e.target.checked }))} />
                     Active
                   </label>
+                  <label className="flex items-center gap-1.5 text-[13px] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.hrConnect}
+                      onChange={e => setForm(f => ({ ...f, hrConnect: e.target.checked, hrDatabase: e.target.checked ? f.hrDatabase : '' }))}
+                    />
+                    HR Connect
+                  </label>
                 </div>
               </div>
+              {form.hrConnect && (
+                <div className="flex flex-col gap-1">
+                  <label className={labelCls}>HR Database *</label>
+                  <Select
+                    value={form.hrDatabase}
+                    onChange={e => setForm(f => ({ ...f, hrDatabase: e.target.value }))}
+                    required
+                    searchable
+                  >
+                    <option value="">
+                      {hrDatabasesLoading
+                        ? 'Loading databases...'
+                        : hrDatabases.length === 0
+                          ? 'No eligible databases found'
+                          : 'Select HR database'}
+                    </option>
+                    {form.hrDatabase && !hrDatabases.includes(form.hrDatabase) && (
+                      <option value={form.hrDatabase}>{form.hrDatabase}</option>
+                    )}
+                    {hrDatabases.map(dbName => (
+                      <option key={dbName} value={dbName}>{dbName}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 mt-4">
               <button type="submit" className="px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70" disabled={saving}>
