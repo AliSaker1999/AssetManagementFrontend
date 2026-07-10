@@ -15,6 +15,7 @@ import Select from '../components/ui/Select';
 import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
+import TransferAssetModal from '../components/TransferAssetModal';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 const inp = 'input-base';
@@ -28,7 +29,7 @@ type StatusChangeForm = {
   statusSaleCurCode: string;
 };
 
-const STATUSES_WITH_MODAL = new Set([1, 2, 3, 4, 7]);
+const STATUSES_WITH_MODAL = new Set([1,  3, 4, 7]);
 const BLOCKED_ATTACHMENT_EXTENSIONS = new Set(['csv', 'txt', 'gif', 'webp']);
 const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg';
 
@@ -255,6 +256,8 @@ export default function AssetsPage() {
   });
   const statusesLoadedRef = useRef(false);
   const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set());
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number } | null>(null);
 
   // Load status types once
   useEffect(() => {
@@ -403,6 +406,21 @@ export default function AssetsPage() {
       setSavingMaintenanceModal(false);
     }
   }
+
+  const openTransferModal = async (asset: AssetListItem) => {
+  if (readOnly) return;
+  try {
+    const fullAsset = await assetsApi.get(asset.assetID);
+    setTransferAsset({
+      assetID: fullAsset.data.assetID,
+      companyID: fullAsset.data.companyID,
+      statusID: fullAsset.data.statusID,
+    });
+    setTransferModalOpen(true);
+  } catch (err) {
+    handleApiError(err, 'Failed to load asset details');
+  }
+};
 
   useEffect(() => {
     const onDocumentMouseDown = (event: MouseEvent) => {
@@ -887,6 +905,10 @@ export default function AssetsPage() {
                                         void openUnderMaintenanceModal(a);
                                         return;
                                       }
+                                      if (s.statusID === 2) {
+                                        void openTransferModal(a);
+                                        return;
+                                      }
                                       if (STATUSES_WITH_MODAL.has(s.statusID)) {
                                         void openStatusChangeModal(a, s.statusID);
                                         return;
@@ -909,7 +931,24 @@ export default function AssetsPage() {
                                 ))}
                             </div>
                           )}
+                          {!readOnly && transferAsset && (
+                            <TransferAssetModal
+                              asset={transferAsset}
+                              open={transferModalOpen}
+                              onClose={() => {
+                                setTransferModalOpen(false);
+                                setTransferAsset(null);
+                              }}
+                              onTransferred={() => {
+                                // Force refresh the list to reflect any changes (e.g., used-by)
+                                setAllAssetsCache(null);
+                                toast.success('Asset transferred successfully');
+                              }}
+                            />
+                          )}
+                          
                         </div>
+                        
 
                         <button
                           type="button"

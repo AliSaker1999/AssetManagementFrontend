@@ -22,6 +22,8 @@ export const lookupsApi = {
     client.get<HrCompanyProfile[]>('/lookups/hr-companies', { params: { countryId } }),
   getHrEmployees: (companyId: number) =>
     client.get<HrEmployee[]>('/lookups/hr-employees', { params: { companyId } }),
+  getHrEmployeesByCompanyProfile: (countryId: string, companyProfileId: number) =>
+    client.get<HrEmployee[]>('/lookups/hr-employees', { params: { countryId, companyProfileId } }),
   getCountriesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
     client.get<PaginatedResponse<Country>>('/lookups/countries/paginated', { params: { pageNumber, pageSize } }),
   getContactTypes: () => client.get('/lookups/contact-types'),

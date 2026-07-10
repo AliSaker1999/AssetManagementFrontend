@@ -107,6 +107,14 @@ export default function AssetFormPage() {
     return (value ?? '').trim().toLowerCase();
   }
 
+  function formatHrEmployeeLabel(emp: HrEmployee) {
+    const empId = emp.empID?.trim() ?? '';
+    const rawName = emp.fullName?.trim() ?? '';
+    const cleanedName = rawName.replace(/\s*,?\s*\([^)]*\)\s*$/, '').trim();
+    const name = cleanedName || rawName;
+    return `${name} – ${empId}`;
+  }
+
   async function generateCode() {
     const countryId = selectedCompany?.countryID?.trim();
     if (!countryId) { toast.error('Select a company first'); return; }
@@ -595,7 +603,7 @@ export default function AssetFormPage() {
                 <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
                 {hrEmployees.map((emp) => (
                   <option key={emp.empID} value={emp.empID}>
-                    {emp.fullName} ({emp.empID})
+                    {formatHrEmployeeLabel(emp)}
                   </option>
                 ))}
               </Select>

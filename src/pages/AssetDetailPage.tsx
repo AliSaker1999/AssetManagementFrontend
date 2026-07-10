@@ -14,9 +14,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
 import BarcodePrintModal from '../components/BarcodePrintModal';
+import TransferAssetModal from '../components/TransferAssetModal';
 import type {
   Asset, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
-  Maintenance, Warranty, Attachment, Contact, Currency, StatusType,
+  Maintenance, Warranty, Attachment, Contact, Currency, StatusType, Company,
 } from '../types';
 
 type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'attachments' | 'remark';
@@ -29,7 +30,7 @@ type StatusChangeForm = {
   statusSaleCurCode: string;
 };
 
-const STATUSES_WITH_MODAL = new Set([1, 2, 3, 4, 7]);
+const STATUSES_WITH_MODAL = new Set([1, 3, 4, 7]); // 2 is now handled by TransferAssetModal
 const BLOCKED_ATTACHMENT_EXTENSIONS = new Set(['csv', 'txt', 'gif', 'webp']);
 const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg';
 
@@ -216,6 +217,7 @@ export default function AssetDetailPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [changingStatus, setChangingStatus] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(false);
   const [statusMaintenanceModalOpen, setStatusMaintenanceModalOpen] = useState(false);
@@ -231,6 +233,10 @@ export default function AssetDetailPage() {
     statusSalePrice: '',
     statusSaleCurCode: 'USD',
   });
+
+  // Transfer modal state
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const lookupsLoadedRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -316,6 +322,12 @@ export default function AssetDetailPage() {
     setStatusChangeForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function closeStatusModal() {
+    setStatusModalOpen(false);
+    setStatusModalStatusId(null);
+  }
+
+  // Modified: only non-transfer statuses
   async function openStatusChangeModal(nextStatusId: number) {
     if (readOnly) return;
     if (!asset) return;
@@ -342,6 +354,12 @@ export default function AssetDetailPage() {
       handleApiError(err, 'Failed to load status lookups');
     }
   }
+
+  // New: open transfer modal
+  const openTransferModal = () => {
+    if (readOnly || !asset || asset.statusID === 10) return;
+    setTransferModalOpen(true);
+  };
 
   async function handleStatusMaintenanceSubmit(e: FormEvent) {
     e.preventDefault();
@@ -404,7 +422,7 @@ export default function AssetDetailPage() {
   async function handleStatusChange(newStatusId: number) {
     if (!asset) return;
     if (readOnly) return;
-    if (asset.statusID === 10) return; // Under Inventory — cannot change
+    if (asset.statusID === 10) return;
     const today = new Date().toISOString().slice(0, 10);
     setChangingStatus(true);
     try {
@@ -427,6 +445,7 @@ export default function AssetDetailPage() {
     }
   }
 
+  // Modified: removed transfer logic
   async function handleStatusModalSubmit(e: FormEvent) {
     e.preventDefault();
     if (!asset) return;
@@ -435,13 +454,12 @@ export default function AssetDetailPage() {
     if (statusModalStatusId == null) return;
 
     const salePrice = Number(statusChangeForm.statusSalePrice || 0);
-
-    if (!statusChangeForm.statusDate) {
-      toast.error('Status date is required');
-      return;
-    }
     if (statusModalStatusId === 4 && salePrice < 0) {
       toast.error('Sale price cannot be negative');
+      return;
+    }
+    if (!statusChangeForm.statusDate) {
+      toast.error('Status date is required');
       return;
     }
 
@@ -469,8 +487,16 @@ export default function AssetDetailPage() {
             statusName: statuses.find((s) => s.statusID === statusModalStatusId)?.status,
           }
         : a);
-      setStatusModalOpen(false);
-      setStatusModalStatusId(null);
+
+      // Refresh status history
+      try {
+        const historyRes = await assetsApi.getStatusHistory(assetId);
+        setStatusHistory(historyRes.data as StatusHistoryItem[]);
+      } catch {
+        // Non-critical
+      }
+
+      closeStatusModal();
       toast.success('Status updated');
     } catch (err) {
       handleApiError(err, 'Failed to update status');
@@ -482,7 +508,7 @@ export default function AssetDetailPage() {
   async function handleRemoveStatus() {
     if (!asset) return;
     if (readOnly) return;
-    if (asset.statusID === 10) return; // Under Inventory — cannot change
+    if (asset.statusID === 10) return;
     const today = new Date().toISOString().slice(0, 10);
     setChangingStatus(true);
     try {
@@ -502,6 +528,8 @@ export default function AssetDetailPage() {
       setChangingStatus(false);
     }
   }
+
+  // Removed useEffect hooks for transfer companies/employees
 
   useEffect(() => {
     if (tab === 'depreciation' && depHistory.length === 0)
@@ -571,8 +599,6 @@ export default function AssetDetailPage() {
   ];
   const isUnderInventory = asset.statusID === 10;
   const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
-  const isDonationStatus = statusModalStatusId === 1;
-  const isSoldStatus = statusModalStatusId === 4;
 
   return (
     <div>
@@ -599,7 +625,6 @@ export default function AssetDetailPage() {
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            {/* Asset icon */}
             <div className="w-12 h-12 rounded-xl bg-navy-50 border border-navy-100 flex items-center justify-center shrink-0">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1f2b7b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
@@ -617,7 +642,7 @@ export default function AssetDetailPage() {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {/* ── Status dropdown ── */}
+            {/* Status dropdown */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">Status</span>
               {asset.statusID === 10 ? (
@@ -669,6 +694,10 @@ export default function AssetDetailPage() {
                                 setOpenStatusMenu(false);
                                 if (s.statusID === 8) {
                                   void openUnderMaintenanceModal();
+                                  return;
+                                }
+                                if (s.statusID === 2) {
+                                  openTransferModal();
                                   return;
                                 }
                                 if (STATUSES_WITH_MODAL.has(s.statusID)) {
@@ -802,6 +831,87 @@ export default function AssetDetailPage() {
         )}
       </div>
 
+      {/* Status Modal (now only for non-transfer statuses) */}
+      {!readOnly && statusModalOpen && statusModalStatusId != null && (
+        <Modal title={statusModalStatusName} onClose={closeStatusModal}>
+          <form onSubmit={handleStatusModalSubmit}>
+            <FormRow label="Date *">
+              <input
+                className={inp}
+                type="date"
+                value={statusChangeForm.statusDate}
+                onChange={(e) => setStatusChangeField('statusDate', e.target.value)}
+                required
+              />
+            </FormRow>
+
+            <FormRow label="Description">
+              <input
+                className={inp}
+                value={statusChangeForm.statusDesc}
+                onChange={(e) => setStatusChangeField('statusDesc', e.target.value)}
+                maxLength={500}
+              />
+            </FormRow>
+
+            {(statusModalStatusId === 1 || statusModalStatusId === 4) && (
+              <FormRow label="Contact">
+                <Select
+                  value={statusChangeForm.statusContactID}
+                  onChange={(e) => setStatusChangeField('statusContactID', e.target.value === '' ? '' : Number(e.target.value))}
+                >
+                  <option value="">Select…</option>
+                  {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
+                </Select>
+              </FormRow>
+            )}
+
+            {statusModalStatusId === 4 && (
+              <div className="grid grid-cols-2 gap-4">
+                <FormRow label="Price">
+                  <input
+                    className={inp}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={statusChangeForm.statusSalePrice}
+                    onChange={(e) => setStatusChangeField('statusSalePrice', e.target.value === '' ? '' : Number(e.target.value))}
+                  />
+                </FormRow>
+                <FormRow label="Currency">
+                  <Select value={statusChangeForm.statusSaleCurCode} onChange={(e) => setStatusChangeField('statusSaleCurCode', e.target.value)}>
+                    {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
+                  </Select>
+                </FormRow>
+              </div>
+            )}
+
+            <ModalActions saving={changingStatus} onCancel={closeStatusModal} />
+          </form>
+        </Modal>
+      )}
+
+      {/* Transfer Modal */}
+      {!readOnly && asset && (
+        <TransferAssetModal
+          asset={{
+            assetID: asset.assetID,
+            companyID: asset.companyID,
+            statusID: asset.statusID,
+          }}
+          open={transferModalOpen}
+          onClose={() => setTransferModalOpen(false)}
+          onTransferred={(newEmpID) => {
+            setAsset((prev) => prev ? { ...prev, hrEmpIDUsedBy: newEmpID } : prev);
+            // Refresh status history
+            assetsApi.getStatusHistory(assetId)
+              .then((r) => setStatusHistory(r.data as StatusHistoryItem[]))
+              .catch(() => {});
+          }}
+        />
+      )}
+
+      {/* Maintenance modal (unchanged) */}
       {!readOnly && statusMaintenanceModalOpen && (
         <Modal title="Add Maintenance" onClose={() => setStatusMaintenanceModalOpen(false)}>
           <form onSubmit={handleStatusMaintenanceSubmit}>
@@ -844,68 +954,6 @@ export default function AssetDetailPage() {
           </form>
         </Modal>
       )}
-
-      {!readOnly && statusModalOpen && statusModalStatusId != null && (
-        <Modal title={statusModalStatusName} onClose={() => { setStatusModalOpen(false); setStatusModalStatusId(null); }}>
-          <form onSubmit={handleStatusModalSubmit}>
-            <FormRow label="Date *">
-              <input
-                className={inp}
-                type="date"
-                value={statusChangeForm.statusDate}
-                onChange={(e) => setStatusChangeField('statusDate', e.target.value)}
-                required
-              />
-            </FormRow>
-
-            <FormRow label="Description">
-              <input
-                className={inp}
-                value={statusChangeForm.statusDesc}
-                onChange={(e) => setStatusChangeField('statusDesc', e.target.value)}
-                maxLength={50}
-              />
-            </FormRow>
-
-            {(isDonationStatus || isSoldStatus) && (
-              <FormRow label="Contact">
-                <Select
-                  value={statusChangeForm.statusContactID}
-                  onChange={(e) => setStatusChangeField('statusContactID', e.target.value === '' ? '' : Number(e.target.value))}
-                >
-                  <option value="">Select…</option>
-                  {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
-                </Select>
-              </FormRow>
-            )}
-
-            {isSoldStatus && (
-              <div className="grid grid-cols-2 gap-4">
-                <FormRow label="Price">
-                  <input
-                    className={inp}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={statusChangeForm.statusSalePrice}
-                    onChange={(e) => setStatusChangeField('statusSalePrice', e.target.value === '' ? '' : Number(e.target.value))}
-                  />
-                </FormRow>
-                <FormRow label="Currency">
-                  <Select value={statusChangeForm.statusSaleCurCode} onChange={(e) => setStatusChangeField('statusSaleCurCode', e.target.value)}>
-                    {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
-                  </Select>
-                </FormRow>
-              </div>
-            )}
-
-            <ModalActions
-              saving={changingStatus}
-              onCancel={() => { setStatusModalOpen(false); setStatusModalStatusId(null); }}
-            />
-          </form>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -940,6 +988,7 @@ function AssetInfo({ asset }: { asset: Asset }) {
         <InfoField label="Owner" value={asset.ownerTypeDesc} />
         <InfoField label="Owner Description" value={asset.ownerDesc} />
         <InfoField label="Installed At" value={asset.installedAt} />
+        <InfoField label="Used By" value={asset.hrEmpIDUsedBy} mono />
       </div>
 
       {/* Financial card */}
@@ -965,7 +1014,7 @@ function AssetInfo({ asset }: { asset: Asset }) {
   );
 }
 
-// ─── Depreciation Tab (showstopper) ─────────────────────────────────────────
+// ─── Depreciation Tab ─────────────────────────────────────────────────────────
 
 function DepreciationTab({ data }: { data: DepreciationHistoryItem[] }) {
   if (data.length === 0) return <EmptyState message="No depreciation records yet." />;
@@ -988,11 +1037,9 @@ function DepreciationTab({ data }: { data: DepreciationHistoryItem[] }) {
         >
           <div className="text-[12px] text-ink-600">{row.depreciationDate}</div>
           <div className="num text-[12px] text-ink-600">{row.depreciationRate}%</div>
-          {/* Gold = cost/loss */}
           <div className="num-cost text-[13px] font-semibold">
             {row.depreciationValue != null ? `(${Number(row.depreciationValue).toLocaleString(undefined, { minimumFractionDigits: 2 })})` : '—'}
           </div>
-          {/* Navy = value */}
           <div className="num-value text-[13px] font-semibold">
             {row.netBookValue != null ? Number(row.netBookValue).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}
           </div>
@@ -1032,7 +1079,7 @@ function SimpleTable({ data, columns }: { data: object[]; columns: string[] }) {
             style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr)` }}
           >
             {columns.map((c) => (
-              <div key={c} className="text-[12px] text-ink-700 truncate">{String(r[c] ?? '—')}</div>
+              <div key={c} className="text-[12px] text-ink-700 break-words max-w-xs">{String(r[c] ?? '—')}</div>
             ))}
           </div>
         );
@@ -1040,52 +1087,6 @@ function SimpleTable({ data, columns }: { data: object[]; columns: string[] }) {
     </div>
   );
 }
-
-// ─── Empty State ─────────────────────────────────────────────────────────────
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-10 h-10 rounded-full bg-pearl-100 flex items-center justify-center mb-3">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9a9585" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-      </div>
-      <p className="text-[13px] text-ink-400">{message}</p>
-    </div>
-  );
-}
-
-// ─── Modal ───────────────────────────────────────────────────────────────────
-
-function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string; onClose: () => void; children: React.ReactNode; width?: string }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
-        <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
-          <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
-          <button
-            onClick={onClose}
-            className="text-ink-300 hover:text-ink-700 border-none bg-transparent cursor-pointer p-1.5 rounded-md hover:bg-pearl-100 transition-colors"
-          >
-            <IconClose />
-          </button>
-        </div>
-        <div className="px-6 py-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5 mb-4">
-      <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400">{label}</label>
-      {children}
-    </div>
-  );
-}
-
 function ActionBtn({ onClick, danger, disabled, children }: { onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
     <button
@@ -1113,6 +1114,47 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
       <button type="button" onClick={onCancel} className="btn-secondary">
         Cancel
       </button>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-10 h-10 rounded-full bg-pearl-100 flex items-center justify-center mb-3">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9585" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7h18M3 12h18M3 17h18" />
+        </svg>
+      </div>
+      <p className="text-[13px] text-ink-400">{message}</p>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string; onClose: () => void; children: React.ReactNode; width?: string }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
+          <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-ink-300 hover:text-ink-700 border-none bg-transparent cursor-pointer p-1.5 rounded-md hover:bg-pearl-100 transition-colors"
+          >
+            <IconClose />
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 mb-4">
+      <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400">{label}</label>
+      {children}
     </div>
   );
 }
