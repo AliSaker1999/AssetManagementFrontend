@@ -364,6 +364,7 @@ export default function ReportsPage() {
   const isDepreciation   = reportType === 'depreciation';
   const isNotDepreciated = reportType === 'assets-not-depreciated';
   const companyNotSelected = !companyId;
+  const selectedCompanyCountryId = companies.find((c) => c.companyID === companyId)?.countryID?.trim() ?? '';
   const filtersDisabled  = isNotDepreciated || companyNotSelected;
   const busy             = downloading || previewing;
   const pd               = previewData; // local const for TS narrowing
@@ -495,7 +496,7 @@ export default function ReportsPage() {
                   placeholder="All locations"
                 >
                   {locations
-                    .filter((l) => !companyId || l.companyID === companyId)
+                    .filter((l) => !companyId || l.countryID?.trim() === selectedCompanyCountryId)
                     .map((l) => (
                       <option key={l.locationID} value={l.locationID}>{l.location}</option>
                     ))}

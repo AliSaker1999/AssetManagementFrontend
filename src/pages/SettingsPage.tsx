@@ -116,7 +116,7 @@ export default function SettingsPage() {
       {section === 'notifications' && isAdmin() && <NotificationSettingsSection />}
       {section === 'groups' && <GroupsSection groups={groups} countries={countries} onReload={reloadGroups} />}
       {section === 'categories' && <CategoriesSection onReload={reloadCategories} />}
-      {section === 'locations' && <LocationsSection locations={locations} companies={companies} onReload={reloadLocations} />}
+      {section === 'locations' && <LocationsSection locations={locations} countries={countries} onReload={reloadLocations} />}
       {section === 'location-details' && <LocationDetailsSection locDetails={locDetails} locations={locations} onReload={reloadLocDetails} />}
       {section === 'currencies' && <CurrenciesSection currencies={currencies} onReload={reloadCurrencies} />}
       {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
@@ -592,17 +592,17 @@ function CategoriesSection({ onReload }: { onReload: () => Promise<void> }) {
 
 // â"€â"€ Locations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-function LocationsSection({ locations, companies, onReload }: { locations: LocationType[]; companies: Company[]; onReload: () => Promise<void> }) {
+function LocationsSection({ locations, countries, onReload }: { locations: LocationType[]; countries: Country[]; onReload: () => Promise<void> }) {
   const { isAuditor } = useAuth();
   const canManage = !isAuditor();
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState({ location: '', companyID: 0 });
+  const [form, setForm] = useState({ location: '', countryID: '' });
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
 
-  function startAdd() { setForm({ location: '', companyID: companies[0]?.companyID ?? 0 }); setEditId(null); setMode('add'); }
-  function startEdit(l: LocationType) { setForm({ location: l.location, companyID: l.companyID }); setEditId(l.locationID); setMode('edit'); }
+  function startAdd() { setForm({ location: '', countryID: countries[0]?.countryID ?? '' }); setEditId(null); setMode('add'); }
+  function startEdit(l: LocationType) { setForm({ location: l.location, countryID: l.countryID }); setEditId(l.locationID); setMode('edit'); }
   function cancel() { setMode(null); setEditId(null); }
 
   async function save(e: FormEvent) {
@@ -642,10 +642,10 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
               <Field label="Location Name *">
                 <input className={inputCls} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required maxLength={50} autoFocus />
               </Field>
-              <Field label="Company *">
-                <Select value={form.companyID || ''} onChange={e => setForm(f => ({ ...f, companyID: Number(e.target.value) }))} required>
-                  <option value="">Select company…</option>
-                  {companies.map(c => <option key={c.companyID} value={c.companyID}>{c.companyName}</option>)}
+              <Field label="Country *">
+                <Select value={form.countryID || ''} onChange={e => setForm(f => ({ ...f, countryID: e.target.value }))} required>
+                  <option value="">Select country…</option>
+                  {countries.map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
                 </Select>
               </Field>
             </div>
@@ -654,8 +654,8 @@ function LocationsSection({ locations, companies, onReload }: { locations: Locat
         </Modal>
       )}
       <DataTable
-        columns={['Location', 'Company']}
-        rows={locations.map(l => [l.location, companies.find(c => c.companyID === l.companyID)?.companyName ?? String(l.companyID)])}
+        columns={['Location', 'Country']}
+        rows={locations.map(l => [l.location, countries.find(c => c.countryID === l.countryID)?.country ?? String(l.countryID)])}
         highlightIndex={editId !== null ? locations.findIndex(l => l.locationID === editId) : null}
         onEdit={canManage ? i => startEdit(locations[i]) : undefined}
         onDelete={canManage ? i => del(locations[i]) : undefined}
@@ -729,10 +729,10 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
                 <input className={inputCls} value={form.floor} onChange={e => setForm(f => ({ ...f, floor: e.target.value }))} required maxLength={10} autoFocus />
               </Field>
               <Field label="Zone">
-                <input className={inputCls} value={form.zone} onChange={e => setForm(f => ({ ...f, zone: e.target.value }))} maxLength={10} />
+                <input className={inputCls} value={form.zone} onChange={e => setForm(f => ({ ...f, zone: e.target.value }))} maxLength={50} />
               </Field>
               <Field label="Room">
-                <input className={inputCls} value={form.room} onChange={e => setForm(f => ({ ...f, room: e.target.value }))} maxLength={10} />
+                <input className={inputCls} value={form.room} onChange={e => setForm(f => ({ ...f, room: e.target.value }))} maxLength={50} />
               </Field>
             </div>
             <FormActions saving={saving} mode={mode} onCancel={cancel} />

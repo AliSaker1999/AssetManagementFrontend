@@ -8,8 +8,8 @@ export const lookupsApi = {
     client.get<PaginatedResponse<CategoryType>>('/lookups/categories/paginated', { params: { pageNumber, pageSize } }),
   getGroups: () => client.get('/lookups/groups'),
   getGroupsFull: () => client.get('/lookups/groups/full'),
-  getLocations: (companyId?: number) =>
-    client.get('/lookups/locations', { params: companyId != null ? { companyId } : {} }),
+  getLocations: (countryId?: string) =>
+    client.get('/lookups/locations', { params: countryId != null ? { countryId } : {} }),
   getLocationDetails: (locationId?: number) =>
     client.get('/lookups/location-details', { params: locationId ? { locationId } : {} }),
   getStatuses: () => client.get('/lookups/statuses'),

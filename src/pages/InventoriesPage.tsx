@@ -67,12 +67,12 @@ function PlusIcon() {
 
 function RelocateModal({
   item,
-  companyId,
+  companyCountryId,
   onConfirm,
   onCancel,
 }: {
   item: InventoryDetail;
-  companyId: number;
+  companyCountryId: string;
   onConfirm: (locId: number, locDetailId: number) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -95,12 +95,12 @@ function RelocateModal({
   const [savingDetail, setSavingDetail] = useState(false);
 
   useEffect(() => {
-    lookupsApi.getLocations(companyId).then((r) => {
+    lookupsApi.getLocations(companyCountryId || undefined).then((r) => {
       const list = r.data as LocationType[];
       setLocations(list);
       if (list.length > 0) setLocId(list[0].locationID);
     });
-  }, [companyId]);
+  }, [companyCountryId]);
 
   useEffect(() => {
     if (!locId) return;
@@ -116,9 +116,10 @@ function RelocateModal({
 
   async function handleAddLocation() {
     if (!newLocName.trim()) { toast.error('Location name is required.'); return; }
+    if (!companyCountryId) { toast.error('Company country is required.'); return; }
     setSavingLoc(true);
     try {
-      const r = await lookupsApi.createLocation({ location: newLocName.trim(), companyID: companyId });
+      const r = await lookupsApi.createLocation({ location: newLocName.trim(), countryID: companyCountryId });
       const created = r.data as LocationType;
       const updated = [...locations, created];
       setLocations(updated);
@@ -1252,6 +1253,7 @@ export default function InventoriesPage() {
     latestCompletedInventory?.inventoryEndDate,
   );
   const lastMadeInMonths = diffMonthsFromNow(lastDate ?? latestCompletedInventory?.inventoryEndDate ?? null);
+  const selectedCompanyCountryId = companies.find((c) => c.companyID === companyId)?.countryID?.trim() ?? '';
 
   // ── loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
@@ -1269,7 +1271,7 @@ export default function InventoriesPage() {
       {relocateTarget && (
         <RelocateModal
           item={relocateTarget}
-          companyId={companyId}
+          companyCountryId={selectedCompanyCountryId}
           onConfirm={handleRelocateConfirm}
           onCancel={() => setRelocateTarget(null)}
         />

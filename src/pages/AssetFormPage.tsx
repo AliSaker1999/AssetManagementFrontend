@@ -50,7 +50,7 @@ export default function AssetFormPage() {
   const [modalSaving, setModalSaving] = useState(false);
   const [groupForm, setGroupForm] = useState({ countryID: '', groupName: '', acronym: '', depreciationRate: 20, accountNo: '', accountingExclusion: false });
   const [catForm, setCatForm] = useState({ category: '' });
-  const [locForm, setLocForm] = useState({ location: '', companyID: 0 });
+  const [locForm, setLocForm] = useState({ location: '', countryID: '' });
   const [locDetailForm, setLocDetailForm] = useState({ locationID: 0, floor: '', zone: '', room: '' });
   const [brandForm, setBrandForm] = useState({ brandDesc: '' });
   const [curForm, setCurForm] = useState({ curCode: '', curName: '' });
@@ -179,7 +179,7 @@ export default function AssetFormPage() {
     } else if (type === 'brand') {
       setBrandForm({ brandDesc: '' });
     } else if (type === 'location') {
-      setLocForm({ location: '', companyID: form.companyID ?? 0 });
+      setLocForm({ location: '', countryID: selectedCompany?.countryID?.trim() ?? '' });
     } else if (type === 'locDetail') {
       setLocDetailForm({ locationID: form.locationID ?? 0, floor: '', zone: '', room: '' });
     } else if (type === 'group') {
@@ -242,11 +242,11 @@ export default function AssetFormPage() {
     setModalSaving(true);
     try {
       await lookupsApi.createLocation(locForm);
-      const refreshed = (await lookupsApi.getLocations()).data as LocationType[];
+      const refreshed = (await lookupsApi.getLocations(locForm.countryID || undefined)).data as LocationType[];
       setLocations(refreshed);
 
       const newLoc = refreshed
-        .filter((l) => l.companyID === locForm.companyID && normalizeText(l.location) === normalizeText(locForm.location))
+        .filter((l) => l.countryID?.trim() === locForm.countryID?.trim() && normalizeText(l.location) === normalizeText(locForm.location))
         .sort((a, b) => b.locationID - a.locationID)[0];
 
       if (!newLoc) {
@@ -338,7 +338,9 @@ export default function AssetFormPage() {
   const requiresOwnerDesc = !!form.ownerID && form.ownerID !== resolvedCompanyOwnerId;
   const filteredGroups = selectedCompany ? groups.filter((g) => g.countryID?.trim() === selectedCompany.countryID?.trim()) : groups;
   const filteredCategories = categories;
-  const filteredLocations = form.companyID ? locations.filter((l) => l.companyID === form.companyID) : locations;
+  const filteredLocations = selectedCompany
+    ? locations.filter((l) => l.countryID?.trim() === selectedCompany.countryID?.trim())
+    : locations;
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
 
   useEffect(() => {
@@ -459,10 +461,17 @@ export default function AssetFormPage() {
           <MField label="Location Name *">
             <input className={inputCls} value={locForm.location} onChange={(e) => setLocForm((p) => ({ ...p, location: e.target.value }))} required maxLength={50} placeholder="e.g. Head Office" autoFocus />
           </MField>
-          <MField label="Company *">
-            <Select value={locForm.companyID || ''} onChange={(e) => setLocForm((p) => ({ ...p, companyID: Number(e.target.value) }))} required>
-              <option value="">Select company…</option>
-              {companies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
+          <MField label={selectedCompany ? `Country (${selectedCompany.countryID?.trim()})` : 'Country *'}>
+            <Select
+              value={locForm.countryID || ''}
+              onChange={(e) => setLocForm((p) => ({ ...p, countryID: e.target.value }))}
+              required
+              disabled={!!selectedCompany}
+            >
+              <option value="">Select country…</option>
+              {countries.filter((c) => c.workingCountry || c.countryID?.trim() === locForm.countryID).map((c) => (
+                <option key={c.countryID} value={c.countryID?.trim()}>{c.country}</option>
+              ))}
             </Select>
           </MField>
         </QuickAddModal>

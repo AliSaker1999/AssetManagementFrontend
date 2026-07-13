@@ -328,7 +328,7 @@ export interface GroupType {
 export interface LocationType {
   locationID: number;
   location: string;
-  companyID: number;
+  countryID: string;
 }
 
 export interface LocationDetail {
