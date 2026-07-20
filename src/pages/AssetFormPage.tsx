@@ -12,7 +12,12 @@ import { useAuth } from '../contexts/AuthContext';
 const inputCls = 'border border-[#ddd] rounded-md px-2.5 py-2 text-sm outline-none focus:border-accent transition-colors w-full';
 const companyOwnerId = 1;
 
-type ModalType = 'group' | 'category' | 'location' | 'locDetail' | 'currency' | 'company' | 'brand' | null;
+type ModalType = 'group' | 'category' | 'location' | 'locDetail' | 'currency' | 'company' | 'brand' | 'contact' | null;
+
+interface ContactType {
+  contactTypeID: number;
+  contactType: string;
+}
 
 export default function AssetFormPage() {
   const { id } = useParams<{ id?: string }>();
@@ -57,7 +62,12 @@ export default function AssetFormPage() {
   const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrCompanyProfileID: '' });
   const [hrCompanies, setHrCompanies] = useState<HrCompanyProfile[]>([]);
   const [loadingHrCompanies, setLoadingHrCompanies] = useState(false);
-
+  const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
+  const [contactForm, setContactForm] = useState({
+    contactName: '', contactTypeID: 0, contactPerson: '', contactPersonEmail: '',
+    financialContact: '', financialContactEmail: '', address: '', countryID: '',
+    telephone1: '', telephone2: '', mobile1: '', mobile2: '', fax1: '', fax2: '', remark: '',
+  });
   useEffect(() => {
     Promise.all([
       lookupsApi.getCompanies(),
@@ -70,7 +80,8 @@ export default function AssetFormPage() {
       lookupsApi.getCurrencies(),
       contactsApi.getLookup(),
       lookupsApi.getCountries(),
-    ]).then(([c, g, cat, l, ld, b, o, cur, con, cty]) => {
+      lookupsApi.getContactTypes(),
+    ]).then(([c, g, cat, l, ld, b, o, cur, con, cty, ctypes]) => {
       const companiesData = c.data as Company[];
       setCompanies(companiesData);
       setGroups(g.data as GroupType[]);
@@ -82,6 +93,7 @@ export default function AssetFormPage() {
       setCurrencies(cur.data as Currency[]);
       setContacts(con.data as Contact[]);
       setCountries(cty.data as Country[]);
+      setContactTypes(ctypes.data as ContactType[]);
       if (!isEdit && ctxCompanyId != null) {
         const ctxCountry = companiesData.find((co) => co.companyID === ctxCompanyId)?.countryID?.trim();
         if (ctxCountry) {
@@ -189,6 +201,13 @@ export default function AssetFormPage() {
     } else if (type === 'company') {
       setCompForm({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrCompanyProfileID: '' });
       setHrCompanies([]);
+    } else if (type === 'contact') {
+      setContactForm({
+        contactName: '', contactTypeID: 0, contactPerson: '', contactPersonEmail: '',
+        financialContact: '', financialContactEmail: '', address: '',
+        countryID: selectedCompany?.countryID?.trim() ?? '',
+        telephone1: '', telephone2: '', mobile1: '', mobile2: '', fax1: '', fax2: '', remark: '',
+      });
     }
     setActiveModal(type);
   }
@@ -236,6 +255,7 @@ export default function AssetFormPage() {
     } catch (err) { handleApiError(err, 'Failed to create brand'); }
     finally { setModalSaving(false); }
   }
+  
 
   async function saveLocation(e: FormEvent) {
     e.preventDefault();
@@ -325,6 +345,34 @@ export default function AssetFormPage() {
     } catch (err) { handleApiError(err, 'Failed to create company'); }
     finally { setModalSaving(false); }
   }
+
+  async function saveContact(e: FormEvent) {
+  e.preventDefault();
+  if (!contactForm.contactTypeID) { toast.error('Please select a contact type'); return; }
+  setModalSaving(true);
+  try {
+    const payload = {
+      ...contactForm,
+      contactPerson: contactForm.contactPerson || null,
+      contactPersonEmail: contactForm.contactPersonEmail || null,
+      financialContact: contactForm.financialContact || null,
+      financialContactEmail: contactForm.financialContactEmail || null,
+      telephone2: contactForm.telephone2 || null,
+      mobile1: contactForm.mobile1 || null,
+      mobile2: contactForm.mobile2 || null,
+      fax1: contactForm.fax1 || null,
+      fax2: contactForm.fax2 || null,
+      remark: contactForm.remark || null,
+    };
+    const r = await contactsApi.create(payload);
+    const newContact = r.data as Contact;
+    setContacts((prev) => [...prev, newContact]);
+    set('contactID', newContact.contactID);
+    setActiveModal(null);
+    toast.success(`Contact "${newContact.contactName}" created`);
+  } catch (err) { handleApiError(err, 'Failed to create contact'); }
+  finally { setModalSaving(false); }
+}
 
   const selectedCompany = companies.find((c) => c.companyID === form.companyID);
   const shouldLoadHrEmployees = !!selectedCompany?.hrCompanyProfileID;
@@ -558,6 +606,74 @@ export default function AssetFormPage() {
         </QuickAddModal>
       )}
 
+      {activeModal === 'contact' && (
+        <QuickAddModal title="New Contact" onClose={() => setActiveModal(null)} onSubmit={saveContact} saving={modalSaving}>
+          <MField label="Contact Name *">
+            <input className={inputCls} value={contactForm.contactName} onChange={(e) => setContactForm((p) => ({ ...p, contactName: e.target.value }))} required maxLength={100} autoFocus />
+          </MField>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Contact Type *">
+              <Select value={contactForm.contactTypeID || ''} onChange={(e) => setContactForm((p) => ({ ...p, contactTypeID: Number(e.target.value) }))} required>
+                <option value="">Select type…</option>
+                {contactTypes.map((t) => <option key={t.contactTypeID} value={t.contactTypeID}>{t.contactType}</option>)}
+              </Select>
+            </MField>
+            <MField label="Country">
+              <Select value={contactForm.countryID} onChange={(e) => setContactForm((p) => ({ ...p, countryID: e.target.value }))}>
+                <option value="">Select country…</option>
+                {countries.filter((c) => c.activeCountry).map((c) => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
+              </Select>
+            </MField>
+          </div>
+          <MField label="Address">
+            <input className={inputCls} value={contactForm.address} onChange={(e) => setContactForm((p) => ({ ...p, address: e.target.value }))} maxLength={200} />
+          </MField>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Contact Person">
+              <input className={inputCls} value={contactForm.contactPerson} onChange={(e) => setContactForm((p) => ({ ...p, contactPerson: e.target.value }))} maxLength={100} />
+            </MField>
+            <MField label="Contact Person Email">
+              <input className={inputCls} type="email" value={contactForm.contactPersonEmail} onChange={(e) => setContactForm((p) => ({ ...p, contactPersonEmail: e.target.value }))} maxLength={50} />
+            </MField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Financial Contact">
+              <input className={inputCls} value={contactForm.financialContact} onChange={(e) => setContactForm((p) => ({ ...p, financialContact: e.target.value }))} maxLength={100} />
+            </MField>
+            <MField label="Financial Contact Email">
+              <input className={inputCls} type="email" value={contactForm.financialContactEmail} onChange={(e) => setContactForm((p) => ({ ...p, financialContactEmail: e.target.value }))} maxLength={50} />
+            </MField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Telephone 1 *">
+              <input className={inputCls} value={contactForm.telephone1} onChange={(e) => setContactForm((p) => ({ ...p, telephone1: e.target.value }))} required maxLength={16} />
+            </MField>
+            <MField label="Telephone 2">
+              <input className={inputCls} value={contactForm.telephone2} onChange={(e) => setContactForm((p) => ({ ...p, telephone2: e.target.value }))} maxLength={16} />
+            </MField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Mobile 1">
+              <input className={inputCls} value={contactForm.mobile1} onChange={(e) => setContactForm((p) => ({ ...p, mobile1: e.target.value }))} maxLength={16} />
+            </MField>
+            <MField label="Mobile 2">
+              <input className={inputCls} value={contactForm.mobile2} onChange={(e) => setContactForm((p) => ({ ...p, mobile2: e.target.value }))} maxLength={16} />
+            </MField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <MField label="Fax 1">
+              <input className={inputCls} value={contactForm.fax1} onChange={(e) => setContactForm((p) => ({ ...p, fax1: e.target.value }))} maxLength={16} />
+            </MField>
+            <MField label="Fax 2">
+              <input className={inputCls} value={contactForm.fax2} onChange={(e) => setContactForm((p) => ({ ...p, fax2: e.target.value }))} maxLength={16} />
+            </MField>
+          </div>
+          <MField label="Remark">
+            <textarea className={inputCls + ' resize-none'} rows={2} value={contactForm.remark} onChange={(e) => setContactForm((p) => ({ ...p, remark: e.target.value }))} maxLength={500} />
+          </MField>
+        </QuickAddModal>
+      )}
+
       {/* ── Page header ── */}
       <div className="flex items-center gap-2 mb-5">
         <Link
@@ -761,12 +877,14 @@ export default function AssetFormPage() {
           <Field label="Serial Number">
             <input className={inputCls} value={form.serialNumber ?? ''} onChange={(e) => set('serialNumber', e.target.value)} maxLength={50} />
           </Field>
-          <Field label="Contact / Supplier">
+        <Field label="Contact / Supplier">
+          <DropWithAdd onAdd={() => openModal('contact')}>
             <Select value={form.contactID ?? ''} onChange={(e) => set('contactID', e.target.value ? Number(e.target.value) : undefined)}>
               <option value="">None</option>
               {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
             </Select>
-          </Field>
+          </DropWithAdd>
+        </Field>
           <Field label="Installed At">
             <input className={inputCls} value={form.installedAt ?? ''} onChange={(e) => set('installedAt', e.target.value)} maxLength={50} />
           </Field>
@@ -867,7 +985,7 @@ function QuickAddModal({ title, onClose, onSubmit, saving, children }: {
         </div>
 
         <form onSubmit={onSubmit}>
-          <div className="px-6 py-5 flex flex-col gap-4">
+          <div className="px-6 py-5 flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
             {children}
           </div>
           <div className="px-6 py-4 border-t border-pearl-200 flex items-center justify-between">
@@ -884,5 +1002,3 @@ function QuickAddModal({ title, onClose, onSubmit, saving, children }: {
     </div>
   );
 }
-
-

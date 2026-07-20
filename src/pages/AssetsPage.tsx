@@ -434,9 +434,18 @@ export default function AssetsPage() {
   }, []);
 
   // Reset to page 1 and clear cache when search or active company changes
-  useEffect(() => { setPageNumber(1); setAllAssetsCache(null); }, [search, activeCompanyId]);
+  useEffect(() => { setPageNumber(1); }, [search, selectedStatusIds, activeCompanyId]);
   // Reset to page 1 when status filter changes (keep cache — it holds all assets regardless of filter)
   useEffect(() => { setPageNumber(1); }, [selectedStatusIds]);
+  useEffect(() => {
+  let cancelled = false;
+  // setAllAssetsCache(null);
+  const companyFilter = activeCompanyId ?? undefined;
+  assetsApi.getList(companyFilter)
+    .then((r) => { if (!cancelled) setAllAssetsCache(r.data as AssetListItem[]); })
+    .catch((err) => { if (!cancelled) handleApiError(err, 'Failed to load asset counts'); });
+  return () => { cancelled = true; };
+}, [activeCompanyId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -451,7 +460,7 @@ export default function AssetsPage() {
           setAssets(data.data);
           setTotalPages(data.totalPages);
           setTotalCount(data.totalCount);
-          setAllAssetsCache(null);
+          // setAllAssetsCache(null);
         } else {
           let allData: AssetListItem[];
           if (allAssetsCache === null) {
@@ -617,11 +626,15 @@ export default function AssetsPage() {
   }
 
   const visibleAssets = (search.trim() || selectedStatusIds.size > 0) ? (allAssetsCache ?? assets) : assets;
-  const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
-  const activeCount = visibleAssets.filter((a) => a.statusID === 0).length;
+  // const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
+  const maintenanceCount = (allAssetsCache ?? []).filter((a) => a.statusID === 8).length;
+
+  // const activeCount = visibleAssets.filter((a) => a.statusID === 0).length;
+  const activeCount = (allAssetsCache ?? []).filter((a) => a.statusID === 0).length;
   const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
   const isDonationStatus = statusModalStatusId === 1;
   const isSoldStatus = statusModalStatusId === 4;
+  const countsLoading = allAssetsCache === null;
 
   return (
     <div>
@@ -648,20 +661,20 @@ export default function AssetsPage() {
           accent="navy"
           className={metricShapeCls}
         />
-        <MetricCard
-          label="Active"
-          value={loading ? '—' : activeCount.toLocaleString()}
-          sub="active status only"
-          accent="none"
-          className={metricShapeCls}
-        />
-        <MetricCard
-          label="In Maintenance"
-          value={loading ? '—' : maintenanceCount.toLocaleString()}
-          sub="currently"
-          accent={maintenanceCount > 0 ? 'warning' : 'none'}
-          className={metricShapeCls}
-        />
+          <MetricCard
+        label="Active"
+        value={countsLoading ? '—' : activeCount.toLocaleString()}
+        sub="active status only"
+        accent={activeCount > 0 ? 'success' : 'none'}
+        className={metricShapeCls}
+      />
+      <MetricCard
+        label="In Maintenance"
+        value={countsLoading ? '—' : maintenanceCount.toLocaleString()}
+        sub="currently"
+        accent={maintenanceCount > 0 ? 'warning' : 'none'}
+        className={metricShapeCls}
+      />
         <MetricCard
           label="Page"
           value={loading ? '—' : `${pageNumber} / ${totalPages}`}
