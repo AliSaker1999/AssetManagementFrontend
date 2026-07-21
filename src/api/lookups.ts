@@ -1,5 +1,5 @@
 import client from './client';
-import type { CategoryType, Country, HrCompanyProfile, HrEmployee, PaginatedResponse } from '../types';
+import type { CategoryType, Country, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse } from '../types';
 
 export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
@@ -12,6 +12,8 @@ export const lookupsApi = {
     client.get('/lookups/locations', { params: countryId != null ? { countryId } : {} }),
   getLocationDetails: (locationId?: number) =>
     client.get('/lookups/location-details', { params: locationId ? { locationId } : {} }),
+  getLocationDetailsPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<LocationDetail>>('/lookups/location-details/paginated', { params: { pageNumber, pageSize } }),
   getStatuses: () => client.get('/lookups/statuses'),
   getBrands: () => client.get('/lookups/brands'),
   getOwners: () => client.get('/lookups/owners'),

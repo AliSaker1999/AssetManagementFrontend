@@ -246,6 +246,11 @@ export default function AssetsPage() {
   const [maintenanceAttachmentFile, setMaintenanceAttachmentFile] = useState<File | null>(null);
   const [savingMaintenanceModal, setSavingMaintenanceModal] = useState(false);
   const [statusModalAsset, setStatusModalAsset] = useState<AssetListItem | null>(null);
+  const [removeStatusModalAsset, setRemoveStatusModalAsset] = useState<AssetListItem | null>(null);
+  const [removeStatusForm, setRemoveStatusForm] = useState<{ statusDate: string; statusDesc: string }>({
+    statusDate: new Date().toISOString().slice(0, 10),
+    statusDesc: '',
+  });
   const [statusModalStatusId, setStatusModalStatusId] = useState<number | null>(null);
   const [statusChangeForm, setStatusChangeForm] = useState<StatusChangeForm>({
     statusDate: new Date().toISOString().slice(0, 10),
@@ -345,6 +350,12 @@ export default function AssetsPage() {
     } catch (err) {
       handleApiError(err, 'Failed to load status lookups');
     }
+  }
+
+  function openRemoveStatusModal(asset: AssetListItem) {
+    if (readOnly) return;
+    setRemoveStatusModalAsset(asset);
+    setRemoveStatusForm({ statusDate: new Date().toISOString().slice(0, 10), statusDesc: '' });
   }
 
   async function handleUnderMaintenanceSubmit(e: FormEvent) {
@@ -593,18 +604,17 @@ export default function AssetsPage() {
     }
   }
 
-  async function handleRemoveStatus(assetId: number) {
+  async function handleRemoveStatus(assetId: number, statusDate: string, statusDesc: string) {
     if (readOnly) return;
-    const today = new Date().toISOString().slice(0, 10);
     setChangingStatus((prev) => new Set(prev).add(assetId));
     try {
       await assetsApi.removeStatus(assetId, {
         statusID: 5,
-        statusDate: today,
+        statusDate: statusDate,
         statusContactID: null,
         statusSalePrice: 0,
         statusSaleCurCode: null,
-        statusDesc: null,
+        statusDesc: statusDesc.trim() || null,
       });
 
       const activeName = statuses.find((s) => s.statusID === 0)?.status ?? 'Active';
@@ -617,6 +627,7 @@ export default function AssetsPage() {
         );
       }
       setOpenStatusMenuAssetId(null);
+      setRemoveStatusModalAsset(null);
       toast.success('Status removed');
     } catch (err) {
       handleApiError(err, 'Failed to remove status');
@@ -625,7 +636,17 @@ export default function AssetsPage() {
     }
   }
 
-  const visibleAssets = (search.trim() || selectedStatusIds.size > 0) ? (allAssetsCache ?? assets) : assets;
+  async function handleRemoveStatusSubmit(e: FormEvent) {
+  e.preventDefault();
+  if (!removeStatusModalAsset) return;
+  if (!removeStatusForm.statusDate) {
+    toast.error('Date is required');
+    return;
+  }
+  await handleRemoveStatus(removeStatusModalAsset.assetID, removeStatusForm.statusDate, removeStatusForm.statusDesc);
+}
+
+
   // const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
   const maintenanceCount = (allAssetsCache ?? []).filter((a) => a.statusID === 8).length;
 
@@ -965,7 +986,7 @@ export default function AssetsPage() {
 
                         <button
                           type="button"
-                          onClick={() => handleRemoveStatus(a.assetID)}
+                          onClick={() => openRemoveStatusModal(a)}
                           disabled={changingStatus.has(a.assetID) || a.statusID === 0 || a.statusID === 12}
                           className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -995,6 +1016,34 @@ export default function AssetsPage() {
         </div>
 
       </div>
+
+      {!readOnly && removeStatusModalAsset && (
+        <Modal title={`Remove Status · ${removeStatusModalAsset.assetCode}`} onClose={() => setRemoveStatusModalAsset(null)}>
+          <form onSubmit={handleRemoveStatusSubmit}>
+            <FormRow label="Date *">
+              <input
+                className={inp}
+                type="date"
+                value={removeStatusForm.statusDate}
+                onChange={(e) => setRemoveStatusForm((prev) => ({ ...prev, statusDate: e.target.value }))}
+                required
+              />
+            </FormRow>
+            <FormRow label="Description">
+              <input
+                className={inp}
+                value={removeStatusForm.statusDesc}
+                onChange={(e) => setRemoveStatusForm((prev) => ({ ...prev, statusDesc: e.target.value }))}
+                maxLength={50}
+              />
+            </FormRow>
+            <ModalActions
+              saving={changingStatus.has(removeStatusModalAsset.assetID)}
+              onCancel={() => setRemoveStatusModalAsset(null)}
+            />
+          </form>
+        </Modal>
+      )}
 
       {!readOnly && maintenanceModalAsset && (
         <Modal title={`Add Maintenance · ${maintenanceModalAsset.assetCode}`} onClose={() => setMaintenanceModalAsset(null)}>

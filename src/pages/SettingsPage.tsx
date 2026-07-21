@@ -62,7 +62,6 @@ export default function SettingsPage() {
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
   const [groups, setGroups] = useState<GroupType[]>([]);
   const [locations, setLocations] = useState<LocationType[]>([]);
-  const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -70,17 +69,15 @@ export default function SettingsPage() {
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
-    const [g, l, ld, co, cou, cur] = await Promise.all([
+    const [g, l, co, cou, cur] = await Promise.all([
       lookupsApi.getGroupsFull(),
       lookupsApi.getLocations(),
-      lookupsApi.getLocationDetails(),
       lookupsApi.getCompanies(),
       lookupsApi.getCountries(),
       lookupsApi.getCurrencies(),
     ]);
     setGroups(g.data as GroupType[]);
     setLocations(l.data as LocationType[]);
-    setLocDetails(ld.data as LocationDetail[]);
     setCompanies(co.data as Company[]);
     setCountries(cou.data as Country[]);
     setCurrencies(cur.data as Currency[]);
@@ -89,7 +86,7 @@ export default function SettingsPage() {
   async function reloadGroups() { const r = await lookupsApi.getGroupsFull(); setGroups(r.data as GroupType[]); }
   async function reloadCategories() { /* categories are loaded in section scope */ }
   async function reloadLocations() { const r = await lookupsApi.getLocations(); setLocations(r.data as LocationType[]); }
-  async function reloadLocDetails() { const r = await lookupsApi.getLocationDetails(); setLocDetails(r.data as LocationDetail[]); }
+  async function reloadLocDetails() {}
   async function reloadCurrencies() { const r = await lookupsApi.getCurrencies(); setCurrencies(r.data as Currency[]); }
   async function reloadCountries() { const r = await lookupsApi.getCountries(); setCountries(r.data as Country[]); }
 
@@ -117,7 +114,7 @@ export default function SettingsPage() {
       {section === 'groups' && <GroupsSection groups={groups} countries={countries} onReload={reloadGroups} />}
       {section === 'categories' && <CategoriesSection onReload={reloadCategories} />}
       {section === 'locations' && <LocationsSection locations={locations} countries={countries} onReload={reloadLocations} />}
-      {section === 'location-details' && <LocationDetailsSection locDetails={locDetails} locations={locations} onReload={reloadLocDetails} />}
+      {section === 'location-details' && <LocationDetailsSection locations={locations} onReload={reloadLocDetails} />}
       {section === 'currencies' && <CurrenciesSection currencies={currencies} onReload={reloadCurrencies} />}
       {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
     </div>
@@ -334,7 +331,6 @@ function NotificationSettingsSection() {
   const rowCls = 'px-6 py-5';
   const titleCls = 'text-[14px] font-semibold text-[#111827] mb-0.5';
   const hintCls = 'text-[13px] text-[#6b7280] leading-relaxed mb-3';
-  const codeCls = 'bg-[#f3f4f6] px-1 rounded';
   const btnCls = 'bg-[#9a7c4b] text-white border-none rounded-lg px-4 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-60 whitespace-nowrap';
 
   return (
@@ -668,9 +664,21 @@ function LocationsSection({ locations, countries, onReload }: { locations: Locat
 
 const emptyLd = { locationID: 0, floor: '', zone: '', room: '' };
 
-function LocationDetailsSection({ locDetails, locations, onReload }: { locDetails: LocationDetail[]; locations: LocationType[]; onReload: () => Promise<void> }) {
+function LocationDetailsSection({
+  locations,
+  onReload,
+}: {
+  locations: LocationType[];
+  onReload: () => Promise<void>;
+}) {
   const { isAuditor } = useAuth();
   const canManage = !isAuditor();
+  const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyLd);
@@ -680,6 +688,18 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
   function startAdd() { setForm(emptyLd); setEditId(null); setMode('add'); }
   function startEdit(d: LocationDetail) { setForm({ locationID: d.locationID, floor: d.floor, zone: d.zone ?? '', room: d.room ?? '' }); setEditId(d.locDetailID); setMode('edit'); }
   function cancel() { setMode(null); setEditId(null); }
+
+  useEffect(() => {
+  lookupsApi.getLocationDetailsPaginated(pageNumber, pageSize)
+    .then((r) => {
+      setLocDetails(r.data.data);
+      setTotalPages(r.data.totalPages);
+      setTotalCount(r.data.totalCount);
+    })
+    .catch((err) =>
+      handleApiError(err, "Failed to load location details")
+    );
+}, [pageNumber, pageSize, reloadKey]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -695,6 +715,7 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
         toast.success('Location detail created');
       }
       cancel();
+      setReloadKey(k => k + 1);
       await onReload();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
@@ -705,6 +726,7 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
     if (!ok) return;
     try {
       await lookupsApi.deleteLocationDetail(d.locDetailID);
+      setReloadKey(k => k + 1);
       await onReload();
       toast.success('Location detail deleted');
     } catch (err) { handleApiError(err, 'Delete failed'); }
@@ -739,6 +761,30 @@ function LocationDetailsSection({ locDetails, locations, onReload }: { locDetail
           </form>
         </Modal>
       )}
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() =>
+          setPageNumber((p) => Math.max(1, p - 1))
+        }
+        onNext={() =>
+          setPageNumber((p) => Math.min(totalPages, p + 1))
+        }
+      />
       <DataTable
         columns={['Location', 'Floor', 'Zone', 'Room']}
         rows={locDetails.map(d => [locations.find(l => l.locationID === d.locationID)?.location ?? String(d.locationID), d.floor, d.zone ?? '—', d.room ?? '—'])}
