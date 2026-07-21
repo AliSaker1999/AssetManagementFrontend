@@ -34,6 +34,7 @@ export default function AssetFormPage() {
     ownerID: !isEdit ? companyOwnerId : undefined,
     ...(ctxCompanyId != null && !isEdit ? { companyID: ctxCompanyId } : {}),
   });
+  
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [groups, setGroups] = useState<GroupType[]>([]);
@@ -68,6 +69,9 @@ export default function AssetFormPage() {
     financialContact: '', financialContactEmail: '', address: '', countryID: '',
     telephone1: '', telephone2: '', mobile1: '', mobile2: '', fax1: '', fax2: '', remark: '',
   });
+  
+  
+  
   useEffect(() => {
     Promise.all([
       lookupsApi.getCompanies(),
@@ -390,6 +394,13 @@ export default function AssetFormPage() {
     ? locations.filter((l) => l.countryID?.trim() === selectedCompany.countryID?.trim())
     : locations;
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
+
+  const usedByValue = (form.hrEmpIDUsedBy ?? '').toString().trim();
+const installedAtValue = (form.installedAt ?? '').trim();
+const usedByRequired = shouldLoadHrEmployees && !installedAtValue;
+const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtValue;
+
+
 
   useEffect(() => {
     if (isEdit) return;
@@ -718,11 +729,12 @@ export default function AssetFormPage() {
           </Field>
 
           {shouldLoadHrEmployees && (
-            <Field label="Used By (HR Employee)">
+            <Field label={usedByRequired ? 'Used By (HR Employee) *' : 'Used By (HR Employee)'}>
               <Select
                 value={form.hrEmpIDUsedBy ?? ''}
                 onChange={(e) => set('hrEmpIDUsedBy', e.target.value || undefined)}
                 disabled={loadingHrEmployees}
+                required={usedByRequired}
                 searchable
               >
                 <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
@@ -885,8 +897,14 @@ export default function AssetFormPage() {
             </Select>
           </DropWithAdd>
         </Field>
-          <Field label="Installed At">
-            <input className={inputCls} value={form.installedAt ?? ''} onChange={(e) => set('installedAt', e.target.value)} maxLength={50} />
+          <Field label={installedAtRequired ? 'Installed At *' : 'Installed At'}>
+            <input
+              className={inputCls}
+              value={form.installedAt ?? ''}
+              onChange={(e) => set('installedAt', e.target.value)}
+              maxLength={50}
+              required={installedAtRequired}
+            />
           </Field>
           <Field label="Donation">
             <Select value={form.donation ? 'true' : 'false'} onChange={(e) => set('donation', e.target.value === 'true')}>

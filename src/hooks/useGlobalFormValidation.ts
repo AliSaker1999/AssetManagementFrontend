@@ -12,6 +12,15 @@ function getFieldLabel(field: HTMLElement, form: HTMLFormElement): string {
 
   const nearestLabel = field.closest('div')?.querySelector('label');
   if (nearestLabel?.textContent?.trim()) return nearestLabel.textContent.replace('*', '').trim();
+  
+  let container: HTMLElement | null = field.parentElement;
+  let depth = 0;
+  while (container && container !== form && depth < 6) {
+    const label = container.querySelector(':scope > label');
+    if (label?.textContent?.trim()) return label.textContent.replace('*', '').trim();
+    container = container.parentElement;
+    depth++;
+  }
 
   const ariaLabel = field.getAttribute('aria-label');
   if (ariaLabel?.trim()) return ariaLabel.trim();

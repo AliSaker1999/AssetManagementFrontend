@@ -43,7 +43,9 @@ export interface AssetListItem {
   serialNumber?: string;
   purchaseOrderNo?: string;
   invoiceNo?: string;
-}
+  hrEmpIDUsedBy?: string | null;
+  employeeName?: string | null;
+  }
 
 export interface Asset {
   assetID: number;
@@ -79,6 +81,7 @@ export interface Asset {
   ownerDesc?: string;
   ownerTypeDesc?: string;
   hrEmpIDUsedBy?: string;
+  employeeName?: string | null;
 }
 
 export interface HrEmployee {

@@ -140,6 +140,43 @@ function StatusIcon({ statusId }: { statusId?: number }) {
       </svg>
     );
   }
+  if (statusId === 12) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z"/>
+      <polyline points="3.3 7 12 12 20.7 7"/>
+      <line x1="12" y1="22" x2="12" y2="12"/>
+    </svg>
+  );
+}
+
+if (statusId === 13) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 10.5L12 3l9 7.5"/>
+      <path d="M5 9v11h14V9"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  );
+}
 
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -149,21 +186,34 @@ function StatusIcon({ statusId }: { statusId?: number }) {
 }
 
 function statusTone(statusId?: number) {
-  if (statusId === 0) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (statusId === 3 || statusId === 11) return 'bg-rose-50 text-rose-700 border-rose-200';
-  if (statusId === 4 || statusId === 1 || statusId === 7) return 'bg-amber-50 text-amber-700 border-amber-200';
-  if (statusId === 2) return 'bg-sky-50 text-sky-700 border-sky-200';
-  if (statusId === 6) return 'bg-violet-50 text-violet-700 border-violet-200';
+  if (statusId === 0 || statusId === 13) 
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+  if (statusId === 3 || statusId === 11) 
+    return 'bg-rose-50 text-rose-700 border-rose-200';
+
+  if (statusId === 4 || statusId === 1 || statusId === 7) 
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+
+  if (statusId === 2) 
+    return 'bg-sky-50 text-sky-700 border-sky-200';
+
+  if (statusId === 6) 
+    return 'bg-violet-50 text-violet-700 border-violet-200';
+
+  if (statusId === 12) 
+    return 'bg-blue-50 text-blue-700 border-blue-200';
+
   return 'bg-pearl-50 text-ink-700 border-pearl-200';
 }
 
 function statusFilterSelectedClass(statusId?: number) {
-  if (statusId === 0) return 'bg-emerald-500 text-white border-emerald-500 shadow-sm';
+  if (statusId === 0 || statusId === 13) return 'bg-emerald-500 text-white border-emerald-500 shadow-sm';
   if (statusId === 3 || statusId === 11) return 'bg-rose-500 text-white border-rose-500 shadow-sm';
   if (statusId === 1 || statusId === 4 || statusId === 7) return 'bg-amber-500 text-white border-amber-500 shadow-sm';
   if (statusId === 2) return 'bg-sky-500 text-white border-sky-500 shadow-sm';
   if (statusId === 6) return 'bg-violet-500 text-white border-violet-500 shadow-sm';
-  if (statusId === 8) return 'bg-orange-500 text-white border-orange-500 shadow-sm';
+  if (statusId === 8 || statusId === 12) return 'bg-orange-500 text-white border-orange-500 shadow-sm';
   return 'bg-ink-600 text-white border-ink-600 shadow-sm';
 }
 
@@ -483,11 +533,16 @@ export default function AssetsPage() {
           }
           let filtered = allData;
           if (search.trim()) {
+            const q = search.toLowerCase();
             filtered = filtered.filter(
               (a) =>
-                a.assetCode.toLowerCase().includes(search.toLowerCase()) ||
-                a.assetDesc.toLowerCase().includes(search.toLowerCase()) ||
-                (a.barcodeNumber ?? '').toLowerCase().includes(search.toLowerCase())
+                a.assetCode.toLowerCase().includes(q) ||
+                a.assetDesc.toLowerCase().includes(q) ||
+                (a.barcodeNumber ?? '').toLowerCase().includes(q) ||
+                (a.category ?? '').toLowerCase().includes(q) ||
+                (a.location ?? '').toLowerCase().includes(q) ||
+                (a.employeeName ?? '').toLowerCase().includes(q) ||
+                (a.hrEmpIDUsedBy ?? '').toLowerCase().includes(q)
             );
           }
           if (selectedStatusIds.size > 0) {
@@ -719,7 +774,7 @@ export default function AssetsPage() {
                          text-ink-800 placeholder:text-ink-300
                          focus:outline-none focus:border-navy-600 focus:ring-1 focus:ring-navy-600/20
                          transition-colors duration-150"
-              placeholder="Search by code, description or barcode…"
+              placeholder="Search by code, description, category, location, employee, or barcode…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -826,13 +881,13 @@ export default function AssetsPage() {
 
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-visible">
           {/* Table header */}
-          <div className="grid grid-cols-[1.6fr_2.4fr_1.6fr_1.8fr_2.8fr_0.8fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-            {['Code', 'Description', 'Category', 'Location', 'Status', 'Barcode'].map((h) => (
-              <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
-                {h}
-              </div>
-            ))}
-          </div>
+          <div className="grid grid-cols-[1.4fr_2fr_1.3fr_1.5fr_1.7fr_2.3fr_0.7fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+          {['Code', 'Description', 'Category', 'Location', 'Employee', 'Status', 'Barcode'].map((h) => (
+            <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
+              {h}
+            </div>
+          ))}
+        </div>
 
           {loading ? (
             <TableSkeleton />
@@ -861,7 +916,7 @@ export default function AssetsPage() {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[1.6fr_2.4fr_1.6fr_1.8fr_2.8fr_0.8fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid grid-cols-[1.4fr_2fr_1.3fr_1.5fr_1.7fr_2.3fr_0.7fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
@@ -870,16 +925,33 @@ export default function AssetsPage() {
                   <div className="font-code text-[12px] text-navy-600 font-medium min-w-0 truncate">{a.assetCode}</div>
 
                   {/* Description */}
-                  <div className="text-[13px] text-ink-800 font-medium truncate pr-4 min-w-0">{a.assetDesc}</div>
+                  <div className="text-[13px] text-ink-800 font-medium truncate pr-4 min-w-0" title={a.assetDesc ? a.assetDesc : undefined}>
+                    {a.assetDesc ?? '—'}
+                  </div>
 
                   {/* Category */}
                   <div className="text-[12px] text-ink-400 truncate pr-4 min-w-0">{a.category ?? '—'}</div>
 
                   {/* Location */}
-                  <div className="text-[12px] text-ink-400 truncate pr-4 min-w-0">
+                  <div
+                    className="text-[12px] text-ink-400 truncate pr-4 min-w-0"
+                    title={
+                      a.location || a.floor || a.room
+                        ? `${a.location ?? '—'}${a.floor ? ` · ${a.floor}` : ''}${a.room ? ` · ${a.room}` : ''}`
+                        : undefined
+                    }
+                  >
                     {a.location ?? '—'}
                     {a.floor ? ` · ${a.floor}` : ''}
                     {a.room ? ` · ${a.room}` : ''}
+                  </div>
+
+                  {/* Employee */}
+                  <div
+                    className="text-[12px] text-ink-400 truncate pr-4 min-w-0"
+                    title={a.employeeName ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : undefined}
+                  >
+                    {a.employeeName ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : '—'}
                   </div>
 
                   {/* Status */}

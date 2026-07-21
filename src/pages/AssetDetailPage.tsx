@@ -177,6 +177,43 @@ function StatusIcon({ statusId }: { statusId?: number }) {
       </svg>
     );
   }
+    if (statusId === 12) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z"/>
+      <polyline points="3.3 7 12 12 20.7 7"/>
+      <line x1="12" y1="22" x2="12" y2="12"/>
+    </svg>
+  );
+}
+
+if (statusId === 13) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 10.5L12 3l9 7.5"/>
+      <path d="M5 9v11h14V9"/>
+      <path d="M9 20v-6h6v6"/>
+    </svg>
+  );
+}
 
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -186,11 +223,24 @@ function StatusIcon({ statusId }: { statusId?: number }) {
 }
 
 function statusTone(statusId?: number) {
-  if (statusId === 0) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (statusId === 3 || statusId === 11) return 'bg-rose-50 text-rose-700 border-rose-200';
-  if (statusId === 4 || statusId === 1 || statusId === 7 || statusId === 8) return 'bg-amber-50 text-amber-700 border-amber-200';
-  if (statusId === 2) return 'bg-sky-50 text-sky-700 border-sky-200';
-  if (statusId === 6) return 'bg-violet-50 text-violet-700 border-violet-200';
+  if (statusId === 0 || statusId === 13) 
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+  if (statusId === 3 || statusId === 11) 
+    return 'bg-rose-50 text-rose-700 border-rose-200';
+
+  if (statusId === 4 || statusId === 1 || statusId === 7) 
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+
+  if (statusId === 2) 
+    return 'bg-sky-50 text-sky-700 border-sky-200';
+
+  if (statusId === 6) 
+    return 'bg-violet-50 text-violet-700 border-violet-200';
+
+  if (statusId === 12) 
+    return 'bg-blue-50 text-blue-700 border-blue-200';
+
   return 'bg-pearl-50 text-ink-700 border-pearl-200';
 }
 
@@ -233,7 +283,26 @@ export default function AssetDetailPage() {
     statusSalePrice: '',
     statusSaleCurCode: 'USD',
   });
+  const [usedByEmployeeName, setUsedByEmployeeName] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!asset?.hrEmpIDUsedBy || !asset?.companyID) {
+      setUsedByEmployeeName(null);
+      return;
+    }
+    let cancelled = false;
+    lookupsApi.getHrEmployees(asset.companyID)
+      .then((r) => {
+        if (cancelled) return;
+        const employees = r.data as { empID: string; fullName: string }[];
+        const match = employees.find((e) => e.empID === asset.hrEmpIDUsedBy);
+        setUsedByEmployeeName(match?.fullName ?? null);
+      })
+      .catch(() => { if (!cancelled) setUsedByEmployeeName(null); });
+    return () => { cancelled = true; };
+  }, [asset?.hrEmpIDUsedBy, asset?.companyID]);
+
+ 
   // Transfer modal state
   const [transferModalOpen, setTransferModalOpen] = useState(false);
 
@@ -265,6 +334,9 @@ export default function AssetDetailPage() {
     document.addEventListener('mousedown', onDocumentMouseDown);
     return () => document.removeEventListener('mousedown', onDocumentMouseDown);
   }, []);
+ 
+
+
 
   function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
     return {
@@ -804,7 +876,7 @@ export default function AssetDetailPage() {
 
       {/* Tab content */}
       <div className="px-8 py-6">
-        {tab === 'info' && <AssetInfo asset={asset} />}
+        {tab === 'info' && <AssetInfo asset={asset} usedByEmployeeName={usedByEmployeeName} />}
         {tab === 'depreciation' && <DepreciationTab data={depHistory} />}
         {tab === 'inventory' && <SimpleTable data={invHistory} columns={['inventoryID', 'isAvailable', 'location', 'relocated', 'createdDate']} />}
         {tab === 'status' && <SimpleTable data={statusHistory} columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']} />}
@@ -971,7 +1043,7 @@ function InfoField({ label, value, mono }: { label: string; value: unknown; mono
   );
 }
 
-function AssetInfo({ asset }: { asset: Asset }) {
+function AssetInfo({ asset, usedByEmployeeName }: { asset: Asset; usedByEmployeeName: string | null }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Identification card */}
@@ -979,6 +1051,16 @@ function AssetInfo({ asset }: { asset: Asset }) {
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-300 mb-3">Identification</div>
         <InfoField label="Asset Code" value={asset.assetCode} mono />
         <InfoField label="Description" value={asset.assetDesc} />
+        <InfoField
+          label="Used By"
+          value={
+            asset.hrEmpIDUsedBy
+              ? usedByEmployeeName
+                ? `${usedByEmployeeName} – ${asset.hrEmpIDUsedBy}`
+                : asset.hrEmpIDUsedBy
+              : null
+          }
+        />
         <InfoField label="Brand" value={asset.brandDesc} />
         <InfoField label="Model" value={asset.model} />
         <InfoField label="Barcode" value={asset.barcodeNumber} mono />
