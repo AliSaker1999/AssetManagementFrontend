@@ -1,5 +1,5 @@
 import client from './client';
-import type { CategoryType, Country, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse } from '../types';
+import type { CategoryType, Country, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType } from '../types';
 
 export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
@@ -8,8 +8,12 @@ export const lookupsApi = {
     client.get<PaginatedResponse<CategoryType>>('/lookups/categories/paginated', { params: { pageNumber, pageSize } }),
   getGroups: () => client.get('/lookups/groups'),
   getGroupsFull: () => client.get('/lookups/groups/full'),
+  getGroupsPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<GroupType>>('/lookups/groups/paginated', { params: { pageNumber, pageSize } }),
   getLocations: (countryId?: string) =>
     client.get('/lookups/locations', { params: countryId != null ? { countryId } : {} }),
+  getLocationsPaginated: (countryId?: string, pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<LocationType>>('/lookups/locations/paginated', { params: { countryId, pageNumber, pageSize } }),
   getLocationDetails: (locationId?: number) =>
     client.get('/lookups/location-details', { params: locationId ? { locationId } : {} }),
   getLocationDetailsPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
@@ -18,6 +22,8 @@ export const lookupsApi = {
   getBrands: () => client.get('/lookups/brands'),
   getOwners: () => client.get('/lookups/owners'),
   getCurrencies: () => client.get('/lookups/currencies'),
+  getCurrenciesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<{ curCode: string; curName: string }>>('/lookups/currencies/paginated', { params: { pageNumber, pageSize } }),
   getCountries: () => client.get('/lookups/countries'),
   getHrDatabases: () => client.get<string[]>('/lookups/hr-databases'),
   getHrCompanies: (countryId: string) =>

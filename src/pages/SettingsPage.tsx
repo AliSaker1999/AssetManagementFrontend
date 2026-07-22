@@ -6,7 +6,7 @@ import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { useConfirm } from '../hooks/useConfirm';
-import type { GroupType, CategoryType, LocationType, LocationDetail, Company, Country, Currency, Setting } from '../types';
+import type { GroupType, CategoryType, LocationType, LocationDetail, Country, Currency, Setting } from '../types';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
@@ -60,34 +60,32 @@ export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
-  const [groups, setGroups] = useState<GroupType[]>([]);
+
   const [locations, setLocations] = useState<LocationType[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [currencies, setCurrencies] = useState<Currency[]>([]);
+ 
 
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
-    const [g, l, co, cou, cur] = await Promise.all([
-      lookupsApi.getGroupsFull(),
-      lookupsApi.getLocations(),
-      lookupsApi.getCompanies(),
+    const [ cou, l] = await Promise.all([
+      
       lookupsApi.getCountries(),
-      lookupsApi.getCurrencies(),
+      lookupsApi.getLocations(),
+      
     ]);
-    setGroups(g.data as GroupType[]);
-    setLocations(l.data as LocationType[]);
-    setCompanies(co.data as Company[]);
+    
     setCountries(cou.data as Country[]);
-    setCurrencies(cur.data as Currency[]);
+    setLocations(l.data as LocationType[]);
+    
   }
 
-  async function reloadGroups() { const r = await lookupsApi.getGroupsFull(); setGroups(r.data as GroupType[]); }
+
+  async function reloadGroups(){}
   async function reloadCategories() { /* categories are loaded in section scope */ }
-  async function reloadLocations() { const r = await lookupsApi.getLocations(); setLocations(r.data as LocationType[]); }
+  async function reloadLocations() {}
   async function reloadLocDetails() {}
-  async function reloadCurrencies() { const r = await lookupsApi.getCurrencies(); setCurrencies(r.data as Currency[]); }
+  async function reloadCurrencies() {}
   async function reloadCountries() { const r = await lookupsApi.getCountries(); setCountries(r.data as Country[]); }
 
   return (
@@ -111,11 +109,11 @@ export default function SettingsPage() {
 
       {section === 'asset-code' && isAdmin() && <AssetCodeSettingsSection />}
       {section === 'notifications' && isAdmin() && <NotificationSettingsSection />}
-      {section === 'groups' && <GroupsSection groups={groups} countries={countries} onReload={reloadGroups} />}
+      {section === 'groups' && <GroupsSection countries={countries} onReload={reloadGroups} />}
       {section === 'categories' && <CategoriesSection onReload={reloadCategories} />}
-      {section === 'locations' && <LocationsSection locations={locations} countries={countries} onReload={reloadLocations} />}
+      {section === 'locations' && <LocationsSection countries={countries} onReload={reloadLocations} />}
       {section === 'location-details' && <LocationDetailsSection locations={locations} onReload={reloadLocDetails} />}
-      {section === 'currencies' && <CurrenciesSection currencies={currencies} onReload={reloadCurrencies} />}
+      {section === 'currencies' && <CurrenciesSection  onReload={reloadCurrencies} />}
       {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
     </div>
   );
@@ -391,9 +389,15 @@ function NotificationSettingsSection() {
 
 const emptyGroup = { groupName: '', acronym: '', depreciationRate: 0, accountNo: '', accountingExclusion: false, countryID: '' };
 
-function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; countries: Country[]; onReload: () => Promise<void> }) {
+function GroupsSection({ countries, onReload }: { countries: Country[]; onReload: () => Promise<void> }) {
   const { isAuditor, isFullAccess } = useAuth();
   const canManage = !isAuditor() && !isFullAccess();
+  const [groups, setGroups] = useState<GroupType[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyGroup);
@@ -408,6 +412,18 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
   }
   function cancel() { setMode(null); setEditId(null); }
 
+  useEffect(() => {
+  lookupsApi.getGroupsPaginated(pageNumber, pageSize)
+    .then((r) => {
+      setGroups(r.data.data);
+      setTotalPages(r.data.totalPages);
+      setTotalCount(r.data.totalCount);
+    })
+    .catch((err) =>
+      handleApiError(err, "Failed to load groups")
+    );
+}, [pageNumber, pageSize, reloadKey]);
+
   async function save(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -421,6 +437,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
         toast.success('Group created');
       }
       cancel();
+      setReloadKey(k => k + 1);
       await onReload();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
@@ -431,6 +448,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
     if (!ok) return;
     try {
       await lookupsApi.deleteGroup(g.groupID);
+      setReloadKey(k => k + 1);
       await onReload();
       toast.success('Group deleted');
     } catch (err) { handleApiError(err, 'Delete failed — group may be in use'); }
@@ -472,6 +490,30 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
           </form>
         </Modal>
       )}
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() =>
+          setPageNumber((p) => Math.max(1, p - 1))
+        }
+        onNext={() =>
+          setPageNumber((p) => Math.min(totalPages, p + 1))
+        }
+      />
       <DataTable
         columns={['Country', 'Group Name', 'Acronym', 'Dep. Rate %', 'Account No', 'Excl.']}
         rows={groups.map(g => [countries.find(c => c.countryID.trim() === g.countryID.trim())?.country ?? g.countryID.trim(), g.groupName, g.acronym, `${g.depreciationRate}%`, g.accountNo ?? '—', g.accountingExclusion ? 'Yes' : 'No'])}
@@ -479,6 +521,7 @@ function GroupsSection({ groups, countries, onReload }: { groups: GroupType[]; c
         onEdit={canManage ? i => startEdit(groups[i]) : undefined}
         onDelete={canManage ? i => del(groups[i]) : undefined}
       />
+      
     </SectionWrapper>
   );
 }
@@ -588,9 +631,15 @@ function CategoriesSection({ onReload }: { onReload: () => Promise<void> }) {
 
 // â"€â"€ Locations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-function LocationsSection({ locations, countries, onReload }: { locations: LocationType[]; countries: Country[]; onReload: () => Promise<void> }) {
+function LocationsSection({  countries, onReload }: {  countries: Country[]; onReload: () => Promise<void> }) {
   const { isAuditor } = useAuth();
   const canManage = !isAuditor();
+  const [locations, setLocations] = useState<LocationType[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ location: '', countryID: '' });
@@ -600,6 +649,18 @@ function LocationsSection({ locations, countries, onReload }: { locations: Locat
   function startAdd() { setForm({ location: '', countryID: countries[0]?.countryID ?? '' }); setEditId(null); setMode('add'); }
   function startEdit(l: LocationType) { setForm({ location: l.location, countryID: l.countryID }); setEditId(l.locationID); setMode('edit'); }
   function cancel() { setMode(null); setEditId(null); }
+
+  useEffect(() => {
+  lookupsApi.getLocationsPaginated(undefined, pageNumber, pageSize)
+    .then((r) => {
+      setLocations(r.data.data);
+      setTotalPages(r.data.totalPages);
+      setTotalCount(r.data.totalCount);
+    })
+    .catch((err) =>
+      handleApiError(err, "Failed to load location details")
+    );
+}, [pageNumber, pageSize, reloadKey]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -613,6 +674,7 @@ function LocationsSection({ locations, countries, onReload }: { locations: Locat
         toast.success('Location created');
       }
       cancel();
+      setReloadKey(k => k + 1);
       await onReload();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
@@ -623,6 +685,7 @@ function LocationsSection({ locations, countries, onReload }: { locations: Locat
     if (!ok) return;
     try {
       await lookupsApi.deleteLocation(l.locationID);
+      setReloadKey(k => k + 1);
       await onReload();
       toast.success('Location deleted');
     } catch (err) { handleApiError(err, 'Delete failed — location may be in use'); }
@@ -649,6 +712,30 @@ function LocationsSection({ locations, countries, onReload }: { locations: Locat
           </form>
         </Modal>
       )}
+       <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() =>
+          setPageNumber((p) => Math.max(1, p - 1))
+        }
+        onNext={() =>
+          setPageNumber((p) => Math.min(totalPages, p + 1))
+        }
+      />
       <DataTable
         columns={['Location', 'Country']}
         rows={locations.map(l => [l.location, countries.find(c => c.countryID === l.countryID)?.country ?? String(l.countryID)])}
@@ -800,17 +887,35 @@ function LocationDetailsSection({
 
 const emptyCurrency = { curCode: '', curName: '' };
 
-function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; onReload: () => Promise<void> }) {
+function CurrenciesSection({  onReload }: {  onReload: () => Promise<void> }) {
   const { isAdmin } = useAuth();
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editCode, setEditCode] = useState<string | null>(null);
   const [form, setForm] = useState(emptyCurrency);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
   function startAdd() { setForm(emptyCurrency); setEditCode(null); setMode('add'); }
   function startEdit(c: Currency) { setForm({ curCode: c.curCode.trim(), curName: c.curName }); setEditCode(c.curCode.trim()); setMode('edit'); }
   function cancel() { setMode(null); setEditCode(null); }
+
+  useEffect(() => {
+  lookupsApi.getCurrenciesPaginated(pageNumber, pageSize)
+    .then((r) => {
+      setCurrencies(r.data.data);
+      setTotalPages(r.data.totalPages);
+      setTotalCount(r.data.totalCount);
+    })
+    .catch((err) =>
+      handleApiError(err, "Failed to load currencies")
+    );
+}, [pageNumber, pageSize, reloadKey]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -824,6 +929,7 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
         toast.success('Currency created');
       }
       cancel();
+      setReloadKey(k => k + 1);
       await onReload();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
@@ -834,6 +940,7 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
     if (!ok) return;
     try {
       await lookupsApi.deleteCurrency(c.curCode.trim());
+      setReloadKey(k => k + 1);
       await onReload();
       toast.success('Currency deleted');
     } catch (err) { handleApiError(err, 'Delete failed — currency may be in use'); }
@@ -857,6 +964,30 @@ function CurrenciesSection({ currencies, onReload }: { currencies: Currency[]; o
           </form>
         </Modal>
       )}
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() =>
+          setPageNumber((p) => Math.max(1, p - 1))
+        }
+        onNext={() =>
+          setPageNumber((p) => Math.min(totalPages, p + 1))
+        }
+      />
       <DataTable
         columns={['Code', 'Currency Name']}
         rows={currencies.map(c => [c.curCode.trim(), c.curName])}

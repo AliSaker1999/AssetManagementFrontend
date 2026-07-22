@@ -17,7 +17,7 @@ import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
 import type {
   Asset, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
-  Maintenance, Warranty, Attachment, Contact, Currency, StatusType, Company,
+  Maintenance, Warranty, Attachment, Contact, Currency, StatusType, 
 } from '../types';
 
 type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'attachments' | 'remark';
@@ -267,7 +267,6 @@ export default function AssetDetailPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [changingStatus, setChangingStatus] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(false);
   const [statusMaintenanceModalOpen, setStatusMaintenanceModalOpen] = useState(false);
@@ -798,7 +797,7 @@ export default function AssetDetailPage() {
                   <button
                     type="button"
                     onClick={handleRemoveStatus}
-                    disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12}
+                    disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12 || asset.statusID === 13}
                     className="text-[11px] font-semibold px-2.5 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Remove Status

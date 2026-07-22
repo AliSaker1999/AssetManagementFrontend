@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { useLayoutEffect, useEffect, useRef, useState, type FormEvent , type ReactNode, type RefObject} from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -16,6 +17,19 @@ import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
 import TransferAssetModal from '../components/TransferAssetModal';
+
+interface StatusMenuStyle {
+  position: 'fixed';
+  left: number;
+  top?: number;
+  bottom?: number;
+}
+
+interface StatusMenuProps {
+  anchorRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+  children: ReactNode;
+}
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 const inp = 'input-base';
@@ -273,6 +287,7 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
     </div>
   );
 }
+
 
 export default function AssetsPage() {
   const { activeCompanyId, isAuditor } = useAuth();
@@ -658,6 +673,7 @@ export default function AssetsPage() {
       setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
     }
   }
+  const activeStatusBtnRef = useRef<HTMLButtonElement>(null);
 
   async function handleRemoveStatus(assetId: number, statusDate: string, statusDesc: string) {
     if (readOnly) return;
@@ -711,6 +727,56 @@ export default function AssetsPage() {
   const isDonationStatus = statusModalStatusId === 1;
   const isSoldStatus = statusModalStatusId === 4;
   const countsLoading = allAssetsCache === null;
+
+function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
+  const [style, setStyle] = useState<StatusMenuStyle | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  
+
+  useLayoutEffect(() => {
+    const btn = anchorRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const menuHeight = menuRef.current?.offsetHeight ?? 320;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
+
+    setStyle({
+      position: 'fixed',
+      left: rect.right - 200,
+      top: openUpward ? undefined : rect.bottom + 6,
+      bottom: openUpward ? window.innerHeight - rect.top + 6 : undefined,
+    });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(target) &&
+        anchorRef.current &&
+        !anchorRef.current.contains(target)
+      ) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose, anchorRef]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      style={style ?? { position: 'fixed', visibility: 'hidden' }}
+      className="z-30 min-w-[200px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
 
   return (
     <div>
@@ -770,11 +836,11 @@ export default function AssetsPage() {
               <IconSearch />
             </span>
             <input
-              className="w-full max-w-lg pl-10 pr-4 py-2.5 text-sm bg-pearl-50 border border-pearl-200 rounded-lg
+              className="w-full max-w-xl pl-10 pr-4 py-2.5 text-sm bg-pearl-50 border border-pearl-200 rounded-lg
                          text-ink-800 placeholder:text-ink-300
                          focus:outline-none focus:border-navy-600 focus:ring-1 focus:ring-navy-600/20
                          transition-colors duration-150"
-              placeholder="Search by code, description, category, location, employee, or barcode…"
+              placeholder="Search by code, description, category, location, employee, or barcode."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -966,12 +1032,16 @@ export default function AssetsPage() {
                     ) : (
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="relative flex-1 min-w-0" data-status-menu-root="true">
+                          
                           <button
+                          
+                          ref={a.assetID === openStatusMenuAssetId ? activeStatusBtnRef : null}
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               if (changingStatus.has(a.assetID)) return;
                               setOpenStatusMenuAssetId((prev) => prev === a.assetID ? null : a.assetID);
+                              
                             }}
                             className={clsx(
                               'flex items-center gap-2 w-full rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
@@ -989,12 +1059,11 @@ export default function AssetsPage() {
                             <span className="truncate flex-1 min-w-0">{a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')}</span>
                             <span className="ml-auto text-ink-300"><IconChevronDown /></span>
                           </button>
+                          
 
                           {openStatusMenuAssetId === a.assetID && (
-                            <div
-                              className="absolute top-[calc(100%+6px)] right-0 z-30 min-w-[200px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            
+                            <StatusMenu anchorRef={activeStatusBtnRef} onClose={() => setOpenStatusMenuAssetId(null)}>
                               {statuses
                                 .filter((s) => ![5, 9, 10].includes(s.statusID))
                                 .map((s) => (
@@ -1035,7 +1104,7 @@ export default function AssetsPage() {
                                     {a.statusID === s.statusID && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-navy-500">Current</span>}
                                   </button>
                                 ))}
-                            </div>
+                            </StatusMenu>
                           )}
                           {!readOnly && transferAsset && (
                             <TransferAssetModal
@@ -1059,7 +1128,7 @@ export default function AssetsPage() {
                         <button
                           type="button"
                           onClick={() => openRemoveStatusModal(a)}
-                          disabled={changingStatus.has(a.assetID) || a.statusID === 0 || a.statusID === 12}
+                          disabled={changingStatus.has(a.assetID) || a.statusID === 0 || a.statusID === 12  || a.statusID === 13}
                           className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Remove Status
