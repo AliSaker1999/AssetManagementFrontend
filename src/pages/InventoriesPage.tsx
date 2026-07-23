@@ -1010,7 +1010,7 @@ function PastInventoriesSection({
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function InventoriesPage() {
-  const { activeCompanyId, isAuditor } = useAuth();
+  const { activeCompanyId, isAuditor, user, isAdmin } = useAuth();
   const readOnly = isAuditor();
 
   const [companies, setCompanies]           = useState<Company[]>([]);
@@ -1255,6 +1255,11 @@ export default function InventoriesPage() {
   const lastMadeInMonths = diffMonthsFromNow(lastDate ?? latestCompletedInventory?.inventoryEndDate ?? null);
   const selectedCompanyCountryId = companies.find((c) => c.companyID === companyId)?.countryID?.trim() ?? '';
 
+  const allowedCompanyIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
+const visibleCompanies = isAdmin()
+  ? companies
+  : companies.filter((c) => allowedCompanyIds.has(c.companyID));
+
   // ── loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -1305,9 +1310,7 @@ export default function InventoriesPage() {
             className="input-base min-w-[220px] text-sm"
           >
             <option value={0} disabled>Select company…</option>
-            {companies.map((c) => (
-              <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
-            ))}
+              {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
           </Select>
         </div>
       </div>

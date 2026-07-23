@@ -45,6 +45,7 @@ export interface AssetListItem {
   invoiceNo?: string;
   hrEmpIDUsedBy?: string | null;
   employeeName?: string | null;
+  installedAt?: string | null;
   }
 
 export interface Asset {

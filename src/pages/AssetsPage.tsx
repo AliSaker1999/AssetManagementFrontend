@@ -498,16 +498,7 @@ export default function AssetsPage() {
   }
 };
 
-  useEffect(() => {
-    const onDocumentMouseDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-status-menu-root="true"]')) return;
-      setOpenStatusMenuAssetId(null);
-    };
 
-    document.addEventListener('mousedown', onDocumentMouseDown);
-    return () => document.removeEventListener('mousedown', onDocumentMouseDown);
-  }, []);
 
   // Reset to page 1 and clear cache when search or active company changes
   useEffect(() => { setPageNumber(1); }, [search, selectedStatusIds, activeCompanyId]);
@@ -557,7 +548,8 @@ export default function AssetsPage() {
                 (a.category ?? '').toLowerCase().includes(q) ||
                 (a.location ?? '').toLowerCase().includes(q) ||
                 (a.employeeName ?? '').toLowerCase().includes(q) ||
-                (a.hrEmpIDUsedBy ?? '').toLowerCase().includes(q)
+                (a.hrEmpIDUsedBy ?? '').toLowerCase().includes(q) ||
+                (a.installedAt ?? '').toLowerCase().includes(q)
             );
           }
           if (selectedStatusIds.size > 0) {
@@ -947,13 +939,13 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
 
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-visible">
           {/* Table header */}
-          <div className="grid grid-cols-[1.4fr_2fr_1.3fr_1.5fr_1.7fr_2.3fr_0.7fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-          {['Code', 'Description', 'Category', 'Location', 'Employee', 'Status', 'Barcode'].map((h) => (
-            <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
-              {h}
-            </div>
-          ))}
-        </div>
+          <div className="grid grid-cols-[1.3fr_1.8fr_1.2fr_1.4fr_1.5fr_1.5fr_2.1fr_0.7fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+            {['Code', 'Description', 'Category', 'Location', 'Employee', 'Installed At', 'Status', 'Barcode'].map((h) => (
+              <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
+                {h}
+              </div>
+            ))}
+          </div>
 
           {loading ? (
             <TableSkeleton />
@@ -982,7 +974,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[1.4fr_2fr_1.3fr_1.5fr_1.7fr_2.3fr_0.7fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid grid-cols-[1.3fr_1.8fr_1.2fr_1.4fr_1.5fr_1.5fr_2.1fr_0.7fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
@@ -1018,6 +1010,14 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                     title={a.employeeName ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : undefined}
                   >
                     {a.employeeName ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : '—'}
+                  </div>
+
+                  {/* Installed At */}
+                  <div
+                    className="text-[12px] text-ink-400 truncate pr-4 min-w-0"
+                    title={a.installedAt ? a.installedAt : undefined}
+                  >
+                    {a.installedAt ?? '—'}
                   </div>
 
                   {/* Status */}

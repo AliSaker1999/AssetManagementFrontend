@@ -174,7 +174,7 @@ function formatInventoryLabel(inv: InventoryListItem): string {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const { activeCompanyId } = useAuth();
+  const { activeCompanyId, user, isAdmin } = useAuth();
 
   const [reportType, setReportType] = useState<ReportType>('assets-list');
   const [downloading, setDownloading] = useState(false);
@@ -369,6 +369,11 @@ export default function ReportsPage() {
   const busy             = downloading || previewing;
   const pd               = previewData; // local const for TS narrowing
 
+  const allowedCompanyIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
+const visibleCompanies = isAdmin()
+  ? companies
+  : companies.filter((c) => allowedCompanyIds.has(c.companyID));
+
   return (
     <div className="min-h-screen bg-pearl-50">
       <div className="bg-white border-b border-pearl-200 px-8 py-5">
@@ -467,9 +472,7 @@ export default function ReportsPage() {
                   onChange={(v) => setCompanyId(Number(v))}
                   placeholder="Select company…"
                 >
-                  {companies.map((c) => (
-                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
-                  ))}
+                  {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
                 </SelectField>
               </OptionRow>
 

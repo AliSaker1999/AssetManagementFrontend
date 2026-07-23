@@ -24,7 +24,9 @@ export default function AssetFormPage() {
   const navigate = useNavigate();
   const isEdit = Boolean(id);
   const assetId = Number(id);
-  const { activeCompanyId: ctxCompanyId } = useAuth();
+const { activeCompanyId: ctxCompanyId, user, isAdmin } = useAuth();
+
+
 
   const [form, setForm] = useState<Partial<Asset>>({
     purchasePrice: 0,
@@ -69,6 +71,10 @@ export default function AssetFormPage() {
     financialContact: '', financialContactEmail: '', address: '', countryID: '',
     telephone1: '', telephone2: '', mobile1: '', mobile2: '', fax1: '', fax2: '', remark: '',
   });
+  const allowedCompanyIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
+const visibleCompanies = isAdmin()
+  ? companies
+  : companies.filter((c) => allowedCompanyIds.has(c.companyID));
   
   
   
@@ -706,7 +712,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
 
           {/* Company */}
           <Field label="Company *">
-            <DropWithAdd onAdd={() => openModal('company')}>
+            <DropWithAdd onAdd={() => openModal('company')} showAdd={isAdmin()}>
               <Select value={form.companyID ?? ''} onChange={(e) => {
                 const newCompanyId = Number(e.target.value);
                 set('companyID', newCompanyId);
@@ -723,7 +729,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
                 }
               }} required>
                 <option value="">Select…</option>
-                {companies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
+                {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
               </Select>
             </DropWithAdd>
           </Field>
@@ -784,7 +790,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
 
           {/* Group */}
           <Field label="Group *">
-            <DropWithAdd onAdd={() => openModal('group')}>
+            <DropWithAdd onAdd={() => openModal('group') } showAdd={isAdmin()}>
               <Select value={form.groupID ?? ''} onChange={(e) => set('groupID', Number(e.target.value))} required>
                 <option value="">Select…</option>
                 {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
@@ -858,7 +864,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
 
           {/* Currency */}
           <Field label="Currency *">
-            <DropWithAdd onAdd={() => openModal('currency')}>
+            <DropWithAdd onAdd={() => openModal('currency') } showAdd={isAdmin()}>
               <Select value={form.purchaseCurCode ?? ''} onChange={(e) => set('purchaseCurCode', e.target.value)} required>
                 {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode} – {c.curName}</option>)}
               </Select>
@@ -950,7 +956,8 @@ function MField({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
-function DropWithAdd({ children, onAdd }: { children: React.ReactNode; onAdd: () => void }) {
+function DropWithAdd({ children, onAdd, showAdd = true }: { children: React.ReactNode; onAdd: () => void; showAdd?: boolean }) {
+  if (!showAdd) return <>{children}</>;
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex-1 min-w-0">{children}</div>

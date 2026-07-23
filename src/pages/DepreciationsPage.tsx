@@ -13,7 +13,8 @@ import TablePagination from '../components/ui/TablePagination';
 const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
 export default function DepreciationsPage() {
-  const { activeCompanyId, isAuditor } = useAuth();
+  const { activeCompanyId, isAuditor, user, isAdmin } = useAuth();
+
   const readOnly = isAuditor();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState<number>(activeCompanyId ?? 0);
@@ -30,20 +31,29 @@ export default function DepreciationsPage() {
   const [runDate, setRunDate] = useState(new Date().toISOString().slice(0, 10));
   const { confirm, dialog } = useConfirm();
 
-  useEffect(() => {
-    lookupsApi.getCompanies()
-      .then((r) => {
-        const list = r.data as Company[];
-        setCompanies(list);
-        if (activeCompanyId != null) {
-          setCompanyId(activeCompanyId);
-        } else if (list.length > 0) {
-          setCompanyId(list[0].companyID);
-        }
-      })
-      .catch((err) => handleApiError(err, 'Failed to load companies'))
-      .finally(() => setLoading(false));
-  }, []);
+  const allowedCompanyIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
+  const visibleCompanies = isAdmin()
+    ? companies
+    : companies.filter((c) => allowedCompanyIds.has(c.companyID));
+
+useEffect(() => {
+  lookupsApi.getCompanies()
+    .then((r) => {
+      const list = r.data as Company[];
+      setCompanies(list);
+
+      const allowedIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
+      const visible = isAdmin() ? list : list.filter((c) => allowedIds.has(c.companyID));
+
+      if (activeCompanyId != null) {
+        setCompanyId(activeCompanyId);
+      } else if (visible.length > 0) {
+        setCompanyId(visible[0].companyID);
+      }
+    })
+    .catch((err) => handleApiError(err, 'Failed to load companies'))
+    .finally(() => setLoading(false));
+}, []);
 
   useEffect(() => {
     if (activeCompanyId != null) setCompanyId(activeCompanyId);
@@ -171,9 +181,7 @@ export default function DepreciationsPage() {
         <label className="text-[13px] font-semibold text-[#555]">Company:</label>
         <div className="min-w-[200px]">
           <Select value={companyId} onChange={(e) => setCompanyId(Number(e.target.value))}>
-            {companies.map((c) => (
-              <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
-            ))}
+            {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
           </Select>
         </div>
         <label className="text-[13px] font-semibold text-[#555]">Run Depreciation for:</label>

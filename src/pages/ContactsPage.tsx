@@ -39,7 +39,7 @@ const inp = 'w-full px-2.5 py-[7px] border border-[#ddd] rounded-md text-sm outl
 const lbl = 'text-xs font-semibold text-[#555] mb-1 block';
 
 export default function ContactsPage() {
-  const { isAuditor } = useAuth();
+  const { isAuditor, isAdmin, allowedCountries } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -57,6 +57,10 @@ export default function ContactsPage() {
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
   const readOnly = isAuditor();
+  const allowedCountrySet = new Set(allowedCountries);
+  const visibleCountries = isAdmin()
+    ? countries.filter((c) => c.activeCountry)
+    : countries.filter((c) => c.activeCountry && allowedCountrySet.has(c.countryID));
 
   useEffect(() => {
     Promise.all([
@@ -249,7 +253,7 @@ export default function ContactsPage() {
                 <label className={lbl}>Country</label>
                 <Select value={form.countryID} onChange={e => setForm(f => ({ ...f, countryID: e.target.value }))}>
                   <option value="">Select country…</option>
-                  {countries.filter(c => c.activeCountry).map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
+                  {visibleCountries.map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
                 </Select>
               </div>
 

@@ -632,7 +632,7 @@ function CategoriesSection({ onReload }: { onReload: () => Promise<void> }) {
 // â"€â"€ Locations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function LocationsSection({  countries, onReload }: {  countries: Country[]; onReload: () => Promise<void> }) {
-  const { isAuditor } = useAuth();
+  const { isAuditor, isAdmin, allowedCountries } = useAuth();
   const canManage = !isAuditor();
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [pageNumber, setPageNumber] = useState(1);
@@ -645,6 +645,11 @@ function LocationsSection({  countries, onReload }: {  countries: Country[]; onR
   const [form, setForm] = useState({ location: '', countryID: '' });
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
+  const readOnly = isAuditor();
+  const allowedCountrySet = new Set(allowedCountries);
+  const visibleCountries = isAdmin()
+    ? countries.filter((c) => c.activeCountry)
+    : countries.filter((c) => c.activeCountry && allowedCountrySet.has(c.countryID));
 
   function startAdd() { setForm({ location: '', countryID: countries[0]?.countryID ?? '' }); setEditId(null); setMode('add'); }
   function startEdit(l: LocationType) { setForm({ location: l.location, countryID: l.countryID }); setEditId(l.locationID); setMode('edit'); }
@@ -704,7 +709,7 @@ function LocationsSection({  countries, onReload }: {  countries: Country[]; onR
               <Field label="Country *">
                 <Select value={form.countryID || ''} onChange={e => setForm(f => ({ ...f, countryID: e.target.value }))} required>
                   <option value="">Select country…</option>
-                  {countries.map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
+                  {visibleCountries.map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
                 </Select>
               </Field>
             </div>
