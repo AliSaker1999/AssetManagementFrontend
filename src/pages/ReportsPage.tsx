@@ -370,9 +370,22 @@ export default function ReportsPage() {
   const pd               = previewData; // local const for TS narrowing
 
   const allowedCompanyIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
-const visibleCompanies = isAdmin()
+  const visibleCompanies = isAdmin()
   ? companies
   : companies.filter((c) => allowedCompanyIds.has(c.companyID));
+
+  function formatCompanyLabel(company: Company) {
+  const countryId = company.countryID?.trim() ?? "";
+  const companyName = company.companyName?.trim() ?? "";
+
+  // Remove trailing comma from country ID
+  const cleanedCountryId = countryId.replace(/,\s*$/, "");
+
+  // Remove leading comma from company name (if it exists)
+  const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+
+  return `${cleanedCountryId} – ${cleanedCompanyName}`;
+}
 
   return (
     <div className="min-h-screen bg-pearl-50">
@@ -472,7 +485,11 @@ const visibleCompanies = isAdmin()
                   onChange={(v) => setCompanyId(Number(v))}
                   placeholder="Select company…"
                 >
-                  {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
+                  {visibleCompanies.map((c) => (
+                    <option key={c.companyID} value={c.companyID}>
+                      {formatCompanyLabel(c)}
+                    </option>
+                  ))}
                 </SelectField>
               </OptionRow>
 

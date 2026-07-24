@@ -61,6 +61,8 @@ export const lookupsApi = {
 
   // Brands
   createBrand: (data: { brandDesc: string }) => client.post('/lookups/brands', data),
+  updateBrand: (id: number, data: { brandDesc: string }) => client.put(`/lookups/brands/${id}`, data),
+  deleteBrand: (id: number) => client.delete(`/lookups/brands/${id}`),
 
   // Categories
   createCategory: (data: object) => client.post('/lookups/categories', data),

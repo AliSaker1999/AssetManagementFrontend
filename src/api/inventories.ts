@@ -23,4 +23,6 @@ export const inventoriesApi = {
   setAvailableByCode: (inventoryId: number, assetCode: string, isAvailable: boolean) =>
     client.put(`/inventories/${inventoryId}/available-by-code`, isAvailable, { params: { assetCode } }),
   relocate: (data: object) => client.put('/inventories/relocate', data),
+  getStats: (inventoryId: number, companyId: number) =>
+  client.get(`/inventories/${inventoryId}/stats`, { params: { companyId } }),
 };

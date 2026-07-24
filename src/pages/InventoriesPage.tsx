@@ -94,6 +94,7 @@ function RelocateModal({
   const [newRoom, setNewRoom] = useState('');
   const [savingDetail, setSavingDetail] = useState(false);
 
+
   useEffect(() => {
     lookupsApi.getLocations(companyCountryId || undefined).then((r) => {
       const list = r.data as LocationType[];
@@ -113,6 +114,7 @@ function RelocateModal({
       if (list.length > 0) setLocDetailId(list[0].locDetailID);
     });
   }, [locId]);
+  
 
   async function handleAddLocation() {
     if (!newLocName.trim()) { toast.error('Location name is required.'); return; }
@@ -1014,7 +1016,7 @@ export default function InventoriesPage() {
   const readOnly = isAuditor();
 
   const [companies, setCompanies]           = useState<Company[]>([]);
-  const [companyId, setCompanyId]           = useState<number>(0);
+  const [companyId, setCompanyId]           = useState<number | null>(null);
   const [session, setSession]               = useState<InventoryActiveSession | null>(null);
   const [details, setDetails]               = useState<InventoryDetail[]>([]);
   const [lastDate, setLastDate]             = useState<string | null>(null);
@@ -1037,16 +1039,16 @@ export default function InventoriesPage() {
 
   // ── load companies on mount ───────────────────────────────────────────────
   useEffect(() => {
-    lookupsApi.getCompanies()
-      .then((r) => {
-        const list = r.data as Company[];
-        setCompanies(list);
-        const cid = activeCompanyId ?? (list[0]?.companyID ?? 0);
-        setCompanyId(cid);
-      })
-      .catch((err) => handleApiError(err, 'Failed to load companies'))
-      .finally(() => setLoading(false));
-  }, []);
+  lookupsApi.getCompanies()
+    .then((r) => {
+      const list = r.data as Company[];
+      setCompanies(list);
+      // Do NOT auto-set companyId here anymore.
+      // Previously: setCompanyId(activeCompanyId ?? list[0]?.companyID ?? 0);
+    })
+    .catch((err) => handleApiError(err, 'Failed to load companies'))
+    .finally(() => setLoading(false));
+}, []);
 
   // ── sync active company from sidebar switcher ─────────────────────────────
   useEffect(() => {
@@ -1054,6 +1056,8 @@ export default function InventoriesPage() {
   }, [activeCompanyId]);
 
   // ── load session + last date when company changes ─────────────────────────
+
+    const [sessionStats, setSessionStats] = useState({ total: 0, found: 0, relocated: 0 });
   useEffect(() => {
     if (!companyId) return;
     void loadSessionData(companyId);
@@ -1071,13 +1075,20 @@ export default function InventoriesPage() {
       setSession(active);
       setLastDate(lastRes.data as string | null);
       setPastInventories(historyRes.data as InventoryListItem[]);
+
       if (active?.inventoryID) {
         setPageNumber(1);
-        await loadDetails(active.inventoryID, 1, pageSize);
+        const [, statsRes] = await Promise.all([
+          loadDetails(active.inventoryID, 1, pageSize),
+          inventoriesApi.getStats(active.inventoryID, cid),
+        ]);
+        const s = statsRes.data as { total: number; found: number; relocated: number };
+        setSessionStats(s);
       } else {
         setDetails([]);
         setTotalCount(0);
         setTotalPages(1);
+        setSessionStats({ total: 0, found: 0, relocated: 0 });
       }
     } catch (err) {
       handleApiError(err, 'Failed to load inventory data');
@@ -1130,20 +1141,27 @@ export default function InventoriesPage() {
   }, [session?.inventoryID, pageNumber, pageSize, search]);
 
   // ── start inventory ───────────────────────────────────────────────────────
-  async function handleStart() {
-    if (readOnly) return;
-    if (!companyId) return;
-    setActionLoading(true);
-    try {
-      await inventoriesApi.start({ inventoryStartDate: today, companyID: companyId });
-      toast.success('Inventory session started');
-      await loadSessionData(companyId);
-    } catch (err) {
-      handleApiError(err, 'Failed to start inventory');
-    } finally {
-      setActionLoading(false);
-    }
+async function handleStart() {
+  if (readOnly) return;
+  if (companyId == null) {
+    toast.error('Please select a company first.');
+    return;
   }
+  if (!isAdmin() && !allowedCompanyIds.has(companyId)) {
+    toast.error('You do not have access to this company.');
+    return;
+  }
+  setActionLoading(true);
+  try {
+    await inventoriesApi.start({ inventoryStartDate: today, companyID: companyId });
+    toast.success('Inventory session started');
+    await loadSessionData(companyId);
+  } catch (err) {
+    handleApiError(err, 'Failed to start inventory');
+  } finally {
+    setActionLoading(false);
+  }
+}
 
   // ── end inventory ─────────────────────────────────────────────────────────
   async function handleEnd(endDate: string) {
@@ -1152,89 +1170,90 @@ export default function InventoriesPage() {
     await inventoriesApi.end(session.inventoryID, { inventoryEndDate: endDate });
     toast.success('Inventory session ended');
     setShowEndModal(false);
-    await loadSessionData(companyId);
+    await loadSessionData(companyId?? 0);
   }
 
   // ── refresh ───────────────────────────────────────────────────────────────
-  async function handleRefresh() {
-    if (readOnly) return;
-    if (!session) return;
-    setActionLoading(true);
-    try {
-      await inventoriesApi.refresh(session.inventoryID);
-      await loadDetails(session.inventoryID);
-      toast.success('Asset list refreshed');
-    } catch (err) {
-      handleApiError(err, 'Refresh failed');
-    } finally {
-      setActionLoading(false);
-    }
+async function handleRefresh() {
+  if (readOnly || !session) return;
+  setActionLoading(true);
+  try {
+    await inventoriesApi.refresh(session.inventoryID);
+    const [, statsRes] = await Promise.all([
+      loadDetails(session.inventoryID),
+      inventoriesApi.getStats(session.inventoryID, companyId ?? 0),
+    ]);
+    setSessionStats(statsRes.data as { total: number; found: number; relocated: number });
+    toast.success('Asset list refreshed');
+  } catch (err) {
+    handleApiError(err, 'Refresh failed');
+  } finally {
+    setActionLoading(false);
   }
+}
 
   // ── mark all available ────────────────────────────────────────────────────
   async function handleMarkAllAvailable() {
-    if (readOnly) return;
-    if (!session) return;
-    setActionLoading(true);
-    try {
-      await inventoriesApi.setAvailableAll(session.inventoryID, true);
-      setDetails((prev) => prev.map((d) => ({ ...d, isAvailable: true })));
-      toast.success('All assets marked as found');
-    } catch (err) {
-      handleApiError(err, 'Failed to update');
-    } finally {
-      setActionLoading(false);
-    }
+  if (readOnly || !session) return;
+  setActionLoading(true);
+  try {
+    await inventoriesApi.setAvailableAll(session.inventoryID, true);
+    setDetails((prev) => prev.map((d) => ({ ...d, isAvailable: true })));
+    setSessionStats((s) => ({ ...s, found: s.total })); // all found now
+    toast.success('All assets marked as found');
+  } catch (err) {
+    handleApiError(err, 'Failed to update');
+  } finally {
+    setActionLoading(false);
   }
+}
 
-  async function handleMarkAllUnavailable() {
-    if (readOnly) return;
-    if (!session) return;
-    setActionLoading(true);
-    try {
-      await inventoriesApi.setAvailableAll(session.inventoryID, false);
-      setDetails((prev) => prev.map((d) => ({ ...d, isAvailable: false })));
-      toast.success('All assets marked as missing');
-    } catch (err) {
-      handleApiError(err, 'Failed to update');
-    } finally {
-      setActionLoading(false);
-    }
+async function handleMarkAllUnavailable() {
+  if (readOnly || !session) return;
+  setActionLoading(true);
+  try {
+    await inventoriesApi.setAvailableAll(session.inventoryID, false);
+    setDetails((prev) => prev.map((d) => ({ ...d, isAvailable: false })));
+    setSessionStats((s) => ({ ...s, found: 0 }));
+    toast.success('All assets marked as missing');
+  } catch (err) {
+    handleApiError(err, 'Failed to update');
+  } finally {
+    setActionLoading(false);
   }
+}
 
   // ── toggle single availability ────────────────────────────────────────────
-  async function toggleAvailable(item: InventoryDetail) {
-    if (readOnly) return;
-    const next = !item.isAvailable;
-    setDetails((prev) => prev.map((d) => d.invDetailID === item.invDetailID ? { ...d, isAvailable: next } : d));
-    try {
-      await inventoriesApi.setAvailable(item.invDetailID, next);
-    } catch (err) {
-      setDetails((prev) => prev.map((d) => d.invDetailID === item.invDetailID ? { ...d, isAvailable: item.isAvailable } : d));
-      handleApiError(err, 'Failed to update availability');
-    }
+async function toggleAvailable(item: InventoryDetail) {
+  if (readOnly) return;
+  const next = !item.isAvailable;
+  setDetails((prev) => prev.map((d) => d.invDetailID === item.invDetailID ? { ...d, isAvailable: next } : d));
+  setSessionStats((s) => ({ ...s, found: s.found + (next ? 1 : -1) }));
+  try {
+    await inventoriesApi.setAvailable(item.invDetailID, next);
+  } catch (err) {
+    setDetails((prev) => prev.map((d) => d.invDetailID === item.invDetailID ? { ...d, isAvailable: item.isAvailable } : d));
+    setSessionStats((s) => ({ ...s, found: s.found + (next ? -1 : 1) })); // revert
+    handleApiError(err, 'Failed to update availability');
   }
+}
 
   // ── confirm relocation ────────────────────────────────────────────────────
-  async function handleRelocateConfirm(locId: number, locDetailId: number) {
-    if (readOnly) return;
-    if (!relocateTarget) return;
-    await inventoriesApi.relocate({
-      invDetailID: relocateTarget.invDetailID,
-      relocatedLocationID: locId,
-      relocatedLocDetailID: locDetailId,
-    });
-    const loc = `Location ${locId}`;
-    setDetails((prev) =>
-      prev.map((d) =>
-        d.invDetailID === relocateTarget.invDetailID
-          ? { ...d, relocated: true, relocatedLocation: loc }
-          : d,
-      ),
-    );
-    toast.success('Relocation saved');
-    setRelocateTarget(null);
-  }
+async function handleRelocateConfirm(locId: number, locDetailId: number) {
+  if (readOnly || !relocateTarget) return;
+  await inventoriesApi.relocate({
+    invDetailID: relocateTarget.invDetailID,
+    relocatedLocationID: locId,
+    relocatedLocDetailID: locDetailId,
+  });
+  const loc = `Location ${locId}`;
+  setDetails((prev) =>
+    prev.map((d) => d.invDetailID === relocateTarget.invDetailID ? { ...d, relocated: true, relocatedLocation: loc } : d),
+  );
+  setSessionStats((s) => ({ ...s, relocated: s.relocated + 1 }));
+  toast.success('Relocation saved');
+  setRelocateTarget(null);
+}
 
   // ── filtered list ─────────────────────────────────────────────────────────
   const filtered = details.filter(
@@ -1259,6 +1278,20 @@ export default function InventoriesPage() {
 const visibleCompanies = isAdmin()
   ? companies
   : companies.filter((c) => allowedCompanyIds.has(c.companyID));
+
+
+  function formatCompanyLabel(company: Company) {
+  const countryId = company.countryID?.trim() ?? "";
+  const companyName = company.companyName?.trim() ?? "";
+
+  // Remove trailing comma from country ID
+  const cleanedCountryId = countryId.replace(/,\s*$/, "");
+
+  // Remove leading comma from company name (if it exists)
+  const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+
+  return `${cleanedCountryId} – ${cleanedCompanyName}`;
+}
 
   // ── loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
@@ -1305,13 +1338,18 @@ const visibleCompanies = isAdmin()
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase text-ink-300">Company</span>
           <Select
-            value={companyId}
-            onChange={(e) => setCompanyId(Number(e.target.value))}
-            className="input-base min-w-[220px] text-sm"
-          >
-            <option value={0} disabled>Select company…</option>
-              {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
-          </Select>
+            value={companyId?? 0}
+            onChange={(e) => {
+            const v = Number(e.target.value);
+            setCompanyId(v === 0 ? null : v);
+          }}
+          className="input-base min-w-[250px] max-w-[500px] text-sm"
+        >
+          <option value={0}>Select company…</option>
+          {visibleCompanies.map((c) => (
+            <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
+          ))}
+        </Select>
         </div>
       </div>
 
@@ -1425,10 +1463,10 @@ const visibleCompanies = isAdmin()
                   </span>
                 </div>
                 <div className="flex items-center gap-5 text-[12px]">
-                  <Stat label="Total" value={details.length} color="ink" />
-                  <Stat label="Found" value={details.filter((d) => d.isAvailable).length} color="green" />
-                  <Stat label="Missing" value={details.filter((d) => !d.isAvailable).length} color="red" />
-                  <Stat label="Relocated" value={details.filter((d) => d.relocated).length} color="amber" />
+                  <Stat label="Total" value={sessionStats.total} color="ink" />
+                  <Stat label="Found" value={sessionStats.found} color="green" />
+                  <Stat label="Missing" value={sessionStats.total - sessionStats.found} color="red" />
+                  <Stat label="Relocated" value={sessionStats.relocated} color="amber" />
                 </div>
               </div>
 
@@ -1451,7 +1489,7 @@ const visibleCompanies = isAdmin()
                 </div>
 
                 <span className="text-[12px] text-ink-400 whitespace-nowrap">
-                  <span className="font-semibold text-ink-700">{foundCount}</span> / {filtered.length} found
+                  <span className="font-semibold text-ink-700">{sessionStats.found}</span> / {sessionStats.total} found
                 </span>
 
                 {!readOnly && (

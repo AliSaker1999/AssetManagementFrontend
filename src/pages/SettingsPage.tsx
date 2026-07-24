@@ -6,13 +6,13 @@ import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { useConfirm } from '../hooks/useConfirm';
-import type { GroupType, CategoryType, LocationType, LocationDetail, Country, Currency, Setting } from '../types';
+import type { GroupType, CategoryType, LocationType, LocationDetail, Country, Currency, Setting, BrandType } from '../types';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 
-type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'currencies' | 'countries';
+type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'brands' | 'currencies' | 'countries';
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'asset-code', label: 'Asset Code' },
@@ -21,6 +21,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'categories', label: 'Categories' },
   { key: 'locations', label: 'Locations' },
   { key: 'location-details', label: 'Location Details' },
+  { key: 'brands', label: 'Brands' },
   { key: 'currencies', label: 'Currencies' },
   { key: 'countries', label: 'Countries' },
 ];
@@ -55,12 +56,13 @@ function RadioGroup({
     </div>
   );
 }
+async function reloadBrands() {}
 
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
-
+ 
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
  
@@ -85,6 +87,7 @@ export default function SettingsPage() {
   async function reloadCategories() { /* categories are loaded in section scope */ }
   async function reloadLocations() {}
   async function reloadLocDetails() {}
+  async function reloadBrands() {}
   async function reloadCurrencies() {}
   async function reloadCountries() { const r = await lookupsApi.getCountries(); setCountries(r.data as Country[]); }
 
@@ -113,6 +116,7 @@ export default function SettingsPage() {
       {section === 'categories' && <CategoriesSection onReload={reloadCategories} />}
       {section === 'locations' && <LocationsSection countries={countries} onReload={reloadLocations} />}
       {section === 'location-details' && <LocationDetailsSection locations={locations} onReload={reloadLocDetails} />}
+      {section === 'brands' && (<BrandsSection onReload={reloadBrands} />)}
       {section === 'currencies' && <CurrenciesSection  onReload={reloadCurrencies} />}
       {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
     </div>
@@ -645,7 +649,6 @@ function LocationsSection({  countries, onReload }: {  countries: Country[]; onR
   const [form, setForm] = useState({ location: '', countryID: '' });
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
-  const readOnly = isAuditor();
   const allowedCountrySet = new Set(allowedCountries);
   const visibleCountries = isAdmin()
     ? countries.filter((c) => c.activeCountry)
@@ -888,7 +891,147 @@ function LocationDetailsSection({
   );
 }
 
+
 // â"€â"€ Currencies â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+const emptyBrand = {
+  brandDesc: '',
+};
+
+function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
+  const { isAdmin } = useAuth();
+  const [brands, setBrands] = useState<BrandType[]>([]);
+  const [mode, setMode] = useState<'add' | 'edit' | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState(emptyBrand);
+  const [saving, setSaving] = useState(false);
+  const { confirm, dialog } = useConfirm();
+
+  function load() {
+    lookupsApi
+      .getBrands()
+      .then((r) => setBrands(r.data as BrandType[]))
+      .catch((err) => handleApiError(err, 'Failed to load brands'));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  function startAdd() {
+    setForm(emptyBrand);
+    setEditId(null);
+    setMode('add');
+  }
+
+  function startEdit(b: BrandType) {
+    setForm({
+      brandDesc: b.brandDesc,
+    });
+    setEditId(b.brandID);
+    setMode('edit');
+  }
+
+  function cancel() {
+    setMode(null);
+    setEditId(null);
+  }
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+
+    try {
+      if (mode === 'edit' && editId !== null) {
+        await lookupsApi.updateBrand(editId, form);
+        toast.success('Brand updated');
+      } else {
+        await lookupsApi.createBrand(form);
+        toast.success('Brand created');
+      }
+
+      cancel();
+      load();
+      await onReload();
+    } catch (err) {
+      handleApiError(err, 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function del(b: BrandType) {
+    const ok = await confirm(
+      `Delete brand "${b.brandDesc}"?`,
+      { title: 'Delete Brand' }
+    );
+
+    if (!ok) return;
+
+    try {
+      await lookupsApi.deleteBrand(b.brandID);
+      toast.success('Brand deleted');
+      load();
+      await onReload();
+    } catch (err) {
+      handleApiError(err, 'Delete failed — brand may be in use');
+    }
+  }
+
+  return (
+    <SectionWrapper
+      title="Brands"
+      onAdd={isAdmin() && mode === null ? startAdd : undefined}
+    >
+      {dialog}
+
+      {mode !== null && (
+        <Modal
+          title={mode === 'edit' ? 'Edit Brand' : 'New Brand'}
+          onClose={cancel}
+        >
+          <form onSubmit={save}>
+            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(180px,1fr))]">
+              <Field label="Brand *">
+                <input
+                  className={inputCls}
+                  value={form.brandDesc}
+                  onChange={(e) =>
+                    setForm({
+                      brandDesc: e.target.value,
+                    })
+                  }
+                  required
+                  maxLength={50}
+                  autoFocus
+                />
+              </Field>
+            </div>
+
+            <FormActions
+              saving={saving}
+              mode={mode}
+              onCancel={cancel}
+            />
+          </form>
+        </Modal>
+      )}
+
+      <DataTable
+        columns={['Brand']}
+        rows={brands.map((b) => [b.brandDesc])}
+        highlightIndex={
+          editId !== null
+            ? brands.findIndex((b) => b.brandID === editId)
+            : null
+        }
+        onEdit={isAdmin() ? (i) => startEdit(brands[i]) : undefined}
+        onDelete={isAdmin() ? (i) => del(brands[i]) : undefined}
+      />
+    </SectionWrapper>
+  );
+}
+
 
 const emptyCurrency = { curCode: '', curName: '' };
 

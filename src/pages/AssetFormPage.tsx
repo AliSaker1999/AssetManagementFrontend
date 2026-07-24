@@ -469,6 +469,41 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
     return () => { isMounted = false; };
   }, [activeModal, compForm.countryID, shouldShowHrCompany]);
 
+  function formatCompanyLabel(company: Company) {
+    const countryId = company.countryID?.trim() ?? "";
+    const companyName = company.companyName?.trim() ?? "";
+
+    // Remove trailing comma from country ID
+    const cleanedCountryId = countryId.replace(/,\s*$/, "");
+
+    // Remove leading comma from company name (if it exists)
+    const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+
+    return `${cleanedCountryId} – ${cleanedCompanyName}`;
+  }
+  function formatCurrencyLabel(currency: Currency) {
+    const code = currency.curCode?.trim() ?? "";
+    const name = currency.curName?.trim() ?? "";
+
+    const cleanedCode = code.replace(/,\s*$/, "");
+    const cleanedName = name.replace(/^\s*,\s*/, "");
+
+    return `${cleanedCode} – ${cleanedName}`;
+  }
+  function formatLocationDetailLabel(detail: LocationDetail) {
+    const floor = detail.floor?.trim() ?? "";
+    const zone = detail.zone?.trim() ?? "";
+    const room = detail.room?.trim() ?? "";
+
+    const cleanedFloor = floor.replace(/,\s*$/, "");
+    const cleanedZone = zone.replace(/^\s*,\s*/, "").replace(/,\s*$/, "");
+    const cleanedRoom = room.replace(/^\s*,\s*/, "").replace(/,\s*$/, "");
+
+    return `Floor ${cleanedFloor}${
+      cleanedZone ? ` / ${cleanedZone}` : ""
+    }${cleanedRoom ? ` / ${cleanedRoom}` : ""}`;
+  }
+
   return (
     <div className="px-8 py-6 max-w-[900px]">
       {/* ── Quick-add modals ── */}
@@ -729,7 +764,11 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
                 }
               }} required>
                 <option value="">Select…</option>
-                {visibleCompanies.map((c) => <option key={c.companyID} value={c.companyID}>{c.companyAbbreviation} – {c.companyName}</option>)}
+                {visibleCompanies.map((c) => (
+                  <option key={c.companyID} value={c.companyID}>
+                    {formatCompanyLabel(c)}
+                  </option>
+                ))}
               </Select>
             </DropWithAdd>
           </Field>
@@ -823,7 +862,11 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
             <DropWithAdd onAdd={() => openModal('locDetail')}>
               <Select value={form.locDetailID ?? ''} onChange={(e) => set('locDetailID', Number(e.target.value))} required>
                 <option value="">Select…</option>
-                {filteredLocDetails.map((d) => <option key={d.locDetailID} value={d.locDetailID}>Floor {d.floor}{d.zone ? ` / ${d.zone}` : ''}{d.room ? ` / ${d.room}` : ''}</option>)}
+                {filteredLocDetails.map((d) => (
+                <option key={d.locDetailID} value={d.locDetailID}>
+                  {formatLocationDetailLabel(d)}
+                </option>
+              ))}
               </Select>
             </DropWithAdd>
           </Field>
@@ -866,7 +909,11 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
           <Field label="Currency *">
             <DropWithAdd onAdd={() => openModal('currency') } showAdd={isAdmin()}>
               <Select value={form.purchaseCurCode ?? ''} onChange={(e) => set('purchaseCurCode', e.target.value)} required>
-                {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode} – {c.curName}</option>)}
+                {currencies.map((c) => (
+                <option key={c.curCode} value={c.curCode}>
+                  {formatCurrencyLabel(c)}
+                </option>
+              ))}
               </Select>
             </DropWithAdd>
           </Field>
