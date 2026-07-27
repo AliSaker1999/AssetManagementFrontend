@@ -1,5 +1,5 @@
 import client from './client';
-import type { CategoryType, Country, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType } from '../types';
+import type { CategoryType, Country, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
 
 export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
@@ -20,6 +20,8 @@ export const lookupsApi = {
     client.get<PaginatedResponse<LocationDetail>>('/lookups/location-details/paginated', { params: { pageNumber, pageSize } }),
   getStatuses: () => client.get('/lookups/statuses'),
   getBrands: () => client.get('/lookups/brands'),
+  getBrandsPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<BrandType>>('/lookups/Brands/paginated', { params: { pageNumber, pageSize } }),
   getOwners: () => client.get('/lookups/owners'),
   getCurrencies: () => client.get('/lookups/currencies'),
   getCurrenciesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
@@ -61,7 +63,7 @@ export const lookupsApi = {
 
   // Brands
   createBrand: (data: { brandDesc: string }) => client.post('/lookups/brands', data),
-  updateBrand: (id: number, data: { brandDesc: string }) => client.put(`/lookups/brands/${id}`, data),
+  updateBrand: (id: number, data: object) => client.put(`/lookups/brands/${id}`, data),
   deleteBrand: (id: number) => client.delete(`/lookups/brands/${id}`),
 
   // Categories

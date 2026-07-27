@@ -56,13 +56,12 @@ function RadioGroup({
     </div>
   );
 }
-async function reloadBrands() {}
+
 
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
- 
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
  
@@ -901,22 +900,16 @@ const emptyBrand = {
 function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
   const { isAdmin } = useAuth();
   const [brands, setBrands] = useState<BrandType[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyBrand);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
-
-  function load() {
-    lookupsApi
-      .getBrands()
-      .then((r) => setBrands(r.data as BrandType[]))
-      .catch((err) => handleApiError(err, 'Failed to load brands'));
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   function startAdd() {
     setForm(emptyBrand);
@@ -937,6 +930,18 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
     setEditId(null);
   }
 
+  useEffect(() => {
+    lookupsApi.getBrandsPaginated(pageNumber, pageSize)
+      .then((r) => {
+        setBrands(r.data.data);
+        setTotalPages(r.data.totalPages);
+        setTotalCount(r.data.totalCount);
+      })
+      .catch((err) =>
+        handleApiError(err, "Failed to load location details")
+      );
+  }, [pageNumber, pageSize, reloadKey]);
+
   async function save(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -951,7 +956,7 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
       }
 
       cancel();
-      load();
+      setReloadKey(k => k + 1);
       await onReload();
     } catch (err) {
       handleApiError(err, 'Save failed');
@@ -968,13 +973,19 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
 
     if (!ok) return;
 
-    try {
-      await lookupsApi.deleteBrand(b.brandID);
-      toast.success('Brand deleted');
-      load();
-      await onReload();
+        try {
+        await lookupsApi.deleteBrand(b.brandID);
+        toast.success("Brand deleted");
+
+        try {
+            setReloadKey(k => k + 1);
+            await onReload();
+            // or load();
+        } catch (e) {
+            console.error("Reload failed", e);
+        }
     } catch (err) {
-      handleApiError(err, 'Delete failed — brand may be in use');
+        handleApiError(err, "Delete failed — brand may be in use");
     }
   }
 
@@ -1016,6 +1027,31 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
           </form>
         </Modal>
       )}
+
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onPrevious={() =>
+          setPageNumber((p) => Math.max(1, p - 1))
+        }
+        onNext={() =>
+          setPageNumber((p) => Math.min(totalPages, p + 1))
+        }
+      />
 
       <DataTable
         columns={['Brand']}
