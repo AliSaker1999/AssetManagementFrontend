@@ -5,7 +5,15 @@ import { parseApiError } from '../utils/errors';
 import logoWhite from '../components/Gezairi - EN-V White.png';
 function IconDiamond() {
   return (
-    <img src={logoWhite} alt="Gezairi" className="h-7 w-auto object-contain" />
+    <div className="relative flex items-center justify-center">
+      {/* Soft glow behind the logo */}
+      <div className="absolute inset-0 rounded-full bg-gold-400/10 blur-2xl scale-125" />
+      <img
+        src={logoWhite}
+        alt="Gezairi"
+        className="relative object-contain w-32 h-30 drop-shadow-[0_4px_24px_rgba(0,0,0,0.35)]"
+      />
+    </div>
   );
 }
 
@@ -44,13 +52,16 @@ export default function LoginPage() {
       </div>
 
       <div className="relative w-full max-w-sm mx-4">
-        {/* Logo mark above card */}
-        <div className="flex items-center justify-center gap-3 mb-8">
+        
+        {/* Logo + title */}
+        <div className="flex flex-col items-center gap-4 mb-10">
           <IconDiamond />
-          <div>
-            <div className="text-white font-bold text-[20px] leading-none tracking-tight">Asset Management</div>
+          <div className="text-white font-bold text-[22px] leading-none tracking-tight">
+            Asset Management
           </div>
         </div>
+
+
 
         {/* Card */}
         <div className="bg-pearl-50 rounded-2xl border border-pearl-200 shadow-card-lg px-8 py-8">

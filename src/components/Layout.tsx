@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import CommandPalette from './CommandPalette';
 import NotificationBell from './NotificationBell';
 import { lookupsApi } from '../api/lookups';
-import logoWhite from './Gezairi - EN-V White.png';
+import logoWhite from './GEZAIRI-ICON.png';
 
 
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
@@ -246,9 +246,16 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
       {/* ── Top App Bar ── */}
       <header className="fixed top-0 left-0 right-0 z-50 h-11 bg-navy-800 border-b border-navy-700 flex items-center px-4 gap-4">
         {/* Logo */}
-        <div className="flex items-center gap-2 w-[240px] shrink-0">
-          <img src={logoWhite} alt="Gezairi" className="h-7 w-auto object-contain" />
-          <span className="text-white font-bold text-[14px] tracking-tight">Asset Management</span>
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 w-[240px] shrink-0">
+          <img
+            src={logoWhite}
+            alt="Gezairi"
+            className="h-9 w-auto object-contain -my-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
+          />
+          <span className="text-white font-bold text-[14px] tracking-tight leading-none">
+            Asset Management
+          </span>
         </div>
 
         {/* Search trigger */}
