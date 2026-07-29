@@ -21,7 +21,7 @@ import type {
   StatusHistoryItem,
 } from '../types';
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -869,6 +869,9 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
                   onPageSizeChange={(size) => setPageSize(size)}
                   onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
                   onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+                  onFirst={() => setPageNumber(1)}
+                  onLast={() => setPageNumber(totalPages)}
+                  onGoToPage={(page) => setPageNumber(page)}
                 />
               </div>
 
@@ -1262,7 +1265,6 @@ async function handleRelocateConfirm(locId: number, locDetailId: number) {
       d.assetDesc.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const foundCount = filtered.filter((d) => d.isAvailable).length;
   const latestCompletedInventory = pastInventories.reduce<InventoryListItem | null>((latest, current) => {
     if (!latest) return current;
     return new Date(current.inventoryEndDate) > new Date(latest.inventoryEndDate) ? current : latest;
@@ -1281,17 +1283,17 @@ const visibleCompanies = isAdmin()
 
 
   function formatCompanyLabel(company: Company) {
-  const countryId = company.countryID?.trim() ?? "";
-  const companyName = company.companyName?.trim() ?? "";
+    const countryId = company.countryID?.trim() ?? "";
+    const companyName = company.companyName?.trim() ?? "";
 
-  // Remove trailing comma from country ID
-  const cleanedCountryId = countryId.replace(/,\s*$/, "");
+    // Remove trailing comma from country ID
+    const cleanedCountryId = countryId.replace(/,\s*$/, "");
 
-  // Remove leading comma from company name (if it exists)
-  const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+    // Remove leading comma from company name (if it exists)
+    const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
 
-  return `${cleanedCountryId} – ${cleanedCompanyName}`;
-}
+    return `${cleanedCountryId} – ${cleanedCompanyName}`;
+  }
 
   // ── loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
@@ -1337,7 +1339,8 @@ const visibleCompanies = isAdmin()
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase text-ink-300">Company</span>
-          <Select
+
+        </div>          <Select
             value={companyId?? 0}
             onChange={(e) => {
             const v = Number(e.target.value);
@@ -1350,7 +1353,6 @@ const visibleCompanies = isAdmin()
             <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
           ))}
         </Select>
-        </div>
       </div>
 
       {/* ── no company selected ── */}
@@ -1556,8 +1558,11 @@ const visibleCompanies = isAdmin()
                     setPageSize(size);
                     setPageNumber(1);
                   }}
+                  onFirst={() => setPageNumber(1)}
                   onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
                   onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+                  onLast={() => setPageNumber(totalPages)}
+                  onGoToPage={(page) => setPageNumber(page)}
                 />
               )}
 

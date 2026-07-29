@@ -307,6 +307,9 @@ export interface Company {
   companyScdCurCode: string;
   countryID: string;
   hrCompanyProfileID?: number | null;
+  assetController?: boolean | null;
+  assetControllerEmail?: string | null;
+  assetControllerName?: string | null;
 }
 
 export interface HrCompanyProfile {

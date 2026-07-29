@@ -5,6 +5,9 @@ import { NotificationProvider } from '../contexts/NotificationContext';
 import clsx from 'clsx';
 import CommandPalette from './CommandPalette';
 import NotificationBell from './NotificationBell';
+import { lookupsApi } from '../api/lookups';
+import logoWhite from './Gezairi - EN-V White.png';
+
 
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
 
@@ -106,6 +109,11 @@ function IconReports() {
     </svg>
   );
 }
+type Company = {
+  companyID: number;
+  companyName: string;
+  countryID?: string;
+};
 
 const navItems = [
   { to: '/assets',        label: 'Assets',      Icon: IconAssets },
@@ -137,6 +145,14 @@ function NavItem({ to, Icon, label }: { to: string; Icon: () => React.ReactEleme
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function formatCompanyLabel(company: Company) {
+  const countryId = company.countryID?.trim() ?? "";
+  const companyName = company.companyName?.trim() ?? "";
+  const cleanedCountryId = countryId.replace(/,\s*$/, "");
+  const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+  return `${cleanedCountryId} – ${cleanedCompanyName}`;
+}
+
 function getInitials(name: string) {
   return name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 }
@@ -158,11 +174,38 @@ export default function Layout() {
   const companyDropRef = useRef<HTMLDivElement>(null);
 
   // Unique companies from permissions
-  const companies = user?.permissions
-    ? [...new Map(user.permissions.map((p) => [p.companyID, { id: p.companyID, name: p.companyName }])).values()]
-    : [];
+  // const companies = user?.permissions
+  //   ? [...new Map(user.permissions.map((p) => [p.companyID, { id: p.companyID, name: p.companyName }])).values()]
+  //   : [];
 
-  const activeCompany = activeCompanyId != null ? companies.find((c) => c.id === activeCompanyId) : null;
+  // const activeCompany = activeCompanyId != null ? companies.find((c) => c.id === activeCompanyId) : null;
+
+const admin = isAdmin();
+
+const permissionCompanies: Company[] = user?.permissions
+  ? [...new Map(
+      user.permissions.map((p) => [p.companyID, { companyID: p.companyID, companyName: p.companyName, countryID: p.countryID }])
+    ).values()]
+  : [];
+
+const [allCompanies, setAllCompanies] = useState<Company[]>([]);
+
+useEffect(() => {
+  if (!admin) return;
+  let cancelled = false;
+
+  lookupsApi.getCompanies()
+    .then((res) => {
+      if (cancelled) return;
+      setAllCompanies(res.data); // assuming this already returns {companyID, companyName, countryID}[]
+    })
+    .catch((err) => console.error('Failed to load companies', err));
+
+  return () => { cancelled = true; };
+}, [admin]);
+
+const companies = admin ? allCompanies : permissionCompanies;
+const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyID === activeCompanyId) : null;
 
   // Ctrl+K opens palette
   useEffect(() => {
@@ -204,9 +247,7 @@ export default function Layout() {
       <header className="fixed top-0 left-0 right-0 z-50 h-11 bg-navy-800 border-b border-navy-700 flex items-center px-4 gap-4">
         {/* Logo */}
         <div className="flex items-center gap-2 w-[240px] shrink-0">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="12 2 22 9 18 20 6 20 2 9" fill="#d4a928" stroke="#d4a928" strokeWidth="1"/>
-          </svg>
+          <img src={logoWhite} alt="Gezairi" className="h-7 w-auto object-contain" />
           <span className="text-white font-bold text-[14px] tracking-tight">Asset Management</span>
         </div>
 
@@ -254,13 +295,17 @@ export default function Layout() {
               onClick={() => setCompanyDropOpen((v) => !v)}
               className="w-full flex items-center gap-2.5 px-3 py-2 bg-navy-700 hover:bg-navy-500 rounded-lg text-left transition-colors cursor-pointer border-none"
             >
-              <div className="w-6 h-6 rounded bg-gold-400/20 flex items-center justify-center shrink-0">
+              {/* <div className="w-6 h-6 rounded bg-gold-400/20 flex items-center justify-center shrink-0">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d4a928" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="12 2 22 9 18 20 6 20 2 9"/>
                 </svg>
-              </div>
+              </div> */}
+              {/* <span className="flex-1 text-[13px] text-white font-medium truncate">
+                
+                {activeCompanyId != null ? companies.find((c) => c.id === activeCompanyId)?.name : 'All Companies'}
+              </span> */}
               <span className="flex-1 text-[13px] text-white font-medium truncate">
-                {activeCompany?.name ?? 'All Companies'}
+                {activeCompany ? formatCompanyLabel(activeCompany) : 'All Companies'}
               </span>
               <span className={clsx('text-navy-300 transition-transform duration-150', companyDropOpen && 'rotate-180')}>
                 <IconChevronDown />
@@ -282,7 +327,7 @@ export default function Layout() {
                     All Companies
                   </span>
                 </button>
-                {companies.map((c) => (
+                {/* {companies.map((c) => (
                   <button
                     key={c.id}
                     onClick={() => { setActiveCompanyId(c.id); setCompanyDropOpen(false); }}
@@ -293,6 +338,21 @@ export default function Layout() {
                     </span>
                     <span className={clsx('truncate', c.id === activeCompanyId ? 'text-white font-semibold' : 'text-navy-200')}>
                       {c.name}
+                    </span>
+                  </button>
+                ))} */}
+
+                {companies.map((c) => (
+                  <button
+                    key={c.companyID}
+                    onClick={() => { setActiveCompanyId(c.companyID); setCompanyDropOpen(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-navy-700 transition-colors cursor-pointer border-none bg-transparent"
+                  >
+                    <span className={clsx('w-4 shrink-0', c.companyID === activeCompanyId ? 'text-gold-400' : 'text-transparent')}>
+                      <IconCheck />
+                    </span>
+                    <span className={clsx('truncate', c.companyID === activeCompanyId ? 'text-white font-semibold' : 'text-navy-200')}>
+                      {formatCompanyLabel(c)}
                     </span>
                   </button>
                 ))}
@@ -323,12 +383,12 @@ export default function Layout() {
           </nav>
 
           {/* Help footer */}
-          <div className="px-3 pb-4 border-t border-navy-700 pt-3">
+          {/* <div className="px-3 pb-4 border-t border-navy-700 pt-3">
             <div className="bg-navy-800 rounded-lg px-3 py-2.5">
               <div className="text-[12px] text-gold-400 font-semibold mb-0.5">Need help?</div>
               <div className="text-[11px] text-navy-300">Documentation & support</div>
             </div>
-          </div>
+          </div> */}
         </aside>
 
         {/* Main content */}

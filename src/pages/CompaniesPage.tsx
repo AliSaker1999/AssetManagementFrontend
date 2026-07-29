@@ -15,6 +15,9 @@ const emptyForm = {
   companyScdCurCode: '',
   countryID: '',
   hrCompanyProfileID: '',
+  assetController: false,
+  assetControllerEmail: '',
+  assetControllerName: '',
 };
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
@@ -121,6 +124,9 @@ export default function CompaniesPage() {
       companyScdCurCode: c.companyScdCurCode,
       countryID: c.countryID,
       hrCompanyProfileID: c.hrCompanyProfileID != null ? String(c.hrCompanyProfileID) : '',
+      assetController: c.assetController ?? false,
+      assetControllerEmail: c.assetControllerEmail ?? '',
+      assetControllerName: c.assetControllerName ?? '',
     });
     setEditId(c.companyID);
     setMode('edit');
@@ -138,6 +144,9 @@ export default function CompaniesPage() {
     const payload = {
       ...form,
       hrCompanyProfileID: form.hrCompanyProfileID ? Number(form.hrCompanyProfileID) : null,
+      assetController: !!form.assetController,
+      assetControllerEmail: form.assetControllerEmail.trim(),
+      assetControllerName: form.assetControllerName.trim(),
     };
     try {
       if (mode === 'edit' && editId !== null) {
@@ -168,6 +177,41 @@ export default function CompaniesPage() {
       handleApiError(err, 'Delete failed — company may be in use');
     }
   }
+  async function handleToggleAssetController(c: Company) {
+  if (!canManage) return;
+
+  const newStatus = !c.assetController;
+
+  // Optimistic UI update for immediate feedback
+  setCompanies((prev) =>
+    prev.map((item) =>
+      item.companyID === c.companyID
+        ? { ...item, assetController: newStatus }
+        : item
+    )
+  );
+
+  try {
+    const payload = {
+      companyName: c.companyName,
+      companyAbbreviation: c.companyAbbreviation,
+      companyPrmCurCode: c.companyPrmCurCode,
+      companyScdCurCode: c.companyScdCurCode,
+      countryID: c.countryID,
+      hrCompanyProfileID: c.hrCompanyProfileID,
+      assetController: newStatus,
+      assetControllerEmail: c.assetControllerEmail,
+      assetControllerName: c.assetControllerName,
+    };
+
+    await lookupsApi.updateCompany(c.companyID, payload);
+    toast.success(`Asset Controller turned ${newStatus ? 'On' : 'Off'}`);
+  } catch (err) {
+    // Revert state if the API call fails
+    await reload();
+    handleApiError(err, 'Failed to update Asset Controller status');
+  }
+}
 
   if (loading) return <div className="p-8">Loading...</div>;
 
@@ -237,6 +281,39 @@ export default function CompaniesPage() {
                   </Select>
                 </div>
               )}
+              <div className="flex flex-col gap-1 col-span-full">
+                <label className={labelCls}>Asset Controller</label>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2 text-[13px]">
+                    <input
+                      type="checkbox"
+                      checked={form.assetController}
+                      onChange={e => setForm(f => ({ ...f, assetController: e.target.checked }))}
+                      className="h-4 w-4 rounded border-[#d1d5db] text-accent focus:ring-accent"
+                    />
+                    Enabled
+                  </label>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className={labelCls}>Asset Controller Email</label>
+                <input
+                  className={inputCls}
+                  type="email"
+                  value={form.assetControllerEmail}
+                  onChange={e => setForm(f => ({ ...f, assetControllerEmail: e.target.value }))}
+                  disabled={!form.assetController}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className={labelCls}>Asset Controller Name</label>
+                <input
+                  className={inputCls}
+                  value={form.assetControllerName}
+                  onChange={e => setForm(f => ({ ...f, assetControllerName: e.target.value }))}
+                  disabled={!form.assetController}
+                />
+              </div>
             </div>
             <div className="flex gap-2 mt-4">
               <button type="submit" className="px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70" disabled={saving}>
@@ -254,14 +331,14 @@ export default function CompaniesPage() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', 'HR Profile ID', 'Counter', ...(canManage ? [''] : [])].map(h => (
+              {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', 'HR Profile ID', 'Asset Controller', 'Controller Email',  ...(canManage ? [''] : [])].map(h => (
                 <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {visibleCompanies.map(c => {
-              const counter = countries.find(co => co.countryID.trim() === c.countryID.trim())?.assetCodeCounter ?? 0;
+              // const counter = countries.find(co => co.countryID.trim() === c.countryID.trim())?.assetCodeCounter ?? 0;
               return (
                 <tr key={c.companyID} className={clsx(editId === c.companyID && 'bg-[#eef3fb]')}>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyName}</td>
@@ -270,9 +347,42 @@ export default function CompaniesPage() {
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.companyScdCurCode}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{countries.find(co => co.countryID === c.countryID)?.country ?? c.countryID}</td>
                   <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.hrCompanyProfileID ?? '—'}</td>
-                  <td className="px-3 py-2.5 border-b border-[#f3f4f6]">
-                    <span className="inline-block bg-[#f3f4f6] text-[#374151] font-mono font-semibold text-[13px] px-2.5 py-0.5 rounded-md">{counter}</span>
+                  {/* <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.assetController ? 'On' : 'Off'}</td> */}
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">
+                    <button
+                      type="button"
+                      disabled={!canManage}
+                      onClick={() => handleToggleAssetController(c)}
+                      className={clsx(
+                        'relative inline-flex h-6 w-12 items-center rounded-full transition-colors duration-200 focus:outline-none',
+                        canManage ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
+                        c.assetController ? 'bg-emerald-500' : 'bg-danger'
+                      )}
+                      title={canManage ? `Click to turn ${c.assetController ? 'Off' : 'On'}` : undefined}
+                    >
+                      {/* Text indicator inside switch */}
+                      <span
+                        className={clsx(
+                          'absolute text-[10px] font-bold uppercase text-white select-none transition-all duration-200',
+                          c.assetController ? 'left-2' : 'right-2'
+                        )}
+                      >
+                        {c.assetController ? 'ON' : 'OFF'}
+                      </span>
+
+                      {/* Sliding circular toggle */}
+                      <span
+                        className={clsx(
+                          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm',
+                          c.assetController ? 'translate-x-6' : 'translate-x-1'
+                        )}
+                      />
+                    </button>
                   </td>
+                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{c.assetControllerEmail ?? '—'}</td>
+                  {/* <td className="px-3 py-2.5 border-b border-[#f3f4f6]">
+                    <span className="inline-block bg-[#f3f4f6] text-[#374151] font-mono font-semibold text-[13px] px-2.5 py-0.5 rounded-md">{counter}</span>
+                  </td> */}
                   {canManage && (
                     <td className="px-3 py-2.5 border-b border-[#f3f4f6] whitespace-nowrap">
                       <button className="px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]" onClick={() => startEdit(c)}>Edit</button>
@@ -284,7 +394,7 @@ export default function CompaniesPage() {
               );
             })}
             {visibleCompanies.length === 0 && (
-              <tr><td colSpan={canManage ? 8 : 7} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
+              <tr><td colSpan={canManage ? 10 : 9} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
             )}
           </tbody>
         </table>

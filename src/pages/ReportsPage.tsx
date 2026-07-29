@@ -26,7 +26,7 @@ const REPORT_TYPES: { key: ReportType; label: string }[] = [
   { key: 'depreciation',             label: 'Depreciation' },
   { key: 'assets-not-depreciated',   label: 'Assets Not Depreciated' },
 ];
-const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -664,14 +664,21 @@ export default function ReportsPage() {
                   pageSize={pageSize}
                   pageSizeOptions={PAGE_SIZE_OPTIONS}
                   onPageSizeChange={(size) => void preview(1, size)}
+                  onFirst={() => setPageNumber(1)}
                   onPrevious={() => void preview(Math.max(1, pageNumber - 1), pageSize)}
                   onNext={() => {
                     const maxPage = Math.max(1, Math.ceil(pd.totalCount / pageSize));
                     void preview(Math.min(maxPage, pageNumber + 1), pageSize);
                   }}
+                  onLast={() => {
+                    const maxPage = Math.max(1, Math.ceil(pd.totalCount / pageSize));
+                    setPageNumber(maxPage);
+                  }}
+                  onGoToPage={(page) => setPageNumber(page)}
                   disabled={previewing}
                 />
               </div>
+               
 
               <div className="overflow-auto max-h-[calc(100vh-220px)] min-h-[420px]">
                 <table className="w-full text-[12px] border-collapse">

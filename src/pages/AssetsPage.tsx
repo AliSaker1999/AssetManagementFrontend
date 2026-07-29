@@ -30,8 +30,40 @@ interface StatusMenuProps {
   onClose: () => void;
   children: ReactNode;
 }
+const COLUMNS: { key: string; label: string }[] = [
+  { key: 'code', label: 'Code' },
+  { key: 'description', label: 'Description' },
+  { key: 'category', label: 'Category' },
+  { key: 'location', label: 'Location' },
+  { key: 'employee', label: 'Employee' },
+  { key: 'installedAt', label: 'Installed At' },
+  { key: 'status', label: 'Status' },
+  { key: 'barcode', label: 'Barcode' },
+];
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  code: 110,
+  description: 180,
+  category: 100,
+  location: 110,
+  employee: 220,
+  installedAt: 130,
+  status: 280,
+  barcode: 40,
+};
+
+const COLUMN_MIN_WIDTHS: Record<string, number> = {
+  code: 80,
+  description: 100,
+  category: 70,
+  location: 90,
+  employee: 100,
+  installedAt: 90,
+  status: 180, // needs room for the status button + Remove Status button
+  barcode: 50,
+};
+
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 const inp = 'input-base';
 const metricShapeCls = 'rounded-[14px] border-[#d5ddef] border-t-0 shadow-[inset_0_3px_0_0_#1f2b7b,0_1px_2px_rgba(15,23,42,0.06)]';
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
@@ -329,6 +361,34 @@ export default function AssetsPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number } | null>(null);
 
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
+  const gridTemplateColumns = COLUMNS.map((c) => `${columnWidths[c.key]}px`).join(' ');
+
+  function handleColumnResizeStart(key: string) {
+    return (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startWidth = columnWidths[key];
+      const minWidth = COLUMN_MIN_WIDTHS[key] ?? 60;
+
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const delta = moveEvent.clientX - startX;
+        setColumnWidths((prev) => ({ ...prev, [key]: Math.max(minWidth, startWidth + delta) }));
+      };
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none'; // stops text selection while dragging
+    };
+  }
   // Load status types once
   useEffect(() => {
     if (statusesLoadedRef.current) return;
@@ -549,6 +609,8 @@ export default function AssetsPage() {
                 (a.location ?? '').toLowerCase().includes(q) ||
                 (a.employeeName ?? '').toLowerCase().includes(q) ||
                 (a.hrEmpIDUsedBy ?? '').toLowerCase().includes(q) ||
+                (a.floor ?? '').toLowerCase().includes(q) ||
+                (a.room ?? '').toLowerCase().includes(q) ||
                 (a.installedAt ?? '').toLowerCase().includes(q)
             );
           }
@@ -787,7 +849,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
       />
 
       {/* Metric cards */}
-      <div className="px-8 pt-6 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="px-8 pt-3 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-4">
         <MetricCard
           label="Total Assets"
           value={loading ? '—' : totalCount.toLocaleString()}
@@ -809,13 +871,13 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
         accent={maintenanceCount > 0 ? 'warning' : 'none'}
         className={metricShapeCls}
       />
-        <MetricCard
+        {/* <MetricCard
           label="Page"
           value={loading ? '—' : `${pageNumber} / ${totalPages}`}
           sub={`${pageSize} per page`}
           accent="none"
           className={metricShapeCls}
-        />
+        /> */}
       </div>
 
       {/* Search + table */}
@@ -920,29 +982,45 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
         </div>
 
         {/* Table */}
-        <TablePagination
-          summary={totalCount > 0
-            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount.toLocaleString()} assets`
-            : 'No assets to display'}
-          pageNumber={pageNumber}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          pageSizeOptions={PAGE_SIZE_OPTIONS}
-          onPageSizeChange={(size) => {
-            setPageSize(size);
-            setPageNumber(1);
-          }}
-          onPrevious={handlePrevious}
-          onNext={handleNext}
-          disabled={loading}
-        />
+        <div className="mb-3">
+          <TablePagination
+            summary={totalCount > 0
+              ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount.toLocaleString()} assets`
+              : 'No assets to display'}
+            pageNumber={pageNumber}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageNumber(1);
+            }}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            onFirst={() => setPageNumber(1)}
+            onLast={() => setPageNumber(totalPages)}
+            onGoToPage={(page) => setPageNumber(page)}
+            disabled={loading}
+          />
+        </div>
 
-        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-visible">
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto ">
           {/* Table header */}
-          <div className="grid grid-cols-[1.3fr_1.8fr_1.2fr_1.4fr_1.5fr_1.5fr_2.1fr_0.7fr] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
-            {['Code', 'Description', 'Category', 'Location', 'Employee', 'Installed At', 'Status', 'Barcode'].map((h) => (
-              <div key={h} className={clsx('text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300', h === 'Barcode' && 'text-center')}>
-                {h}
+          <div className="grid  gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5" style={{ gridTemplateColumns }}>
+            {COLUMNS.map((col) => (
+              <div
+                key={col.key}
+                className={clsx(
+                  'relative select-none text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300 pr-2',
+                  col.key === 'barcode' && 'text-center'
+                )}
+              >
+                {col.label}
+                <span
+                  onMouseDown={handleColumnResizeStart(col.key)}
+                  className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-navy-400/50 active:bg-navy-500/70 z-10"
+                  style={{ transform: 'translateX(50%)' }}
+                />
               </div>
             ))}
           </div>
@@ -974,10 +1052,11 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                   key={a.assetID}
                   onClick={() => navigate(`/assets/${a.assetID}`)}
                   className={clsx(
-                    'grid grid-cols-[1.3fr_1.8fr_1.2fr_1.4fr_1.5fr_1.5fr_2.1fr_0.7fr] gap-0 px-5 py-3.5 items-center cursor-pointer',
+                    'grid gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
                     idx < assets.length - 1 && 'border-b border-pearl-200'
                   )}
+                  style={{ gridTemplateColumns }}
                 >
                   {/* Code */}
                   <div className="font-code text-[12px] text-navy-600 font-medium min-w-0 truncate">{a.assetCode}</div>
@@ -1106,21 +1185,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                                 ))}
                             </StatusMenu>
                           )}
-                          {!readOnly && transferAsset && (
-                            <TransferAssetModal
-                              asset={transferAsset}
-                              open={transferModalOpen}
-                              onClose={() => {
-                                setTransferModalOpen(false);
-                                setTransferAsset(null);
-                              }}
-                              onTransferred={() => {
-                                // Force refresh the list to reflect any changes (e.g., used-by)
-                                setAllAssetsCache(null);
-                                toast.success('Asset transferred successfully');
-                              }}
-                            />
-                          )}
+                          
                           
                         </div>
                         
@@ -1152,9 +1217,43 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                   </div>
                 </div>
               ))}
+              {!readOnly && transferAsset && (
+                            <TransferAssetModal
+                              asset={transferAsset}
+                              open={transferModalOpen}
+                              onClose={() => {
+                                setTransferModalOpen(false);
+                                setTransferAsset(null);
+                              }}
+                              onTransferred={() => {
+                                // Force refresh the list to reflect any changes (e.g., used-by)
+                                setAllAssetsCache(null);
+                                toast.success('Asset transferred successfully');
+                              }}
+                            />
+                          )}
             </div>
           )}
         </div>
+        <TablePagination
+          summary={totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount.toLocaleString()} assets`
+            : 'No assets to display'}
+          pageNumber={pageNumber}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPageNumber(1);
+          }}
+          onPrevious={handlePrevious}
+          onNext={handleNext}
+          onFirst={() => setPageNumber(1)}
+          onLast={() => setPageNumber(totalPages)}
+          onGoToPage={(page) => setPageNumber(page)}
+          disabled={loading}
+        />
 
       </div>
 

@@ -16,12 +16,13 @@ const ROLES = [
 ];
 
 const emptyForm = { userName: '', password: '', fullName: '', emailAddress: '', roleID: 3 };
-const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
 const labelCls = 'block text-xs font-semibold text-[#374151] mb-1 mt-3';
 const btnPrimary = 'px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors';
 const btnSmCls = 'px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]';
+const btnDangerCls = 'px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserListItem[]>([]);
@@ -39,8 +40,11 @@ export default function UsersPage() {
   const [selectedCompanyIDs, setSelectedCompanyIDs] = useState<Set<number>>(new Set());
   const [formSaving, setFormSaving] = useState(false);
 
+  // Access modal state
+  const [showAccessModal, setShowAccessModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
   const [permissions, setPermissions] = useState<UserPermission[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [grantCompanyID, setGrantCompanyID] = useState('');
   const { confirm, dialog } = useConfirm();
 
@@ -62,14 +66,25 @@ export default function UsersPage() {
       .finally(() => setLoading(false));
   }, [pageNumber, pageSize, reloadKey]);
 
-  async function loadPermissions(user: UserListItem) {
+  async function openAccessModal(user: UserListItem) {
     setSelectedUser(user);
+    setShowAccessModal(true);
+    setGrantCompanyID('');
+    setPermissionsLoading(true);
     try {
       const res = await usersApi.getPermissions(user.userID);
       setPermissions(res.data);
     } catch (err) {
       handleApiError(err, 'Failed to load permissions');
+    } finally {
+      setPermissionsLoading(false);
     }
+  }
+
+  function closeAccessModal() {
+    setShowAccessModal(false);
+    setSelectedUser(null);
+    setPermissions([]);
   }
 
   async function openCreate() {
@@ -151,7 +166,7 @@ export default function UsersPage() {
       await usersApi.deleteUser(id);
       setUsers(u => u.filter(x => x.userID !== id));
       setTotalCount((c) => Math.max(0, c - 1));
-      if (selectedUser?.userID === id) setSelectedUser(null);
+      if (selectedUser?.userID === id) closeAccessModal();
       toast.success('User deleted');
     } catch (err) {
       handleApiError(err, 'Failed to delete user');
@@ -187,112 +202,119 @@ export default function UsersPage() {
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="p-8 max-w-[1200px] mx-auto">
+    <div className="p-8 max-w-[900px] mx-auto">
       {dialog}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-[22px] font-bold text-brand">User Management</h1>
         <button className={btnPrimary} onClick={openCreate}>+ New User</button>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        {/* User list */}
-        <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
-          <h2 className="text-[15px] font-semibold text-[#374151] mb-4">Users</h2>
-          <TablePagination
-            summary={totalCount > 0
-              ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} users`
-              : 'No users'}
-            pageNumber={pageNumber}
-            totalPages={totalPages}
-            pageSize={pageSize}
-            pageSizeOptions={PAGE_SIZE_OPTIONS}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPageNumber(1);
-            }}
-            onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
-            onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
-          />
+      {/* User list — full width */}
+      <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
+        <h2 className="text-[15px] font-semibold text-[#374151] mb-4">Users</h2>
+        <TablePagination
+          summary={totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} users`
+            : 'No users'}
+          pageNumber={pageNumber}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPageNumber(1);
+          }}
+          onFirst={() => setPageNumber(1)}
+          onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+          onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+          onLast={() => setPageNumber(totalPages)}
+          onGoToPage={(page) => setPageNumber(page)}
+        />
 
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                {['Full Name', 'Username', 'Email', 'Role', ''].map(h => (
-                  <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr
-                  key={u.userID}
-                  className={clsx('cursor-pointer', selectedUser?.userID === u.userID ? 'bg-[#eef3fb]' : 'hover:bg-surface')}
-                  onClick={() => loadPermissions(u)}
-                >
-                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.fullName}</td>
-                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.userName}</td>
-                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.emailAddress}</td>
-                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.roleName}</td>
-                  <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6] whitespace-nowrap">
-                    <button className={btnSmCls} onClick={e => { e.stopPropagation(); openEdit(u); }}>Edit</button>
-                    {' '}
-                    <button className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors" onClick={e => { e.stopPropagation(); handleDelete(u.userID); }}>Del</button>
-                  </td>
-                </tr>
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              {['Full Name', 'Username', 'Email', 'Role', ''].map(h => (
+                <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
               ))}
-            </tbody>
-          </table>
-
-        </div>
-
-        {/* Permissions panel */}
-        <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
-          <h2 className="text-[15px] font-semibold text-[#374151] mb-4">
-            {selectedUser ? `Access: ${selectedUser.fullName}` : 'Select a user to manage access'}
-          </h2>
-          {selectedUser && (
-            <>
-              <div className="flex gap-2 mb-4">
-                <div className="flex-1">
-                  <Select value={grantCompanyID} onChange={e => setGrantCompanyID(e.target.value)}>
-                    <option value="">-- Select company --</option>
-                    {companies.map(c => (
-                      <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
-                    ))}
-                  </Select>
-                </div>
-                <button className={btnPrimary} onClick={handleGrant}>Grant</button>
-              </div>
-              {permissions.length === 0 ? (
-                <p className="text-[#6b7280] text-[13px]">No company access assigned.</p>
-              ) : (
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      {['Company', 'Country', ''].map(h => (
-                        <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permissions.map(p => (
-                      <tr key={`${p.countryID}-${p.companyID}`}>
-                        <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{p.companyName}</td>
-                        <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{p.country}</td>
-                        <td className="px-3 py-2.5 text-[13px] border-b border-[#f3f4f6]">
-                          <button className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors" onClick={() => handleRevoke(p)}>Revoke</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </>
-          )}
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr
+                key={u.userID}
+                className={clsx('cursor-pointer', selectedUser?.userID === u.userID && showAccessModal ? 'bg-[#eef3fb]' : 'hover:bg-surface')}
+                onClick={() => openAccessModal(u)}
+              >
+                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.fullName}</td>
+                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.userName}</td>
+                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.emailAddress}</td>
+                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.roleName}</td>
+                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6] whitespace-nowrap">
+                  <button className={btnSmCls} onClick={e => { e.stopPropagation(); openEdit(u); }}>Edit</button>
+                  {' '}
+                  <button className={btnDangerCls} onClick={e => { e.stopPropagation(); handleDelete(u.userID); }}>Del</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Modal */}
+      {/* Access Modal */}
+      {showAccessModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={closeAccessModal}>
+          <div className="bg-white rounded-xl p-8 w-[520px] max-h-[85vh] overflow-y-auto shadow-[0_8px_32px_rgba(0,0,0,0.18)]" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-brand m-0">
+                Access: {selectedUser.fullName}
+              </h2>
+              <button className={btnSmCls} onClick={closeAccessModal}>✕ Close</button>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+              <div className="flex-1">
+                <Select value={grantCompanyID} onChange={e => setGrantCompanyID(e.target.value)}>
+                  <option value="">-- Select company --</option>
+                  {companies.map(c => (
+                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+                  ))}
+                </Select>
+              </div>
+              <button className={btnPrimary} onClick={handleGrant}>Grant</button>
+            </div>
+
+            {permissionsLoading ? (
+              <p className="text-[#6b7280] text-[13px]">Loading…</p>
+            ) : permissions.length === 0 ? (
+              <p className="text-[#6b7280] text-[13px]">No company access assigned.</p>
+            ) : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {['Company', 'Country', ''].map(h => (
+                      <th key={h} className="text-left px-3 py-2 text-xs text-[#6b7280] font-semibold border-b border-[#e5e7eb]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {permissions.map(p => (
+                    <tr key={`${p.countryID}-${p.companyID}`}>
+                      <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{p.companyName}</td>
+                      <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{p.country}</td>
+                      <td className="px-3 py-2.5 text-[13px] border-b border-[#f3f4f6]">
+                        <button className={btnDangerCls} onClick={() => handleRevoke(p)}>Revoke</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* User Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-xl p-8 w-[440px] max-h-[90vh] overflow-y-auto shadow-[0_8px_32px_rgba(0,0,0,0.18)]" onClick={e => e.stopPropagation()}>
@@ -355,4 +377,3 @@ export default function UsersPage() {
     </div>
   );
 }
-

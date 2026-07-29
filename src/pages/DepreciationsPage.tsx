@@ -10,7 +10,7 @@ import type { Company, Depreciation, DepreciationReportItem, PaginatedResponse }
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 export default function DepreciationsPage() {
   const { activeCompanyId, isAuditor, user, isAdmin } = useAuth();
@@ -326,6 +326,9 @@ useEffect(() => {
                     }}
                     onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
                     onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+                    onFirst={() => setPageNumber(1)}
+                    onLast={() => setPageNumber(totalPages)}
+                    onGoToPage={(page) => setPageNumber(page)}
                   />
 
                   <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">

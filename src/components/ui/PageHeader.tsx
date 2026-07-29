@@ -17,7 +17,7 @@ interface Props {
 
 export default function PageHeader({ title, subtitle, breadcrumbs, actions, className }: Props) {
   return (
-    <div className={clsx('bg-white border-b border-pearl-200 px-8 py-5', className)}>
+    <div className={clsx('bg-white border-b border-pearl-200 px-8 py-4', className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav className="flex items-center gap-1.5 mb-2 text-[12px]">
           {breadcrumbs.map((crumb, i) => (

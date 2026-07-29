@@ -10,7 +10,7 @@ import type { GroupType, CategoryType, LocationType, LocationDetail, Country, Cu
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'brands' | 'currencies' | 'countries';
 
@@ -510,12 +510,12 @@ function GroupsSection({ countries, onReload }: { countries: Country[]; onReload
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() =>
-          setPageNumber((p) => Math.max(1, p - 1))
-        }
-        onNext={() =>
-          setPageNumber((p) => Math.min(totalPages, p + 1))
-        }
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
+          
       />
       <DataTable
         columns={['Country', 'Group Name', 'Acronym', 'Dep. Rate %', 'Account No', 'Excl.']}
@@ -523,6 +523,30 @@ function GroupsSection({ countries, onReload }: { countries: Country[]; onReload
         highlightIndex={editId !== null ? groups.findIndex(g => g.groupID === editId) : null}
         onEdit={canManage ? i => startEdit(groups[i]) : undefined}
         onDelete={canManage ? i => del(groups[i]) : undefined}
+      />
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
+          
       />
       
     </SectionWrapper>
@@ -618,8 +642,11 @@ function CategoriesSection({ onReload }: { onReload: () => Promise<void> }) {
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
-        onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
       <DataTable
         columns={['Category']}
@@ -627,6 +654,24 @@ function CategoriesSection({ onReload }: { onReload: () => Promise<void> }) {
         highlightIndex={editId !== null ? categories.findIndex(c => c.categoryID === editId) : null}
         onEdit={canManage ? i => startEdit(categories[i]) : undefined}
         onDelete={canManage ? i => del(categories[i]) : undefined}
+      />
+      <TablePagination
+        summary={totalCount > 0
+          ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} categories`
+          : 'No categories'}
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
     </SectionWrapper>
   );
@@ -736,12 +781,11 @@ function LocationsSection({  countries, onReload }: {  countries: Country[]; onR
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() =>
-          setPageNumber((p) => Math.max(1, p - 1))
-        }
-        onNext={() =>
-          setPageNumber((p) => Math.min(totalPages, p + 1))
-        }
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
       <DataTable
         columns={['Location', 'Country']}
@@ -749,6 +793,29 @@ function LocationsSection({  countries, onReload }: {  countries: Country[]; onR
         highlightIndex={editId !== null ? locations.findIndex(l => l.locationID === editId) : null}
         onEdit={canManage ? i => startEdit(locations[i]) : undefined}
         onDelete={canManage ? i => del(locations[i]) : undefined}
+      />
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
     </SectionWrapper>
   );
@@ -872,12 +939,11 @@ function LocationDetailsSection({
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() =>
-          setPageNumber((p) => Math.max(1, p - 1))
-        }
-        onNext={() =>
-          setPageNumber((p) => Math.min(totalPages, p + 1))
-        }
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
       <DataTable
         columns={['Location', 'Floor', 'Zone', 'Room']}
@@ -885,6 +951,29 @@ function LocationDetailsSection({
         highlightIndex={editId !== null ? locDetails.findIndex(d => d.locDetailID === editId) : null}
         onEdit={canManage ? i => startEdit(locDetails[i]) : undefined}
         onDelete={canManage ? i => del(locDetails[i]) : undefined}
+      />
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
     </SectionWrapper>
   );
@@ -1045,12 +1134,11 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() =>
-          setPageNumber((p) => Math.max(1, p - 1))
-        }
-        onNext={() =>
-          setPageNumber((p) => Math.min(totalPages, p + 1))
-        }
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
 
       <DataTable
@@ -1063,6 +1151,29 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
         }
         onEdit={isAdmin() ? (i) => startEdit(brands[i]) : undefined}
         onDelete={isAdmin() ? (i) => del(brands[i]) : undefined}
+      />
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
     </SectionWrapper>
   );
@@ -1165,12 +1276,11 @@ function CurrenciesSection({  onReload }: {  onReload: () => Promise<void> }) {
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() =>
-          setPageNumber((p) => Math.max(1, p - 1))
-        }
-        onNext={() =>
-          setPageNumber((p) => Math.min(totalPages, p + 1))
-        }
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
       <DataTable
         columns={['Code', 'Currency Name']}
@@ -1178,6 +1288,29 @@ function CurrenciesSection({  onReload }: {  onReload: () => Promise<void> }) {
         highlightIndex={editCode !== null ? currencies.findIndex(c => c.curCode.trim() === editCode) : null}
         onEdit={isAdmin() ? i => startEdit(currencies[i]) : undefined}
         onDelete={isAdmin() ? i => del(currencies[i]) : undefined}
+      />
+      <TablePagination
+        summary={
+          totalCount > 0
+            ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(
+                pageNumber * pageSize,
+                totalCount
+              )} of ${totalCount} location details`
+            : "No location details"
+        }
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
     </SectionWrapper>
   );
@@ -1445,8 +1578,11 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
           setPageSize(size);
           setPageNumber(1);
         }}
-        onPrevious={() => setPageNumber(p => Math.max(1, p - 1))}
-        onNext={() => setPageNumber(p => Math.min(totalPages, p + 1))}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
       />
 
       <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] mt-1">
@@ -1506,6 +1642,24 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
           </tbody>
         </table>
       </div>
+      <TablePagination
+        summary={totalCount > 0
+          ? `Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} countries`
+          : 'No countries'}
+        pageNumber={pageNumber}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPageNumber(1);
+        }}
+        onFirst={() => setPageNumber(1)}
+        onPrevious={() => setPageNumber((p) => Math.max(1, p - 1))}
+        onNext={() => setPageNumber((p) => Math.min(totalPages, p + 1))}
+        onLast={() => setPageNumber(totalPages)}
+        onGoToPage={(page) => setPageNumber(page)}
+      />
 
       {/* Pagination */}
     </div>

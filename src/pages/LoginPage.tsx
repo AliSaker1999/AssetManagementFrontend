@@ -2,12 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { parseApiError } from '../utils/errors';
-
+import logoWhite from '../components/Gezairi - EN-V White.png';
 function IconDiamond() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 22 9 18 20 6 20 2 9" fill="#d4a928" stroke="#d4a928" strokeWidth="1"/>
-    </svg>
+    <img src={logoWhite} alt="Gezairi" className="h-7 w-auto object-contain" />
   );
 }
 
