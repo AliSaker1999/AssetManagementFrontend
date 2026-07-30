@@ -210,7 +210,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="px-8 py-6">
+    <div className="px-4 sm:px-8 py-6">
       {dialog}
       <div className="flex justify-between items-center mb-5">
         <h2 className="text-[22px] font-bold text-brand">Contacts</h2>
@@ -354,7 +354,7 @@ export default function ContactsPage() {
           />
 
           <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
-            <table className="w-full border-collapse">
+            <table className="w-full border-collapse min-w-[760px]">
             <thead>
               <tr>
                 {['Name', 'Contact Type', 'Contact Person', 'Country', 'Telephone', 'Mobile', ...(readOnly ? [] : [''])].map(h => (
@@ -403,4 +403,3 @@ export default function ContactsPage() {
     </div>
   );
 }
-

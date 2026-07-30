@@ -17,9 +17,9 @@ interface Props {
 
 export default function PageHeader({ title, subtitle, breadcrumbs, actions, className }: Props) {
   return (
-    <div className={clsx('bg-white border-b border-pearl-200 px-8 py-4', className)}>
+    <div className={clsx('bg-white border-b border-pearl-200 px-4 sm:px-8 py-4', className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <nav className="flex items-center gap-1.5 mb-2 text-[12px]">
+        <nav className="flex items-center gap-1.5 mb-2 text-[12px] flex-wrap">
           {breadcrumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1.5">
               {i > 0 && <span className="text-ink-200">/</span>}
@@ -34,9 +34,9 @@ export default function PageHeader({ title, subtitle, breadcrumbs, actions, clas
           ))}
         </nav>
       )}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-extrabold text-ink-800 leading-tight">{title}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-[18px] sm:text-[22px] font-extrabold text-ink-800 leading-tight truncate">{title}</h1>
           {subtitle && <p className="text-[13px] text-ink-300 mt-0.5">{subtitle}</p>}
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}

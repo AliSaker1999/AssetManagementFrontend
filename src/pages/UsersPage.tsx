@@ -202,7 +202,7 @@ export default function UsersPage() {
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="p-8 max-w-[900px] mx-auto">
+    <div className="px-4 sm:px-8 py-6 max-w-[900px] mx-auto">
       {dialog}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-[22px] font-bold text-brand">User Management</h1>
@@ -231,7 +231,8 @@ export default function UsersPage() {
           onGoToPage={(page) => setPageNumber(page)}
         />
 
-        <table className="w-full border-collapse">
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[600px]">
           <thead>
             <tr>
               {['Full Name', 'Username', 'Email', 'Role', ''].map(h => (
@@ -259,12 +260,13 @@ export default function UsersPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Access Modal */}
       {showAccessModal && selectedUser && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={closeAccessModal}>
-          <div className="bg-white rounded-xl p-8 w-[520px] max-h-[85vh] overflow-y-auto shadow-[0_8px_32px_rgba(0,0,0,0.18)]" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4" onClick={closeAccessModal}>
+          <div className="bg-white rounded-xl p-6 sm:p-8 w-full max-w-[520px] max-h-[85vh] overflow-y-auto shadow-[0_8px_32px_rgba(0,0,0,0.18)]" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold text-brand m-0">
                 Access: {selectedUser.fullName}
@@ -272,7 +274,7 @@ export default function UsersPage() {
               <button className={btnSmCls} onClick={closeAccessModal}>✕ Close</button>
             </div>
 
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
               <div className="flex-1">
                 <Select value={grantCompanyID} onChange={e => setGrantCompanyID(e.target.value)}>
                   <option value="">-- Select company --</option>

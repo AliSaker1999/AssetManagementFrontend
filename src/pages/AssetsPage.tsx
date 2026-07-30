@@ -774,6 +774,7 @@ export default function AssetsPage() {
 
   // const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
   const maintenanceCount = (allAssetsCache ?? []).filter((a) => a.statusID === 8).length;
+  const instockCount = (allAssetsCache ?? []).filter((a) => a.statusID === 12).length;
 
   // const activeCount = visibleAssets.filter((a) => a.statusID === 0).length;
   const activeCount = (allAssetsCache ?? []).filter((a) => a.statusID === 0).length;
@@ -849,7 +850,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
       />
 
       {/* Metric cards */}
-      <div className="px-8 pt-3 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="px-4 sm:px-8 pt-3 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard
           label="Total Assets"
           value={loading ? '—' : totalCount.toLocaleString()}
@@ -871,17 +872,17 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
         accent={maintenanceCount > 0 ? 'warning' : 'none'}
         className={metricShapeCls}
       />
-        {/* <MetricCard
-          label="Page"
-          value={loading ? '—' : `${pageNumber} / ${totalPages}`}
-          sub={`${pageSize} per page`}
-          accent="none"
+        <MetricCard
+          label="In Stock"
+          value={countsLoading ? '—' : instockCount.toLocaleString()}
+          sub="available for use"
+          accent={instockCount > 0 ? 'percent' : 'none'}
           className={metricShapeCls}
-        /> */}
+        />
       </div>
 
       {/* Search + table */}
-      <div className="px-8 pb-8">
+      <div className="px-4 sm:px-8 pb-8">
         {/* Search bar + status filter */}
         <div className="bg-white border border-pearl-200 rounded-xl p-4 mb-4 shadow-card">
           {/* Search input */}
@@ -1288,7 +1289,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
       {!readOnly && maintenanceModalAsset && (
         <Modal title={`Add Maintenance · ${maintenanceModalAsset.assetCode}`} onClose={() => setMaintenanceModalAsset(null)}>
           <form onSubmit={handleUnderMaintenanceSubmit}>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={maintenanceForm.fromDate} onChange={(e) => setMaintenanceField('fromDate', e.target.value)} required />
               </FormRow>
@@ -1302,7 +1303,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                 {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
               </Select>
             </FormRow>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="Cost">
                 <input className={inp} type="number" step="0.01" value={maintenanceForm.cost} onChange={(e) => setMaintenanceField('cost', Number(e.target.value))} />
               </FormRow>
@@ -1363,7 +1364,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
             )}
 
             {isSoldStatus && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormRow label="Price">
                   <input
                     className={inp}

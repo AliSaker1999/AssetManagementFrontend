@@ -505,7 +505,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
   }
 
   return (
-    <div className="px-8 py-6 max-w-[900px]">
+    <div className="px-4 sm:px-8 py-6 max-w-[900px]">
       {/* ── Quick-add modals ── */}
       {activeModal === 'group' && (
         <QuickAddModal title="New Group" onClose={() => setActiveModal(null)} onSubmit={saveGroup} saving={modalSaving}>
@@ -518,7 +518,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
           <MField label="Group Name *">
             <input className={inputCls} value={groupForm.groupName} onChange={(e) => setGroupForm((p) => ({ ...p, groupName: e.target.value }))} required maxLength={50} placeholder="e.g. IT Equipment" />
           </MField>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Acronym *">
               <input className={inputCls} value={groupForm.acronym} onChange={(e) => setGroupForm((p) => ({ ...p, acronym: e.target.value }))} required maxLength={10} placeholder="e.g. IT" />
             </MField>
@@ -526,7 +526,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               <input className={inputCls} type="number" min={0} max={100} step={0.01} value={groupForm.depreciationRate} onChange={(e) => setGroupForm((p) => ({ ...p, depreciationRate: Number(e.target.value) }))} required />
             </MField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Account No">
               <input className={inputCls} value={groupForm.accountNo} onChange={(e) => setGroupForm((p) => ({ ...p, accountNo: e.target.value }))} maxLength={20} placeholder="Optional" />
             </MField>
@@ -585,7 +585,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               {(filteredLocations.length > 0 ? filteredLocations : locations).map((l) => <option key={l.locationID} value={l.locationID}>{l.location}</option>)}
             </Select>
           </MField>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <MField label="Floor *">
               <input className={inputCls} value={locDetailForm.floor} onChange={(e) => setLocDetailForm((p) => ({ ...p, floor: e.target.value }))} required maxLength={10} placeholder="e.g. 3" autoFocus />
             </MField>
@@ -601,7 +601,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
 
       {activeModal === 'currency' && (
         <QuickAddModal title="New Currency" onClose={() => setActiveModal(null)} onSubmit={saveCurrency} saving={modalSaving}>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Code *">
               <input className={inputCls} value={curForm.curCode} onChange={(e) => setCurForm((p) => ({ ...p, curCode: e.target.value.toUpperCase() }))} required maxLength={3} placeholder="e.g. EUR" autoFocus />
             </MField>
@@ -641,7 +641,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               </Select>
             </MField>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Primary Currency *">
               <Select value={compForm.companyPrmCurCode} onChange={(e) => setCompForm((p) => ({ ...p, companyPrmCurCode: e.target.value }))} required>
                 <option value="">Select…</option>
@@ -663,7 +663,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
           <MField label="Contact Name *">
             <input className={inputCls} value={contactForm.contactName} onChange={(e) => setContactForm((p) => ({ ...p, contactName: e.target.value }))} required maxLength={100} autoFocus />
           </MField>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Contact Type *">
               <Select value={contactForm.contactTypeID || ''} onChange={(e) => setContactForm((p) => ({ ...p, contactTypeID: Number(e.target.value) }))} required>
                 <option value="">Select type…</option>
@@ -680,7 +680,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
           <MField label="Address">
             <input className={inputCls} value={contactForm.address} onChange={(e) => setContactForm((p) => ({ ...p, address: e.target.value }))} maxLength={200} />
           </MField>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Contact Person">
               <input className={inputCls} value={contactForm.contactPerson} onChange={(e) => setContactForm((p) => ({ ...p, contactPerson: e.target.value }))} maxLength={100} />
             </MField>
@@ -688,7 +688,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               <input className={inputCls} type="email" value={contactForm.contactPersonEmail} onChange={(e) => setContactForm((p) => ({ ...p, contactPersonEmail: e.target.value }))} maxLength={50} />
             </MField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Financial Contact">
               <input className={inputCls} value={contactForm.financialContact} onChange={(e) => setContactForm((p) => ({ ...p, financialContact: e.target.value }))} maxLength={100} />
             </MField>
@@ -696,7 +696,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               <input className={inputCls} type="email" value={contactForm.financialContactEmail} onChange={(e) => setContactForm((p) => ({ ...p, financialContactEmail: e.target.value }))} maxLength={50} />
             </MField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Telephone 1 *">
               <input className={inputCls} value={contactForm.telephone1} onChange={(e) => setContactForm((p) => ({ ...p, telephone1: e.target.value }))} required maxLength={16} />
             </MField>
@@ -704,7 +704,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               <input className={inputCls} value={contactForm.telephone2} onChange={(e) => setContactForm((p) => ({ ...p, telephone2: e.target.value }))} maxLength={16} />
             </MField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Mobile 1">
               <input className={inputCls} value={contactForm.mobile1} onChange={(e) => setContactForm((p) => ({ ...p, mobile1: e.target.value }))} maxLength={16} />
             </MField>
@@ -712,7 +712,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               <input className={inputCls} value={contactForm.mobile2} onChange={(e) => setContactForm((p) => ({ ...p, mobile2: e.target.value }))} maxLength={16} />
             </MField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Fax 1">
               <input className={inputCls} value={contactForm.fax1} onChange={(e) => setContactForm((p) => ({ ...p, fax1: e.target.value }))} maxLength={16} />
             </MField>
@@ -743,7 +743,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
       </h2>
 
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 bg-white p-6 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 bg-white p-4 sm:p-6 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
 
           {/* Company */}
           <Field label="Company *">

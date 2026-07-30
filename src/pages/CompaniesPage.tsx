@@ -5,8 +5,9 @@ import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import { useAuth } from '../contexts/AuthContext';
-import type { Company, Country, Currency, HrCompanyProfile } from '../types';
+import type { Company, Country, Currency, HrCompanyProfile, PaginatedResponse } from '../types';
 import Select from '../components/ui/Select';
+import TablePagination from '../components/ui/TablePagination';
 
 const emptyForm = {
   companyName: '',
@@ -20,6 +21,7 @@ const emptyForm = {
   assetControllerName: '',
 };
 
+const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13px] outline-none focus:border-accent transition-colors box-border';
 const labelCls = 'text-xs font-semibold text-[#374151]';
 
@@ -28,6 +30,11 @@ export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
@@ -43,28 +50,25 @@ export default function CompaniesPage() {
     : companies;
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        if (auditorMode) {
-          const [c, co, cur] = await Promise.all([
-            lookupsApi.getCompanies(),
-            lookupsApi.getCountries(),
-            lookupsApi.getCurrencies(),
-          ]);
-          setCompanies(c.data as Company[]);
-          setCountries(co.data as Country[]);
-          setCurrencies(cur.data as Currency[]);
-          return;
-        }
+    setPageNumber(1);
+  }, [auditorMode]);
 
-        const [c, co, cur] = await Promise.all([
-          lookupsApi.getCompanies(),
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [companyResponse, countryResponse, currencyResponse] = await Promise.all([
+          lookupsApi.getCompaniesPaginated(pageNumber, pageSize),
           lookupsApi.getCountries(),
           lookupsApi.getCurrencies(),
         ]);
-        setCompanies(c.data as Company[]);
-        setCountries(co.data as Country[]);
-        setCurrencies(cur.data as Currency[]);
+
+        const companyData = companyResponse.data as PaginatedResponse<Company>;
+        setCompanies(companyData.data);
+        setTotalPages(companyData.totalPages || 1);
+        setTotalCount(companyData.totalCount || companyData.data.length);
+        setCountries(countryResponse.data as Country[]);
+        setCurrencies(currencyResponse.data as Currency[]);
       } catch (err) {
         handleApiError(err, 'Failed to load data');
       } finally {
@@ -73,11 +77,16 @@ export default function CompaniesPage() {
     };
 
     void load();
-  }, [auditorMode]);
+  }, [pageNumber, pageSize, reloadKey, auditorMode]);
+
+  useEffect(() => {
+    if (pageNumber > totalPages) {
+      setPageNumber(totalPages || 1);
+    }
+  }, [pageNumber, totalPages]);
 
   async function reload() {
-    const r = await lookupsApi.getCompanies();
-    setCompanies(r.data as Company[]);
+    setReloadKey((value) => value + 1);
   }
 
   const selectedCountry = countries.find((c) => c.countryID.trim() === form.countryID.trim());
@@ -216,7 +225,7 @@ export default function CompaniesPage() {
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="p-8 max-w-[1100px] mx-auto">
+    <div className="px-4 sm:px-8 py-6 max-w-[1100px] mx-auto">
       {dialog}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-[22px] font-bold text-brand">Companies</h1>
@@ -233,7 +242,7 @@ export default function CompaniesPage() {
             {mode === 'edit' ? 'Edit Company' : 'New Company'}
           </h3>
           <form onSubmit={handleSave}>
-            <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
               <div className="flex flex-col gap-1">
                 <label className={labelCls}>Company Name *</label>
                 <input className={inputCls} value={form.companyName} onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))} required maxLength={100} autoFocus />
@@ -328,7 +337,28 @@ export default function CompaniesPage() {
       )}
 
       <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
-        <table className="w-full border-collapse">
+        <div className="mb-4">
+          <TablePagination
+            summary={`Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} companies`}
+            pageNumber={pageNumber}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageNumber(1);
+            }}
+            onPrevious={() => setPageNumber((value) => Math.max(1, value - 1))}
+            onNext={() => setPageNumber((value) => Math.min(totalPages, value + 1))}
+            onFirst={() => setPageNumber(1)}
+            onLast={() => setPageNumber(totalPages)}
+            onGoToPage={(page) => setPageNumber(page)}
+            disabled={loading}
+          />
+        </div>
+
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[900px]">
           <thead>
             <tr>
               {['Company Name', 'Abbreviation', 'Primary Cur.', 'Secondary Cur.', 'Country', 'HR Profile ID', 'Asset Controller', 'Controller Email',  ...(canManage ? [''] : [])].map(h => (
@@ -398,6 +428,7 @@ export default function CompaniesPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

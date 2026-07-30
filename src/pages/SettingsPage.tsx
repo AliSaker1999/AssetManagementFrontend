@@ -91,7 +91,7 @@ export default function SettingsPage() {
   async function reloadCountries() { const r = await lookupsApi.getCountries(); setCountries(r.data as Country[]); }
 
   return (
-    <div className="px-8 py-6">
+    <div className="px-4 sm:px-8 py-6">
       <h2 className="text-[22px] font-bold text-brand mb-5">Settings</h2>
 
       <div className="flex gap-1 border-b-2 border-[#eee] mb-6 flex-wrap">
@@ -1586,7 +1586,7 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
       />
 
       <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] mt-1">
-        <table className="w-full border-collapse bg-white">
+        <table className="w-full border-collapse bg-white min-w-[720px]">
           <thead>
             <tr>
               {['Code', 'Country', 'Nationality', 'Zip', 'Working', 'Status', ''].map(h => (
@@ -1716,7 +1716,7 @@ function DataTable({ columns, rows, highlightIndex, onEdit, onDelete }: {
   const hasActions = onEdit != null || onDelete != null;
   return (
     <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] mt-1">
-      <table className="w-full border-collapse bg-white">
+      <table className="w-full border-collapse bg-white min-w-[560px]">
         <thead>
           <tr>
             {columns.map(c => (
@@ -1750,4 +1750,3 @@ function DataTable({ columns, rows, highlightIndex, onEdit, onDelete }: {
     </div>
   );
 }
-

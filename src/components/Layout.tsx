@@ -98,6 +98,20 @@ function IconSearch() {
 
 // ─── Nav Item ────────────────────────────────────────────────────────────────
 
+function IconMenu() {
+  return (
+    <svg width="25" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  );
+}
+function IconX() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
 function IconReports() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -124,10 +138,11 @@ const navItems = [
   { to: '/settings',      label: 'Settings',    Icon: IconSettings },
 ];
 
-function NavItem({ to, Icon, label }: { to: string; Icon: () => React.ReactElement; label: string }) {
+function NavItem({ to, Icon, label, onClick }: { to: string; Icon: () => React.ReactElement; label: string; onClick?: () => void }) {
   return (
     <NavLink
       to={to}
+      onClick={onClick}
       className={({ isActive }) =>
         clsx(
           'flex items-center gap-2.5 px-3 py-2 rounded-r-md no-underline text-[13px] font-medium transition-all duration-150 border-l-[3px] my-0.5',
@@ -171,6 +186,7 @@ export default function Layout() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [companyDropOpen, setCompanyDropOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const companyDropRef = useRef<HTMLDivElement>(null);
 
   // Unique companies from permissions
@@ -244,29 +260,37 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       {/* ── Top App Bar ── */}
-      <header className="fixed top-0 left-0 right-0 z-50 h-11 bg-navy-800 border-b border-navy-700 flex items-center px-4 gap-4">
+      <header className="fixed top-0 left-0 right-0 z-50 h-11 bg-navy-800 border-b border-navy-700 flex items-center px-2 sm:px-4 gap-2 sm:gap-4">
+        {/* Mobile menu toggle */}
+        <button
+          onClick={() => setSidebarOpen((v) => !v)}
+          className="md:hidden flex items-center justify-center w-8 h-8 shrink-0 text-navy-200 hover:text-white cursor-pointer border-none bg-transparent"
+          aria-label="Toggle navigation"
+        >
+          <IconMenu />
+        </button>
+
         {/* Logo */}
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 w-[240px] shrink-0">
+        <div className="flex items-center gap-2.5 w-auto md:w-[240px] shrink-0">
           <img
             src={logoWhite}
             alt="Gezairi"
-            className="h-9 w-auto object-contain -my-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
+            className="h-8 sm:h-9 w-auto object-contain -my-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
           />
-          <span className="text-white font-bold text-[14px] tracking-tight leading-none">
+          <span className="text-white font-bold text-[14px] tracking-tight leading-none hidden sm:block">
             Asset Management
           </span>
         </div>
 
         {/* Search trigger */}
-        <div className="flex-1 max-w-sm">
+        <div className="flex-1 min-w-0 max-w-sm">
           <button
             onClick={() => setPaletteOpen(true)}
-            className="w-full flex items-center gap-2 bg-navy-700 border border-navy-600 rounded-md px-3 py-1.5 text-navy-300 text-[13px] cursor-pointer hover:border-navy-400 hover:text-navy-200 transition-colors"
+            className="w-full flex items-center gap-2 bg-navy-700 border border-navy-600 rounded-md px-2 sm:px-3 py-1.5 text-navy-300 text-[13px] cursor-pointer hover:border-navy-400 hover:text-navy-200 transition-colors"
           >
             <IconSearch />
-            <span className="flex-1 text-left">Search assets, settings…</span>
-            <kbd className="text-[10px] text-navy-500 bg-navy-800 px-1.5 py-0.5 rounded font-mono shrink-0">Ctrl K</kbd>
+            <span className="flex-1 text-left hidden sm:block truncate">Search assets, settings…</span>
+            <kbd className="text-[10px] text-navy-500 bg-navy-800 px-1.5 py-0.5 rounded font-mono shrink-0 hidden md:block">Ctrl K</kbd>
           </button>
         </div>
 
@@ -276,25 +300,48 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
         <NotificationBell />
 
         {/* User */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <div className={clsx('w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0', colorClass)}>
             {initials}
           </div>
-          <span className="text-[13px] text-navy-200 font-medium hidden sm:block">{user?.fullName}</span>
+          <span className="text-[13px] text-navy-200 font-medium hidden lg:block">{user?.fullName}</span>
           <button
             onClick={handleLogout}
             title="Sign out"
-            className="flex items-center gap-1.5 ml-2 text-navy-300 hover:text-white text-[12px] transition-colors cursor-pointer border-none bg-transparent"
+            className="flex items-center gap-1.5 ml-1 sm:ml-2 text-navy-300 hover:text-white text-[12px] transition-colors cursor-pointer border-none bg-transparent"
           >
             <IconLogout />
-            <span className="hidden sm:block">Sign out</span>
+            <span className="hidden lg:block">Sign out</span>
           </button>
         </div>
       </header>
 
+      {/* Mobile drawer overlay */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
+
       <div className="flex flex-1 pt-11">
         {/* ── Sidebar ── */}
-        <aside className="w-[240px] bg-navy-600 flex flex-col sticky top-11 h-[calc(100vh-44px)] shrink-0 border-r border-navy-700">
+        <aside
+          className={clsx(
+            'w-[260px] bg-navy-600 flex flex-col shrink-0 border-r border-navy-700',
+            'fixed top-11 left-0 h-[calc(100vh-44px)] z-40 transition-transform duration-200',
+            'md:sticky md:translate-x-0',
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          )}
+        >
+          {/* Mobile close button */}
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-navy-300 hover:text-white cursor-pointer border-none bg-transparent"
+            aria-label="Close navigation"
+          >
+            <IconX />
+          </button>
 
           {/* Company switcher */}
           <div className="px-3 py-3 border-b border-navy-700 relative" ref={companyDropRef}>
@@ -374,7 +421,7 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
                 Asset Management
               </span>
             </div>
-            {navItems.map((item) => <NavItem key={item.to} {...item} />)}
+            {navItems.map((item) => <NavItem key={item.to} {...item} onClick={() => setSidebarOpen(false)} />)}
 
             {isAdmin() && (
               <>
@@ -383,8 +430,8 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
                     Admin Setting
                   </span>
                 </div>
-                <NavItem to="/companies" Icon={IconCompanies} label="Companies" />
-                <NavItem to="/users"     Icon={IconUsers}     label="Users" />
+                <NavItem to="/companies" Icon={IconCompanies} label="Companies" onClick={() => setSidebarOpen(false)} />
+                <NavItem to="/users"     Icon={IconUsers}     label="Users" onClick={() => setSidebarOpen(false)} />
               </>
             )}
           </nav>
@@ -399,7 +446,7 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 bg-pearl-50 min-h-[calc(100vh-44px)] overflow-auto">
+        <main className="flex-1 min-w-0 bg-pearl-50 min-h-[calc(100vh-44px)] overflow-x-hidden overflow-y-auto">
           <Outlet />
         </main>
       </div>

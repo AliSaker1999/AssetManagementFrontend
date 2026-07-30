@@ -197,12 +197,12 @@ useEffect(() => {
   if (loading) return <p className="p-8">Loading…</p>;
 
   return (
-    <div className="px-8 py-6">
+    <div className="px-4 sm:px-8 py-6">
       {dialog}
       <h2 className="text-[22px] font-bold text-brand mb-4">Depreciations</h2>
 
       {/* Run panel */}
-      <div className="flex gap-3 items-center bg-white p-4 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)] mb-4">
+      <div className="flex flex-wrap gap-3 items-center bg-white p-4 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)] mb-4">
         <label className="text-[13px] font-semibold text-[#555]">Company:</label>
         <div className="min-w-[250px] max-w-[500px]">
           <Select
@@ -249,7 +249,7 @@ useEffect(() => {
             <div className="px-4 py-3 bg-surface-2 font-bold text-[13px] text-[#555] border-b border-[#eee]">
               Depreciation Info
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3">
               <div className="p-4 border-r border-[#f0f0f0]">
                 <div className="font-semibold text-[13px] text-brand mb-2.5">Last Depreciation</div>
                 <p className="text-[13px] text-[#555] my-1">Date: <strong>{lastDate ?? '—'}</strong></p>
@@ -281,7 +281,7 @@ useEffect(() => {
           </div>
 
           {/* List + Report */}
-          <div className="grid gap-5 grid-cols-[280px_1fr]">
+          <div className="grid gap-5 grid-cols-1 lg:grid-cols-[280px_1fr]">
             <div className="bg-white rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden">
               <div className="px-4 py-3 bg-surface-2 font-bold text-[13px] text-[#555] border-b border-[#eee]">History</div>
               {depreciations.length === 0 ? (
@@ -332,7 +332,7 @@ useEffect(() => {
                   />
 
                   <div className="overflow-x-auto rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.08)] bg-white">
-                    <table className="w-full border-collapse">
+                    <table className="w-full border-collapse min-w-[760px]">
                     <thead>
                       <tr>
                         {['Asset Code', 'Description', 'Rate %', 'Dep. Value', 'Net Book Value', 'Acct. Entry Date'].map((h) => (

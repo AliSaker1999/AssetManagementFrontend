@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
-  Plus,
 } from "lucide-react";
 import Select from "./Select";
 

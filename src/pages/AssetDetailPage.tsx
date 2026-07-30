@@ -685,7 +685,7 @@ export default function AssetDetailPage() {
       )}
 
       {/* Page Header */}
-      <div className="bg-white border-b border-pearl-200 px-8 py-5">
+      <div className="bg-white border-b border-pearl-200 px-4 sm:px-8 py-5">
         <Link
           to="/assets"
           className="inline-flex items-center gap-1.5 text-[12px] text-ink-300 hover:text-ink-600 no-underline transition-colors mb-3"
@@ -694,16 +694,16 @@ export default function AssetDetailPage() {
           Back to Assets
         </Link>
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+          <div className="flex items-start gap-4 min-w-0">
             <div className="w-12 h-12 rounded-xl bg-navy-50 border border-navy-100 flex items-center justify-center shrink-0">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1f2b7b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
               </svg>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="font-code text-[12px] text-navy-500 font-medium mb-0.5">{asset.assetCode}</div>
-              <h1 className="text-[20px] font-extrabold text-ink-800 leading-tight">{asset.assetDesc}</h1>
+              <h1 className="text-[18px] sm:text-[20px] font-extrabold text-ink-800 leading-tight break-words">{asset.assetDesc}</h1>
               {asset.inServiceDate && (
                 <span className="text-[11px] text-ink-300 mt-1 block">
                   In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -712,7 +712,7 @@ export default function AssetDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
             {/* Status dropdown */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">Status</span>
@@ -854,7 +854,7 @@ export default function AssetDetailPage() {
       </div>
 
       {/* Tab navigation */}
-      <div className="bg-white border-b border-pearl-200 px-8">
+      <div className="bg-white border-b border-pearl-200 px-4 sm:px-8">
         <div className="flex gap-0 overflow-x-auto">
           {tabs.map((t) => (
             <button
@@ -874,7 +874,7 @@ export default function AssetDetailPage() {
       </div>
 
       {/* Tab content */}
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         {tab === 'info' && <AssetInfo asset={asset} usedByEmployeeName={usedByEmployeeName} />}
         {tab === 'depreciation' && <DepreciationTab data={depHistory} />}
         {tab === 'inventory' && <SimpleTable data={invHistory} columns={['inventoryID', 'isAvailable', 'location', 'relocated', 'createdDate']} />}
@@ -938,7 +938,7 @@ export default function AssetDetailPage() {
             )}
 
             {statusModalStatusId === 4 && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormRow label="Price">
                   <input
                     className={inp}
@@ -986,7 +986,7 @@ export default function AssetDetailPage() {
       {!readOnly && statusMaintenanceModalOpen && (
         <Modal title="Add Maintenance" onClose={() => setStatusMaintenanceModalOpen(false)}>
           <form onSubmit={handleStatusMaintenanceSubmit}>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={statusMaintForm.fromDate} max={statusMaintForm.toDate || undefined} onChange={(e) => setStatusMaintField('fromDate', e.target.value)} required />
               </FormRow>
@@ -1000,7 +1000,7 @@ export default function AssetDetailPage() {
                 {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
               </Select>
             </FormRow>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="Cost">
                 <input className={inp} type="number" step="0.01" value={statusMaintForm.cost} onChange={(e) => setStatusMaintField('cost', Number(e.target.value))} />
               </FormRow>
@@ -1101,8 +1101,8 @@ function DepreciationTab({ data }: { data: DepreciationHistoryItem[] }) {
   if (data.length === 0) return <EmptyState message="No depreciation records yet." />;
 
   return (
-    <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-      <div className="bg-pearl-100 border-b border-pearl-200 px-5 py-2.5 grid grid-cols-5 gap-4">
+    <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
+      <div className="bg-pearl-100 border-b border-pearl-200 px-5 py-2.5 grid grid-cols-5 gap-4 min-w-[700px]">
         {['Date', 'Rate %', 'Depreciation', 'Net Book Value', 'Recorded By'].map((h) => (
           <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
         ))}
@@ -1111,7 +1111,7 @@ function DepreciationTab({ data }: { data: DepreciationHistoryItem[] }) {
         <div
           key={i}
           className={clsx(
-            'grid grid-cols-5 gap-4 px-5 py-3.5 items-center',
+            'grid grid-cols-5 gap-4 px-5 py-3.5 items-center min-w-[700px]',
             'hover:bg-pearl-50 transition-colors duration-100',
             i < data.length - 1 && 'border-b border-pearl-200'
           )}
@@ -1141,9 +1141,9 @@ function SimpleTable({ data, columns }: { data: object[]; columns: string[] }) {
   );
 
   return (
-    <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
+    <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
       <div className={`grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200`}
-        style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr)` }}>
+        style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(120px, 1fr))`, minWidth: `${columns.length * 120}px` }}>
         {headers.map((h) => (
           <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
         ))}
@@ -1157,7 +1157,7 @@ function SimpleTable({ data, columns }: { data: object[]; columns: string[] }) {
               'grid gap-4 px-5 py-3.5 items-center hover:bg-pearl-50 transition-colors duration-100',
               i < data.length - 1 && 'border-b border-pearl-200'
             )}
-            style={{ gridTemplateColumns: `repeat(${columns.length}, 1fr)` }}
+            style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(120px, 1fr))`, minWidth: `${columns.length * 120}px` }}
           >
             {columns.map((c) => (
               <div key={c} className="text-[12px] text-ink-700 break-words max-w-xs">{String(r[c] ?? '—')}</div>
@@ -1396,15 +1396,15 @@ function MaintenanceTab({
       )}
 
       {items.length === 0 ? <EmptyState message="No maintenance records." /> : (
-        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
+          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[900px]">
             {['From', 'To', 'Supplier', 'Cost', 'Currency', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((m, i) => (
             <div key={m.maintID} className={clsx(
-              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
+              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[900px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-700">{m.fromDate}</div>
@@ -1438,7 +1438,7 @@ function MaintenanceTab({
       {!readOnly && modal && (
         <Modal title={modal === 'add' ? 'Add Maintenance' : 'Edit Maintenance'} onClose={close}>
           <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={form.fromDate} max={form.toDate || undefined} onChange={(e) => setF('fromDate', e.target.value)} required />
               </FormRow>
@@ -1452,7 +1452,7 @@ function MaintenanceTab({
                 {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
               </Select>
             </FormRow>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="Cost">
                 <input className={inp} type="number" step="0.01" value={form.cost} onChange={(e) => setF('cost', Number(e.target.value))} />
               </FormRow>
@@ -1627,15 +1627,15 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
       )}
 
       {items.length === 0 ? <EmptyState message="No warranty records." /> : (
-        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
+          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[760px]">
             {['Description', 'From Date', 'To Date', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((w, i) => (
             <div key={w.warntID} className={clsx(
-              'grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
+              'grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[760px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-800 font-medium truncate">{w.warrantyDesc}</div>
@@ -1665,7 +1665,7 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
             <FormRow label="Description *">
               <input className={inp} value={form.warrantyDesc} onChange={(e) => setF('warrantyDesc', e.target.value)} required maxLength={50} />
             </FormRow>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={form.fromDate} max={form.toDate || undefined} onChange={(e) => setF('fromDate', e.target.value)} required />
               </FormRow>
@@ -1864,15 +1864,15 @@ function AttachmentsTab({ readOnly, assetId, items, onChange }: { readOnly: bool
       )}
 
       {items.length === 0 ? <EmptyState message="No attachments yet." /> : (
-        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="grid grid-cols-[2fr_2fr_1fr_2fr_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200">
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
+          <div className="grid grid-cols-[2fr_2fr_1fr_2fr_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[640px]">
             {['Description', 'File Name', 'Ext', 'Remark', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((a, i) => (
             <div key={a.attID} className={clsx(
-              'grid grid-cols-[2fr_2fr_1fr_2fr_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors',
+              'grid grid-cols-[2fr_2fr_1fr_2fr_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[640px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-800 font-medium truncate">{a.attDesc}</div>

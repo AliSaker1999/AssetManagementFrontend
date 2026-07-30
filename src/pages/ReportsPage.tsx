@@ -389,13 +389,13 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-pearl-50">
-      <div className="bg-white border-b border-pearl-200 px-8 py-5">
+      <div className="bg-white border-b border-pearl-200 px-4 sm:px-8 py-5">
         <h1 className="text-[22px] font-extrabold text-ink-800 leading-tight">Reports</h1>
         <p className="text-[12px] text-ink-300 mt-0.5">Generate and download asset management reports in PDF or Excel</p>
       </div>
 
-      <div className="px-8 py-6 flex gap-6 items-start">
-        <div className="w-[380px] shrink-0 space-y-4">
+      <div className="px-4 sm:px-8 py-6 flex flex-col lg:flex-row gap-6 items-start">
+        <div className="w-full lg:w-[380px] shrink-0 space-y-4">
           <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
             <div className="px-5 py-3.5 border-b border-pearl-100 bg-pearl-50">
               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Report</span>

@@ -117,7 +117,7 @@ export default function CountriesPage() {
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="p-8 max-w-[1100px] mx-auto">
+    <div className="px-4 sm:px-8 py-6 max-w-[1100px] mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-[22px] font-bold text-brand">Countries</h1>
         {mode === null && (
@@ -209,8 +209,8 @@ export default function CountriesPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
-        <table className="w-full border-collapse">
+      <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)] overflow-x-auto">
+        <table className="w-full border-collapse min-w-[720px]">
           <thead>
             <tr>
               {['Code', 'Country', 'Nationality', 'Zip', 'Working', 'Status', ''].map(h => (
@@ -249,4 +249,3 @@ export default function CountriesPage() {
     </div>
   );
 }
-

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
-import clsx from 'clsx';
 import Select from '../components/ui/Select';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';

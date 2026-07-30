@@ -594,15 +594,15 @@ function InfoTab({ item, asset }: { item: InventoryDetail; asset: Asset }) {
 function InventoryHistoryTab({ rows }: { rows: InventoryHistoryItem[] }) {
   if (rows.length === 0) return <p className="text-center text-ink-400 text-[13px] py-10">No inventory history.</p>;
   return (
-    <div className="rounded-lg border border-pearl-200 overflow-hidden">
-      <div className="grid grid-cols-[110px_1fr_70px_70px] bg-pearl-100 px-4 py-2 border-b border-pearl-200">
+    <div className="rounded-lg border border-pearl-200 overflow-x-auto">
+      <div className="grid grid-cols-[110px_1fr_70px_70px] bg-pearl-100 px-4 py-2 border-b border-pearl-200 min-w-[420px]">
         {['Date', 'Location', 'Found', 'Relocated'].map((h) => (
           <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
         ))}
       </div>
       <div className="divide-y divide-pearl-100">
         {rows.map((r) => (
-          <div key={r.invDetailID} className="grid grid-cols-[110px_1fr_70px_70px] px-4 py-2.5 items-center">
+          <div key={r.invDetailID} className="grid grid-cols-[110px_1fr_70px_70px] px-4 py-2.5 items-center min-w-[420px]">
             <div className="text-[12px] text-ink-500">{fmtDate(r.createdDate)}</div>
             <div className="text-[12px] text-ink-700">
               {r.relocated
@@ -625,15 +625,15 @@ function InventoryHistoryTab({ rows }: { rows: InventoryHistoryItem[] }) {
 function StatusHistoryTab({ rows }: { rows: StatusHistoryItem[] }) {
   if (rows.length === 0) return <p className="text-center text-ink-400 text-[13px] py-10">No status history.</p>;
   return (
-    <div className="rounded-lg border border-pearl-200 overflow-hidden">
-      <div className="grid grid-cols-[110px_120px_1fr_130px] bg-pearl-100 px-4 py-2 border-b border-pearl-200">
+    <div className="rounded-lg border border-pearl-200 overflow-x-auto">
+      <div className="grid grid-cols-[110px_120px_1fr_130px] bg-pearl-100 px-4 py-2 border-b border-pearl-200 min-w-[480px]">
         {['Date', 'Status', 'Notes', 'By'].map((h) => (
           <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
         ))}
       </div>
       <div className="divide-y divide-pearl-100">
         {rows.map((r) => (
-          <div key={r.statusHistID} className="grid grid-cols-[110px_120px_1fr_130px] px-4 py-2.5 items-center">
+          <div key={r.statusHistID} className="grid grid-cols-[110px_120px_1fr_130px] px-4 py-2.5 items-center min-w-[480px]">
             <div className="text-[12px] text-ink-500">{fmtDate(r.statusDate)}</div>
             <div className="text-[12px] font-medium text-navy-700">{r.statusName || `#${r.statusID}`}</div>
             <div className="text-[12px] text-ink-500 pr-2">{r.statusDesc || '—'}</div>
@@ -828,7 +828,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
 
         {/* summary tiles */}
         {!loading && (
-          <div className="grid grid-cols-4 gap-3 px-6 py-4 border-b border-pearl-200 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-4 border-b border-pearl-200 shrink-0">
             <SummaryTile label="Total Assets" value={total} color="navy" />
             <SummaryTile label="Found" value={found} color="green" />
             <SummaryTile label="Not Found" value={total - found} color="red" />
@@ -852,7 +852,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
         </div>
 
         {/* asset list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-auto">
           {loading ? (
             <TabSpinner />
           ) : filtered.length === 0 ? (
@@ -875,7 +875,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
                 />
               </div>
 
-              <div className="grid grid-cols-[150px_1fr_130px_200px_60px_60px] bg-pearl-100 border-y border-pearl-200 px-4 py-2">
+              <div className="grid grid-cols-[150px_1fr_130px_200px_60px_60px] bg-pearl-100 border-y border-pearl-200 px-4 py-2 min-w-[700px]">
                 {['Code', 'Description', 'Group', 'Location', 'Found', 'Relocated'].map((h) => (
                   <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
                 ))}
@@ -886,7 +886,7 @@ function PastInventoryDetailModal({ item, onClose }: { item: InventoryListItem; 
                     key={d.invDetailID}
                     onClick={() => setInnerDetail(d)}
                     className={clsx(
-                      'grid grid-cols-[150px_1fr_130px_200px_60px_60px] px-4 py-3 items-center cursor-pointer transition-colors',
+                      'grid grid-cols-[150px_1fr_130px_200px_60px_60px] px-4 py-3 items-center cursor-pointer transition-colors min-w-[700px]',
                       d.isAvailable ? 'bg-white hover:bg-emerald-50/30' : 'bg-red-50/20 hover:bg-red-50/40',
                     )}
                   >
@@ -953,8 +953,8 @@ function PastInventoriesSection({
           <p className="text-[13px] text-ink-400">No completed inventory sessions for this company yet.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_70px_70px_80px_80px_44px] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5">
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
+          <div className="grid grid-cols-[1fr_1fr_70px_70px_80px_80px_44px] gap-0 bg-pearl-100 border-b border-pearl-200 px-5 py-2.5 min-w-[620px]">
             {['Started', 'Ended', 'Total', 'Found', 'Missing', 'Relocated', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
             ))}
@@ -967,7 +967,7 @@ function PastInventoriesSection({
                 <div
                   key={inv.inventoryID}
                   onClick={() => onView(inv)}
-                  className="grid grid-cols-[1fr_1fr_70px_70px_80px_80px_44px] gap-0 px-5 py-3.5 items-center hover:bg-pearl-50/60 cursor-pointer transition-colors group"
+                  className="grid grid-cols-[1fr_1fr_70px_70px_80px_80px_44px] gap-0 px-5 py-3.5 items-center hover:bg-pearl-50/60 cursor-pointer transition-colors group min-w-[620px]"
                 >
                   <div>
                     <p className="text-[13px] font-semibold text-ink-700">{fmtDate(inv.inventoryStartDate)}</p>
@@ -1298,7 +1298,7 @@ const visibleCompanies = isAdmin()
   // ── loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <div className="h-7 w-40 bg-pearl-200 rounded-md animate-pulse mb-6" />
         <div className="h-10 w-72 bg-pearl-200 rounded-lg animate-pulse" />
       </div>
@@ -1306,7 +1306,7 @@ const visibleCompanies = isAdmin()
   }
 
   return (
-    <div className="px-8 py-6 max-w-[1400px] mx-auto">
+    <div className="px-4 sm:px-8 py-6 max-w-[1400px] mx-auto">
       {/* ── modals ── */}
       {relocateTarget && (
         <RelocateModal
@@ -1332,27 +1332,27 @@ const visibleCompanies = isAdmin()
       )}
 
       {/* ── page header ── */}
-      <div className="flex items-center justify-between mb-7">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-7">
         <div>
           <h1 className="text-[22px] font-bold text-navy-700">Inventory</h1>
           <p className="text-[13px] text-ink-400 mt-0.5">Manage asset inventory sessions by company</p>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 w-full sm:w-auto">
           <span className="text-[10px] font-semibold uppercase text-ink-300">Company</span>
-
-        </div>          <Select
+          <Select
             value={companyId?? 0}
             onChange={(e) => {
             const v = Number(e.target.value);
             setCompanyId(v === 0 ? null : v);
           }}
-          className="input-base min-w-[250px] max-w-[500px] text-sm"
+          className="input-base w-full sm:min-w-[250px] sm:max-w-[500px] text-sm"
         >
           <option value={0}>Select company…</option>
           {visibleCompanies.map((c) => (
             <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
           ))}
         </Select>
+        </div>
       </div>
 
       {/* ── no company selected ── */}
@@ -1380,7 +1380,7 @@ const visibleCompanies = isAdmin()
 
           {/* ── no active session ── */}
           {!detailsLoading && !session && (
-            <div className="grid grid-cols-[380px_1fr] gap-6 items-start mt-2">
+            <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start mt-2">
               {/* left: start card */}
               <div className="bg-white border border-pearl-200 rounded-xl shadow-card overflow-hidden">
                 <div className="bg-gradient-to-br from-navy-700 to-navy-600 px-6 py-5">
@@ -1580,9 +1580,9 @@ const visibleCompanies = isAdmin()
                   <p className="text-[14px] font-medium">No assets match your search</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
+                <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
                   {/* table header */}
-                  <div className="grid grid-cols-[150px_1fr_130px_200px_64px_64px] gap-0 bg-pearl-100 border-b border-pearl-200 px-4 py-2.5">
+                  <div className="grid grid-cols-[150px_1fr_130px_200px_64px_64px] gap-0 bg-pearl-100 border-b border-pearl-200 px-4 py-2.5 min-w-[700px]">
                     {['Code', 'Description', 'Group', 'Current Location', 'Found', 'Relocated'].map((h) => (
                       <div key={h} className="text-[10px] font-semibold uppercase text-ink-300">{h}</div>
                     ))}
@@ -1595,7 +1595,7 @@ const visibleCompanies = isAdmin()
                         key={d.invDetailID}
                         onClick={() => setDetailTarget(d)}
                         className={clsx(
-                          'grid grid-cols-[150px_1fr_130px_200px_64px_64px] gap-0 px-4 py-3 items-center transition-colors cursor-pointer',
+                          'grid grid-cols-[150px_1fr_130px_200px_64px_64px] gap-0 px-4 py-3 items-center transition-colors cursor-pointer min-w-[700px]',
                           d.isAvailable ? 'bg-white hover:bg-emerald-50/40' : 'bg-red-50/30 hover:bg-red-50/60',
                         )}
                       >

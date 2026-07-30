@@ -5,7 +5,7 @@ interface Props {
   label: string;
   value: string | number;
   sub?: string;
-  accent?: 'navy' | 'gold' | 'success' | 'warning' | 'danger' | 'none';
+  accent?: 'navy' | 'gold' | 'success' | 'warning' | 'danger' | 'none' | 'percent' ;
   icon?: ReactNode;
   className?: string;
 }
@@ -17,6 +17,7 @@ const accentBar: Record<string, string> = {
   warning: 'border-t-warning',
   danger:  'border-t-danger',
   none:    'border-t-transparent',
+  percent: 'border-t-percent',
 };
 
 export default function MetricCard({ label, value, sub, accent = 'none', icon, className }: Props) {
