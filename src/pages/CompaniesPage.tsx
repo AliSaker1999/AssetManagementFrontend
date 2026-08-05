@@ -429,6 +429,23 @@ export default function CompaniesPage() {
           </tbody>
         </table>
         </div>
+        <TablePagination
+            summary={`Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} companies`}
+            pageNumber={pageNumber}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPageNumber(1);
+            }}
+            onPrevious={() => setPageNumber((value) => Math.max(1, value - 1))}
+            onNext={() => setPageNumber((value) => Math.min(totalPages, value + 1))}
+            onFirst={() => setPageNumber(1)}
+            onLast={() => setPageNumber(totalPages)}
+            onGoToPage={(page) => setPageNumber(page)}
+            disabled={loading}
+          />
       </div>
     </div>
   );

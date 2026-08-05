@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
@@ -247,6 +247,7 @@ function statusTone(statusId?: number) {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function AssetDetailPage() {
+  const location = useLocation();
   const { isAuditor } = useAuth();
   const readOnly = isAuditor();
   const { id } = useParams<{ id: string }>();
@@ -282,26 +283,7 @@ export default function AssetDetailPage() {
     statusSalePrice: '',
     statusSaleCurCode: 'USD',
   });
-  const [usedByEmployeeName, setUsedByEmployeeName] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!asset?.hrEmpIDUsedBy || !asset?.companyID) {
-      setUsedByEmployeeName(null);
-      return;
-    }
-    let cancelled = false;
-    lookupsApi.getHrEmployees(asset.companyID)
-      .then((r) => {
-        if (cancelled) return;
-        const employees = r.data as { empID: string; fullName: string }[];
-        const match = employees.find((e) => e.empID === asset.hrEmpIDUsedBy);
-        setUsedByEmployeeName(match?.fullName ?? null);
-      })
-      .catch(() => { if (!cancelled) setUsedByEmployeeName(null); });
-    return () => { cancelled = true; };
-  }, [asset?.hrEmpIDUsedBy, asset?.companyID]);
-
- 
   // Transfer modal state
   const [transferModalOpen, setTransferModalOpen] = useState(false);
 
@@ -686,13 +668,14 @@ export default function AssetDetailPage() {
 
       {/* Page Header */}
       <div className="bg-white border-b border-pearl-200 px-4 sm:px-8 py-5">
-        <Link
-          to="/assets"
-          className="inline-flex items-center gap-1.5 text-[12px] text-ink-300 hover:text-ink-600 no-underline transition-colors mb-3"
-        >
-          <IconBack />
-          Back to Assets
-        </Link>
+        <button
+        type="button"
+        onClick={() => (location.key === 'default' ? navigate('/assets') : navigate(-1))}
+        className="inline-flex items-center gap-1.5 text-[12px] text-ink-300 hover:text-ink-600 transition-colors mb-3 bg-transparent border-none p-0 cursor-pointer"
+      >
+        <IconBack />
+        Back to Assets
+      </button>
 
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div className="flex items-start gap-4 min-w-0">
@@ -875,7 +858,7 @@ export default function AssetDetailPage() {
 
       {/* Tab content */}
       <div className="px-4 sm:px-8 py-6">
-        {tab === 'info' && <AssetInfo asset={asset} usedByEmployeeName={usedByEmployeeName} />}
+        {tab === 'info' && <AssetInfo asset={asset} />}
         {tab === 'depreciation' && <DepreciationTab data={depHistory} />}
         {tab === 'inventory' && <SimpleTable data={invHistory} columns={['inventoryID', 'isAvailable', 'location', 'relocated', 'createdDate']} />}
         {tab === 'status' && <SimpleTable data={statusHistory} columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']} />}
@@ -1042,7 +1025,7 @@ function InfoField({ label, value, mono }: { label: string; value: unknown; mono
   );
 }
 
-function AssetInfo({ asset, usedByEmployeeName }: { asset: Asset; usedByEmployeeName: string | null }) {
+function AssetInfo({ asset }: { asset: Asset }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Identification card */}
@@ -1053,11 +1036,13 @@ function AssetInfo({ asset, usedByEmployeeName }: { asset: Asset; usedByEmployee
         <InfoField
           label="Used By"
           value={
-            asset.hrEmpIDUsedBy
-              ? usedByEmployeeName
-                ? `${usedByEmployeeName} – ${asset.hrEmpIDUsedBy}`
-                : asset.hrEmpIDUsedBy
-              : null
+            asset.employeeName
+              ? asset.hrEmpIDUsedBy
+                ? `${asset.employeeName} – ${asset.hrEmpIDUsedBy}`
+                : asset.empIDUsedBy
+                  ? `${asset.employeeName} – ${asset.empIDUsedBy}`
+                  : asset.employeeName
+              : asset.hrEmpIDUsedBy ?? asset.empIDUsedBy?.toString() ?? null
           }
         />
         <InfoField label="Brand" value={asset.brandDesc} />
@@ -1069,7 +1054,6 @@ function AssetInfo({ asset, usedByEmployeeName }: { asset: Asset; usedByEmployee
         <InfoField label="Owner" value={asset.ownerTypeDesc} />
         <InfoField label="Owner Description" value={asset.ownerDesc} />
         <InfoField label="Installed At" value={asset.installedAt} />
-        <InfoField label="Used By" value={asset.hrEmpIDUsedBy} mono />
       </div>
 
       {/* Financial card */}

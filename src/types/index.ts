@@ -44,6 +44,7 @@ export interface AssetListItem {
   purchaseOrderNo?: string;
   invoiceNo?: string;
   hrEmpIDUsedBy?: string | null;
+  empIDUsedBy?: number;
   employeeName?: string | null;
   installedAt?: string | null;
   }
@@ -81,6 +82,7 @@ export interface Asset {
   ownerID: number;
   ownerDesc?: string;
   ownerTypeDesc?: string;
+  empIDUsedBy?: number;
   hrEmpIDUsedBy?: string;
   employeeName?: string | null;
 }
@@ -90,6 +92,13 @@ export interface HrEmployee {
   fullName: string;
   companyProfileID: number;
   prmName?: string;
+}
+
+export interface Employee {
+  empIDUsedBy: number;
+  empFullName: string;
+  companyID: number;
+  companyName?: string;
 }
 
 export interface AssetReportItem {
@@ -130,6 +139,7 @@ export interface AssetCreateRequest {
   categoryID: number;
   donation: boolean;
   contactID?: number;
+  empIDUsedBy?: number;
   purchaseOrderNo?: string;
   purchaseDate?: string;
   purchasePrice: number;

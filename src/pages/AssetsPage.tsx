@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useLayoutEffect, useEffect, useRef, useState, type FormEvent , type ReactNode, type RefObject} from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams  } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
@@ -17,6 +17,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
 import TransferAssetModal from '../components/TransferAssetModal';
+
 
 interface StatusMenuStyle {
   position: 'fixed';
@@ -325,11 +326,12 @@ export default function AssetsPage() {
   const { activeCompanyId, isAuditor } = useAuth();
   const readOnly = isAuditor();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [assets, setAssets] = useState<AssetListItem[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const [loading, setLoading] = useState(true);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  const [pageNumber, setPageNumber] = useState<number>(() => Number(searchParams.get('page')) || 1);
+  const [pageSize, setPageSize] = useState<number>(() => Number(searchParams.get('size')) || 10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
@@ -357,7 +359,10 @@ export default function AssetsPage() {
     statusSaleCurCode: 'USD',
   });
   const statusesLoadedRef = useRef(false);
-  const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set());
+  const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(() => {
+    const raw = searchParams.get('status');
+    return new Set(raw ? raw.split(',').map(Number).filter((n) => !Number.isNaN(n)) : []);
+  });
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number } | null>(null);
 
@@ -389,6 +394,8 @@ export default function AssetsPage() {
       document.body.style.userSelect = 'none'; // stops text selection while dragging
     };
   }
+
+  
   // Load status types once
   useEffect(() => {
     if (statusesLoadedRef.current) return;
@@ -397,6 +404,15 @@ export default function AssetsPage() {
       .then((r) => setStatuses(r.data as StatusType[]))
       .catch(() => { /* non-critical */ });
   }, []);
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    if (search.trim()) next.q = search;
+    if (pageNumber > 1) next.page = String(pageNumber);
+    if (pageSize !== 10) next.size = String(pageSize);
+    if (selectedStatusIds.size > 0) next.status = Array.from(selectedStatusIds).join(',');
+    setSearchParams(next, { replace: true });
+  }, [search, pageNumber, pageSize, selectedStatusIds]); // ✅ all four
 
   function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
     return {
@@ -560,19 +576,45 @@ export default function AssetsPage() {
 
 
 
-  // Reset to page 1 and clear cache when search or active company changes
-  useEffect(() => { setPageNumber(1); }, [search, selectedStatusIds, activeCompanyId]);
-  // Reset to page 1 when status filter changes (keep cache — it holds all assets regardless of filter)
-  useEffect(() => { setPageNumber(1); }, [selectedStatusIds]);
+const didMountRef = useRef(false);
+const prevSearchRef = useRef(search);
+const prevStatusRef = useRef(selectedStatusIds);
+const prevCompanyRef = useRef(activeCompanyId);
+
+useEffect(() => {
+  if (!didMountRef.current) {
+    didMountRef.current = true;
+    prevSearchRef.current = search;
+    prevStatusRef.current = selectedStatusIds;
+    prevCompanyRef.current = activeCompanyId;
+    return;
+  }
+
+  const searchChanged = search !== prevSearchRef.current;
+  const statusChanged = selectedStatusIds !== prevStatusRef.current;
+  const companyChanged =
+    prevCompanyRef.current !== undefined &&
+    prevCompanyRef.current !== null &&
+    activeCompanyId !== prevCompanyRef.current;
+
+  prevSearchRef.current = search;
+  prevStatusRef.current = selectedStatusIds;
+  prevCompanyRef.current = activeCompanyId;
+
+  if (searchChanged || statusChanged || companyChanged) {
+      setPageNumber(1);
+    }
+  }, [search, selectedStatusIds, activeCompanyId]);
+
   useEffect(() => {
-  let cancelled = false;
-  // setAllAssetsCache(null);
-  const companyFilter = activeCompanyId ?? undefined;
-  assetsApi.getList(companyFilter)
-    .then((r) => { if (!cancelled) setAllAssetsCache(r.data as AssetListItem[]); })
-    .catch((err) => { if (!cancelled) handleApiError(err, 'Failed to load asset counts'); });
-  return () => { cancelled = true; };
-}, [activeCompanyId]);
+    let cancelled = false;
+    // setAllAssetsCache(null);
+    const companyFilter = activeCompanyId ?? undefined;
+    assetsApi.getList(companyFilter)
+      .then((r) => { if (!cancelled) setAllAssetsCache(r.data as AssetListItem[]); })
+      .catch((err) => { if (!cancelled) handleApiError(err, 'Failed to load asset counts'); });
+    return () => { cancelled = true; };
+  }, [activeCompanyId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1087,9 +1129,9 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                   {/* Employee */}
                   <div
                     className="text-[12px] text-ink-400 truncate pr-4 min-w-0"
-                    title={a.employeeName ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : undefined}
+                    title={a.employeeName ? (a.hrEmpIDUsedBy ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : a.employeeName) : undefined}
                   >
-                    {a.employeeName ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : '—'}
+                    {a.employeeName ?? a.hrEmpIDUsedBy ?? a.empIDUsedBy?.toString() ?? '—'}
                   </div>
 
                   {/* Installed At */}

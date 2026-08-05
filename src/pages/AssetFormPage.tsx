@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
-import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee } from '../types';
+import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee, Employee } from '../types';
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,7 +24,7 @@ export default function AssetFormPage() {
   const navigate = useNavigate();
   const isEdit = Boolean(id);
   const assetId = Number(id);
-const { activeCompanyId: ctxCompanyId, user, isAdmin } = useAuth();
+  const { activeCompanyId: ctxCompanyId, user, isAdmin, isFullAccess } = useAuth();
 
 
 
@@ -50,12 +50,17 @@ const { activeCompanyId: ctxCompanyId, user, isAdmin } = useAuth();
   const [countries, setCountries] = useState<Country[]>([]);
   const [hrEmployees, setHrEmployees] = useState<HrEmployee[]>([]);
   const [loadingHrEmployees, setLoadingHrEmployees] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingCode, setGeneratingCode] = useState(false);
 
   // ── Quick-add modal state ───────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [modalSaving, setModalSaving] = useState(false);
+  const [employeeModalOpen, setEmployeeModalOpen] = useState(false);
+  const [savingEmployee, setSavingEmployee] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState({ empFullName: '' });
   const [groupForm, setGroupForm] = useState({ countryID: '', groupName: '', acronym: '', depreciationRate: 20, accountNo: '', accountingExclusion: false });
   const [catForm, setCatForm] = useState({ category: '' });
   const [locForm, setLocForm] = useState({ location: '', countryID: '' });
@@ -384,8 +389,37 @@ const visibleCompanies = isAdmin()
   finally { setModalSaving(false); }
 }
 
+  async function saveEmployee(e: FormEvent) {
+    e.preventDefault();
+    if (!form.companyID) {
+      toast.error('Select a company before adding an employee');
+      return;
+    }
+    if (!employeeForm.empFullName.trim()) {
+      toast.error('Employee name is required');
+      return;
+    }
+
+    setSavingEmployee(true);
+    try {
+      const r = await lookupsApi.createEmployee({ empFullName: employeeForm.empFullName.trim(), companyID: form.companyID });
+      const newEmployee = r.data as Employee;
+      setEmployees((prev) => [...prev, newEmployee]);
+      set('empIDUsedBy', newEmployee.empIDUsedBy);
+      setEmployeeForm({ empFullName: '' });
+      setEmployeeModalOpen(false);
+      toast.success(`Employee "${newEmployee.empFullName}" created`);
+    } catch (err) {
+      handleApiError(err, 'Failed to create employee');
+    } finally {
+      setSavingEmployee(false);
+    }
+  }
+
   const selectedCompany = companies.find((c) => c.companyID === form.companyID);
   const shouldLoadHrEmployees = !!selectedCompany?.hrCompanyProfileID;
+  const companyEmployees = form.companyID ? employees.filter((e) => e.companyID === form.companyID) : [];
+  const canAddEmployee = isAdmin() || isFullAccess();
   const selectedCompCountry = countries.find((c) => c.countryID.trim() === compForm.countryID.trim());
   const shouldShowHrCompany = !!selectedCompCountry?.hrConnect && !!selectedCompCountry?.hrDatabase;
   const resolvedCompanyOwnerId = owners.find((o) => o.ownerDesc.trim().toLowerCase() === 'company')?.ownerID ?? companyOwnerId;
@@ -402,9 +436,10 @@ const visibleCompanies = isAdmin()
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
 
   const usedByValue = (form.hrEmpIDUsedBy ?? '').toString().trim();
-const installedAtValue = (form.installedAt ?? '').trim();
-const usedByRequired = shouldLoadHrEmployees && !installedAtValue;
-const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtValue;
+  const installedAtValue = (form.installedAt ?? '').trim();
+  const hasInternalEmployee = !!form.empIDUsedBy;
+  const usedByRequired = shouldLoadHrEmployees && !installedAtValue && !hasInternalEmployee;
+  const installedAtRequired = !hasInternalEmployee && (shouldLoadHrEmployees ? !usedByValue : !installedAtValue);
 
 
 
@@ -416,6 +451,26 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
       return { ...prev, ownerID: resolvedCompanyOwnerId };
     });
   }, [isEdit, owners, resolvedCompanyOwnerId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingEmployees(true);
+    lookupsApi.getEmployees()
+      .then((r) => {
+        if (!isMounted) return;
+        setEmployees(r.data as Employee[]);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setEmployees([]);
+        handleApiError(err, 'Failed to load employees');
+      })
+      .finally(() => {
+        if (isMounted) setLoadingEmployees(false);
+      });
+
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!form.companyID || !shouldLoadHrEmployees) {
@@ -680,48 +735,20 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
           <MField label="Address">
             <input className={inputCls} value={contactForm.address} onChange={(e) => setContactForm((p) => ({ ...p, address: e.target.value }))} maxLength={200} />
           </MField>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <MField label="Contact Person">
-              <input className={inputCls} value={contactForm.contactPerson} onChange={(e) => setContactForm((p) => ({ ...p, contactPerson: e.target.value }))} maxLength={100} />
-            </MField>
-            <MField label="Contact Person Email">
-              <input className={inputCls} type="email" value={contactForm.contactPersonEmail} onChange={(e) => setContactForm((p) => ({ ...p, contactPersonEmail: e.target.value }))} maxLength={50} />
-            </MField>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <MField label="Financial Contact">
-              <input className={inputCls} value={contactForm.financialContact} onChange={(e) => setContactForm((p) => ({ ...p, financialContact: e.target.value }))} maxLength={100} />
-            </MField>
-            <MField label="Financial Contact Email">
-              <input className={inputCls} type="email" value={contactForm.financialContactEmail} onChange={(e) => setContactForm((p) => ({ ...p, financialContactEmail: e.target.value }))} maxLength={50} />
-            </MField>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <MField label="Telephone 1 *">
-              <input className={inputCls} value={contactForm.telephone1} onChange={(e) => setContactForm((p) => ({ ...p, telephone1: e.target.value }))} required maxLength={16} />
-            </MField>
-            <MField label="Telephone 2">
-              <input className={inputCls} value={contactForm.telephone2} onChange={(e) => setContactForm((p) => ({ ...p, telephone2: e.target.value }))} maxLength={16} />
-            </MField>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <MField label="Mobile 1">
-              <input className={inputCls} value={contactForm.mobile1} onChange={(e) => setContactForm((p) => ({ ...p, mobile1: e.target.value }))} maxLength={16} />
-            </MField>
-            <MField label="Mobile 2">
-              <input className={inputCls} value={contactForm.mobile2} onChange={(e) => setContactForm((p) => ({ ...p, mobile2: e.target.value }))} maxLength={16} />
-            </MField>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <MField label="Fax 1">
-              <input className={inputCls} value={contactForm.fax1} onChange={(e) => setContactForm((p) => ({ ...p, fax1: e.target.value }))} maxLength={16} />
-            </MField>
-            <MField label="Fax 2">
-              <input className={inputCls} value={contactForm.fax2} onChange={(e) => setContactForm((p) => ({ ...p, fax2: e.target.value }))} maxLength={16} />
-            </MField>
-          </div>
-          <MField label="Remark">
-            <textarea className={inputCls + ' resize-none'} rows={2} value={contactForm.remark} onChange={(e) => setContactForm((p) => ({ ...p, remark: e.target.value }))} maxLength={500} />
+        </QuickAddModal>
+      )}
+
+      {employeeModalOpen && (
+        <QuickAddModal title="New Employee" onClose={() => setEmployeeModalOpen(false)} onSubmit={saveEmployee} saving={savingEmployee}>
+          <MField label="Employee Full Name *">
+            <input
+              className={inputCls}
+              value={employeeForm.empFullName}
+              onChange={(e) => setEmployeeForm({ empFullName: e.target.value })}
+              required
+              maxLength={100}
+              autoFocus
+            />
           </MField>
         </QuickAddModal>
       )}
@@ -752,6 +779,7 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
                 const newCompanyId = Number(e.target.value);
                 set('companyID', newCompanyId);
                 set('hrEmpIDUsedBy', '');
+                set('empIDUsedBy', undefined);
                 reset('groupID', 'locationID', 'locDetailID');
                 if (!isEdit) {
                   const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
@@ -772,6 +800,31 @@ const installedAtRequired = shouldLoadHrEmployees ? !usedByValue : !installedAtV
               </Select>
             </DropWithAdd>
           </Field>
+
+          {form.companyID && (
+            <Field label="Used By (Employee)">
+              <DropWithAdd onAdd={() => setEmployeeModalOpen(true)} showAdd={canAddEmployee}>
+                <Select
+                  value={form.empIDUsedBy ?? ''}
+                  onChange={(e) => set('empIDUsedBy', e.target.value ? Number(e.target.value) : undefined)}
+                  disabled={loadingEmployees}
+                  searchable
+                >
+                  <option value="">
+                    {loadingEmployees ? 'Loading employees…' : companyEmployees.length ? 'None' : 'No employees found'}
+                  </option>
+                  {companyEmployees.map((emp) => (
+                    <option key={emp.empIDUsedBy} value={emp.empIDUsedBy}>
+                      {emp.empFullName} ({emp.empIDUsedBy})
+                    </option>
+                  ))}
+                </Select>
+              </DropWithAdd>
+              {canAddEmployee && companyEmployees.length === 0 && !loadingEmployees && (
+                <p className="text-[11px] text-slate-500 mt-1">No internal employees exist for this company yet. Use the add button to create one.</p>
+              )}
+            </Field>
+          )}
 
           {shouldLoadHrEmployees && (
             <Field label={usedByRequired ? 'Used By (HR Employee) *' : 'Used By (HR Employee)'}>
