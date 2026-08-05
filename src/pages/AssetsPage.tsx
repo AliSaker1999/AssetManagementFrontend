@@ -9,7 +9,7 @@ import { maintenancesApi } from '../api/maintenances';
 import { attachmentsApi } from '../api/attachments';
 import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
-import type { AssetListItem, Attachment, Contact, Currency, Maintenance, PaginatedResponse, StatusType } from '../types';
+import type { AssetListItem, Attachment, Contact, Currency, Employee, LeftEmployeeAsset, Maintenance, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
@@ -188,42 +188,52 @@ function StatusIcon({ statusId }: { statusId?: number }) {
     );
   }
   if (statusId === 12) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z"/>
-      <polyline points="3.3 7 12 12 20.7 7"/>
-      <line x1="12" y1="22" x2="12" y2="12"/>
-    </svg>
-  );
-}
+    return (
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z"/>
+        <polyline points="3.3 7 12 12 20.7 7"/>
+        <line x1="12" y1="22" x2="12" y2="12"/>
+      </svg>
+    );
+  }
 
-if (statusId === 13) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 10.5L12 3l9 7.5"/>
-      <path d="M5 9v11h14V9"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  );
-}
+  if (statusId === 14) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="7" width="16" height="10" rx="2" />
+        <line x1="4" y1="12" x2="20" y2="12" />
+        <line x1="12" y1="7" x2="12" y2="17" />
+      </svg>
+    );
+  }
+
+  if (statusId === 13) {
+    return (
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 10.5L12 3l9 7.5"/>
+        <path d="M5 9v11h14V9"/>
+        <path d="M9 20v-6h6v6"/>
+      </svg>
+    );
+  }
 
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -260,7 +270,7 @@ function statusFilterSelectedClass(statusId?: number) {
   if (statusId === 1 || statusId === 4 || statusId === 7) return 'bg-amber-500 text-white border-amber-500 shadow-sm';
   if (statusId === 2) return 'bg-sky-500 text-white border-sky-500 shadow-sm';
   if (statusId === 6) return 'bg-violet-500 text-white border-violet-500 shadow-sm';
-  if (statusId === 8 || statusId === 12) return 'bg-orange-500 text-white border-orange-500 shadow-sm';
+  if (statusId === 8 || statusId === 12 || statusId === 14) return 'bg-blue-500 text-white border-blue-500 shadow-sm';
   return 'bg-ink-600 text-white border-ink-600 shadow-sm';
 }
 
@@ -321,6 +331,453 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
   );
 }
 
+// ─── Leave Process ──────────────────────────────────────────────────────────
+
+type LeaveEmployeeOption = {
+  name: string;
+  empId: string | null;
+  assetCount: number;
+  source: 'internal' | 'hr' | null;
+  leaveDate?: string | null;
+};
+
+const LEAVE_ELIGIBLE_STATUS_IDS = new Set([0, 13, 10, 14]);
+const LEAVE_STOCK_STATUS_ID = 12;
+const LEAVE_PENDING_STATUS_ID = 14;
+
+function IconLogout() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
+function LeaveCheckbox({ checked, onClick }: { checked: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all cursor-pointer shrink-0',
+        checked
+          ? 'bg-emerald-500 border-emerald-500 text-white'
+          : 'bg-white border-pearl-300 text-transparent hover:border-navy-400',
+      )}
+      aria-label={checked ? 'Deselect asset' : 'Select asset'}
+    >
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    </button>
+  );
+}
+
+function MarkAsLeftControl({
+  empId,
+  initialLeaveDate,
+  onSaved,
+}: {
+  empId: string;
+  initialLeaveDate: string | null;
+  onSaved: (leaveDate: string | null) => void;
+}) {
+  const [date, setDate] = useState(initialLeaveDate ?? new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+
+  async function save(clear: boolean) {
+    setSaving(true);
+    try {
+      const value = clear ? null : date;
+      await lookupsApi.setEmployeeLeaveDate(Number(empId), value);
+      toast.success(clear ? 'Leave date cleared' : 'Employee marked as left');
+      onSaved(value);
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
+      <span className="text-[11px] font-semibold text-amber-700 shrink-0">
+        {initialLeaveDate ? `Left on ${initialLeaveDate}` : 'Not marked as left'}
+      </span>
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        className="input-base text-[12px] py-1 px-2 ml-auto"
+      />
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => save(false)}
+        className="text-[11px] font-semibold text-navy-600 hover:text-navy-700 shrink-0 disabled:opacity-50"
+      >
+        {initialLeaveDate ? 'Update' : 'Mark as Left'}
+      </button>
+      {initialLeaveDate && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => save(true)}
+          className="text-[11px] font-semibold text-red-600 hover:text-red-700 shrink-0 disabled:opacity-50"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LeaveSummaryTile({ label, value, color }: { label: string; value: number; color: 'green' | 'amber' }) {
+  const bg = { green: 'bg-emerald-50 border-emerald-200', amber: 'bg-amber-50 border-amber-200' }[color];
+  const text = { green: 'text-emerald-700', amber: 'text-amber-700' }[color];
+  return (
+    <div className={clsx('border rounded-lg px-4 py-3', bg)}>
+      <p className="text-[11px] font-medium text-ink-400 mb-0.5">{label}</p>
+      <p className={clsx('text-[22px] font-bold', text)}>{value.toLocaleString()}</p>
+    </div>
+  );
+}
+
+function LeaveProcessModal({
+  allAssets,
+  statuses,
+  onClose,
+  onLeaveOut,
+}: {
+  allAssets: AssetListItem[] | null;
+  statuses: StatusType[];
+  onClose: () => void;
+  onLeaveOut: (employeeName: string, eligibleAssets: AssetListItem[], selectedIds: Set<number>) => Promise<boolean>;
+}) {
+  const [query, setQuery] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState<LeaveEmployeeOption | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<number>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [leftEmployees, setLeftEmployees] = useState<LeftEmployeeAsset[] | null>(null);
+  const [internalEmployees, setInternalEmployees] = useState<Employee[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    assetsApi.getLeftEmployees()
+      .then((res) => { if (!cancelled) setLeftEmployees(res.data); })
+      .catch(() => { if (!cancelled) setLeftEmployees([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    lookupsApi.getEmployees()
+      .then((res) => { if (!cancelled) setInternalEmployees(res.data as Employee[]); })
+      .catch(() => { if (!cancelled) setInternalEmployees([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const employeeOptions: LeaveEmployeeOption[] = (() => {
+    if (!allAssets || !query.trim()) return [];
+    const q = query.trim().toLowerCase();
+    const map = new Map<string, LeaveEmployeeOption>();
+
+    // Internal employees resolved from the canonical roster first — this doesn't depend on
+    // server-side employeeName enrichment succeeding, so it can't silently drop internal employees.
+    for (const emp of internalEmployees ?? []) {
+      const name = emp.empFullName?.trim();
+      const empId = String(emp.empIDUsedBy);
+      const matchByName = !!name && name.toLowerCase().includes(q);
+      const matchById = empId.toLowerCase().includes(q);
+      if (!matchByName && !matchById) continue;
+      const assetCount = allAssets.filter((a) => a.empIDUsedBy === emp.empIDUsedBy).length;
+      if (assetCount === 0) continue;
+      map.set(`internal:${empId}`, { name: name || empId, empId, assetCount, source: 'internal', leaveDate: emp.leaveDate ?? null });
+    }
+
+    for (const a of allAssets) {
+      if (a.empIDUsedBy != null && map.has(`internal:${a.empIDUsedBy}`)) continue;
+      const name = a.employeeName?.trim();
+      const isInternal = a.empIDUsedBy != null;
+      const empId = a.hrEmpIDUsedBy ?? (a.empIDUsedBy != null ? String(a.empIDUsedBy) : null);
+      const source: LeaveEmployeeOption['source'] = empId == null ? null : isInternal ? 'internal' : 'hr';
+      const matchByName = !!name && name.toLowerCase().includes(q);
+      const matchById = !!empId && empId.toLowerCase().includes(q);
+      if (!matchByName && !matchById) continue;
+
+      const key = source && empId ? `${source}:${empId}` : (name?.toLowerCase() ?? '');
+      const existing = map.get(key);
+      if (existing) {
+        existing.assetCount += 1;
+        if (!existing.empId && empId) { existing.empId = empId; existing.source = source; }
+      } else {
+        map.set(key, { name: name ?? empId ?? '', empId, assetCount: 1, source });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 20);
+  })();
+
+  const eligibleAssets: AssetListItem[] = (() => {
+    if (!allAssets || !selectedEmployee) return [];
+    const selectedKey = selectedEmployee.name.trim().toLowerCase();
+    const empId = selectedEmployee.empId;
+    return allAssets.filter((a) => {
+      if (!LEAVE_ELIGIBLE_STATUS_IDS.has(a.statusID ?? -1)) return false;
+      if (selectedEmployee.source === 'internal' && empId) {
+        return a.empIDUsedBy != null && String(a.empIDUsedBy) === empId;
+      }
+      if (selectedEmployee.source === 'hr' && empId) {
+        return (a.hrEmpIDUsedBy?.trim().toLowerCase() ?? '') === empId.trim().toLowerCase();
+      }
+      return (a.employeeName?.trim().toLowerCase() ?? '') === selectedKey;
+    });
+  })();
+
+  const pendingStatusName = statuses.find((s) => s.statusID === LEAVE_PENDING_STATUS_ID)?.status ?? `Status ${LEAVE_PENDING_STATUS_ID}`;
+  const allSelected = eligibleAssets.length > 0 && selectedAssetIds.size === eligibleAssets.length;
+
+  function selectEmployee(opt: LeaveEmployeeOption) {
+    setSelectedEmployee(opt);
+    setSelectedAssetIds(new Set());
+    setQuery('');
+  }
+
+  function changeEmployee() {
+    setSelectedEmployee(null);
+    setSelectedAssetIds(new Set());
+    setQuery('');
+  }
+
+  function toggleAsset(assetId: number) {
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelectedAssetIds(allSelected ? new Set() : new Set(eligibleAssets.map((a) => a.assetID)));
+  }
+
+  async function handleSubmit() {
+    if (!selectedEmployee || eligibleAssets.length === 0) return;
+    setSubmitting(true);
+    try {
+      const success = await onLeaveOut(selectedEmployee.name, eligibleAssets, selectedAssetIds);
+      if (success) onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto">
+        {/* header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-pearl-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
+              <IconLogout />
+            </span>
+            <h3 className="text-[15px] font-semibold text-navy-700">Leave Process</h3>
+          </div>
+          <button onClick={onClose} className="text-ink-300 hover:text-ink-800 p-1 rounded-md hover:bg-pearl-100 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {!selectedEmployee ? (
+            <>
+              {!query.trim() && (
+                <div>
+                  <label className="text-[11px] font-semibold uppercase text-ink-300 mb-1.5 block">
+                    Left Employees Still Holding Assets{leftEmployees ? ` (${leftEmployees.length})` : ''}
+                  </label>
+                  {leftEmployees === null ? (
+                    <p className="text-[11px] text-ink-300">Loading…</p>
+                  ) : leftEmployees.length === 0 ? (
+                    <p className="text-[12px] text-ink-400 py-2">None — every left employee's assets have been processed.</p>
+                  ) : (
+                    <div className="border border-pearl-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto divide-y divide-pearl-100">
+                      {leftEmployees.map((row) => (
+                        <button
+                          type="button"
+                          key={`${row.source}-${row.companyID}-${row.empID}`}
+                          onClick={() => selectEmployee({
+                            name: row.fullName,
+                            empId: row.empID,
+                            assetCount: row.assets.length,
+                            source: row.source === 'Internal' ? 'internal' : 'hr',
+                            leaveDate: row.leaveDate ?? null,
+                          })}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors text-left"
+                        >
+                          <span className="min-w-0">
+                            <span className="text-[13px] font-medium text-ink-700 truncate block">{row.fullName}</span>
+                            <span className="text-[11px] text-ink-400">
+                              {row.companyAbbreviation ?? `Company ${row.companyID}`} · Left {row.leaveDate ?? '—'}
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-ink-300 shrink-0">
+                            {row.assets.length} asset{row.assets.length !== 1 ? 's' : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="text-[11px] font-semibold uppercase text-ink-300 mb-1.5 block">Employee</label>
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    className="input-base pl-8 w-full text-sm"
+                    placeholder="Search employee by name…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                {allAssets === null && <p className="text-[11px] text-ink-300 mt-1.5">Loading asset data…</p>}
+              </div>
+
+              {query.trim() && (
+                <div className="border border-pearl-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto divide-y divide-pearl-100">
+                  {employeeOptions.length === 0 ? (
+                    <p className="text-center text-ink-400 text-[13px] py-8">No matching employees</p>
+                  ) : (
+                    employeeOptions.map((opt) => (
+                      <button
+                        type="button"
+                        key={opt.name}
+                        onClick={() => selectEmployee(opt)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors text-left"
+                      >
+                        <span className="text-[13px] font-medium text-ink-700 truncate">{opt.name}</span>
+                        <span className="text-[11px] text-ink-300 shrink-0">
+                          {opt.empId ? `ID ${opt.empId}` : 'No ID'} · {opt.assetCount} asset{opt.assetCount !== 1 ? 's' : ''}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* employee card */}
+              <div className="bg-pearl-50 border border-pearl-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase text-ink-300 mb-1">Employee</p>
+                  <p className="text-[14px] font-semibold text-navy-700 truncate">{selectedEmployee.name}</p>
+                  <p className="text-[12px] text-ink-500 mt-0.5">
+                    {selectedEmployee.empId ? `EmpID: ${selectedEmployee.empId}` : 'No EmpID on record'}
+                  </p>
+                </div>
+                <button type="button" onClick={changeEmployee} className="text-[11px] font-semibold text-navy-600 hover:text-navy-700 shrink-0">
+                  Change
+                </button>
+              </div>
+
+              {selectedEmployee.source === 'internal' && selectedEmployee.empId && (
+                <MarkAsLeftControl
+                  empId={selectedEmployee.empId}
+                  initialLeaveDate={selectedEmployee.leaveDate ?? null}
+                  onSaved={(leaveDate) => setSelectedEmployee((prev) => (prev ? { ...prev, leaveDate } : prev))}
+                />
+              )}
+
+              {eligibleAssets.length === 0 ? (
+                <p className="text-center text-ink-400 text-[13px] py-8">No eligible assets found for this employee</p>
+              ) : (
+                <>
+                  {/* summary tiles */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <LeaveSummaryTile label="Selected → In Stock" value={selectedAssetIds.size} color="green" />
+                    <LeaveSummaryTile label={`Remaining → ${pendingStatusName}`} value={eligibleAssets.length - selectedAssetIds.size} color="amber" />
+                  </div>
+
+                  {/* asset list */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-semibold uppercase text-ink-300">
+                        Assets ({eligibleAssets.length})
+                      </label>
+                      <button type="button" onClick={toggleAll} className="text-[11px] font-semibold text-navy-600 hover:text-navy-700">
+                        {allSelected ? 'Deselect all' : 'Select all'}
+                      </button>
+                    </div>
+                    <div className="border border-pearl-200 rounded-lg divide-y divide-pearl-100 max-h-64 overflow-y-auto">
+                      {eligibleAssets.map((a) => {
+                        const checked = selectedAssetIds.has(a.assetID);
+                        const categoryDesc = [a.category, a.assetDesc].filter(Boolean).join(' - ');
+                        return (
+                          <label
+                            key={a.assetID}
+                            className="flex items-center gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors cursor-pointer"
+                          >
+                            <LeaveCheckbox checked={checked} onClick={() => toggleAsset(a.assetID)} />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-code text-[12px] font-semibold text-navy-700 truncate">{a.assetCode}</p>
+                              <p className="text-[12px] text-ink-500 truncate">
+                                {categoryDesc || '—'}
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-semibold uppercase text-ink-300 shrink-0">
+                              {a.status ?? statuses.find((s) => s.statusID === a.statusID)?.status ?? `Status ${a.statusID}`}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 items-start bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
+                    <svg className="mt-0.5 shrink-0 text-amber-500" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <p className="text-[11px] text-amber-700 leading-relaxed">
+                      Selected assets move to <strong>In Stock</strong> with a leave note. Unselected assets move to <strong>{pendingStatusName}</strong>.
+                    </p>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-6 pb-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancel</button>
+          {selectedEmployee && eligibleAssets.length > 0 && (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="btn-primary text-sm px-5 py-2 disabled:opacity-50"
+            >
+              {submitting ? 'Processing…' : 'Leave Out'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 export default function AssetsPage() {
   const { activeCompanyId, isAuditor } = useAuth();
@@ -365,6 +822,7 @@ export default function AssetsPage() {
   });
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number } | null>(null);
+  const [leaveProcessOpen, setLeaveProcessOpen] = useState(false);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
   const gridTemplateColumns = COLUMNS.map((c) => `${columnWidths[c.key]}px`).join(' ');
@@ -813,6 +1271,61 @@ useEffect(() => {
   await handleRemoveStatus(removeStatusModalAsset.assetID, removeStatusForm.statusDate, removeStatusForm.statusDesc);
 }
 
+  async function handleLeaveOut(
+    employeeName: string,
+    eligibleAssets: AssetListItem[],
+    selectedIds: Set<number>
+  ): Promise<boolean> {
+    if (readOnly) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      await Promise.all(
+        eligibleAssets.map((a) => {
+          const isSelected = selectedIds.has(a.assetID);
+          const newStatusId = isSelected ? LEAVE_STOCK_STATUS_ID : LEAVE_PENDING_STATUS_ID;
+          const empId = a.hrEmpIDUsedBy ?? (a.empIDUsedBy != null ? String(a.empIDUsedBy) : '');
+          const statusDesc = isSelected
+            ? `Last Use by:${employeeName}, EmpID: ${empId}, Leave: ${today}`
+            : null;
+
+          return assetsApi.updateStatus(a.assetID, {
+            assetStatusID: newStatusId,
+            assetStatusDate: today,
+            statusID: newStatusId,
+            statusDate: today,
+            statusContactID: null,
+            statusSalePrice: 0,
+            statusSaleCurCode: null,
+            statusDesc,
+            clearEmployeeLink: isSelected,
+          });
+        })
+      );
+
+      const resultMap = new Map<number, { statusID: number; status?: string; empIDUsedBy?: number; hrEmpIDUsedBy?: string | null; employeeName?: string | null }>();
+      for (const a of eligibleAssets) {
+        const isSelected = selectedIds.has(a.assetID);
+        const newStatusId = isSelected ? LEAVE_STOCK_STATUS_ID : LEAVE_PENDING_STATUS_ID;
+        resultMap.set(a.assetID, {
+          statusID: newStatusId,
+          status: statuses.find((s) => s.statusID === newStatusId)?.status,
+          ...(isSelected ? { empIDUsedBy: undefined, hrEmpIDUsedBy: null, employeeName: null } : {}),
+        });
+      }
+
+      setAssets((prev) => prev.map((a) => resultMap.has(a.assetID) ? { ...a, ...resultMap.get(a.assetID)! } : a));
+      setAllAssetsCache((prev) =>
+        prev ? prev.map((a) => resultMap.has(a.assetID) ? { ...a, ...resultMap.get(a.assetID)! } : a) : prev
+      );
+
+      toast.success('Leave process completed');
+      return true;
+    } catch (err) {
+      handleApiError(err, 'Failed to complete leave process');
+      return false;
+    }
+  }
+
 
   // const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
   const maintenanceCount = (allAssetsCache ?? []).filter((a) => a.statusID === 8).length;
@@ -883,10 +1396,20 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
         breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Assets' }]}
         actions={
           !readOnly ? (
-            <Link to="/assets/new" className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
-              <IconPlus />
-              Add Asset
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLeaveProcessOpen(true)}
+                className="btn-secondary"
+              >
+                <IconLogout />
+                Leave Process
+              </button>
+              <Link to="/assets/new" className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
+                <IconPlus />
+                Add Asset
+              </Link>
+            </div>
           ) : undefined
         }
       />
@@ -1299,6 +1822,15 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
         />
 
       </div>
+
+      {!readOnly && leaveProcessOpen && (
+        <LeaveProcessModal
+          allAssets={allAssetsCache}
+          statuses={statuses}
+          onClose={() => setLeaveProcessOpen(false)}
+          onLeaveOut={handleLeaveOut}
+        />
+      )}
 
       {!readOnly && removeStatusModalAsset && (
         <Modal title={`Remove Status · ${removeStatusModalAsset.assetCode}`} onClose={() => setRemoveStatusModalAsset(null)}>

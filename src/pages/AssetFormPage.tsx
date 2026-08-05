@@ -8,6 +8,7 @@ import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDet
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../hooks/useConfirm';
 
 const inputCls = 'border border-[#ddd] rounded-md px-2.5 py-2 text-sm outline-none focus:border-accent transition-colors w-full';
 const companyOwnerId = 1;
@@ -76,6 +77,7 @@ export default function AssetFormPage() {
     financialContact: '', financialContactEmail: '', address: '', countryID: '',
     telephone1: '', telephone2: '', mobile1: '', mobile2: '', fax1: '', fax2: '', remark: '',
   });
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const allowedCompanyIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
 const visibleCompanies = isAdmin()
   ? companies
@@ -400,9 +402,36 @@ const visibleCompanies = isAdmin()
       return;
     }
 
+    const trimmedName = employeeForm.empFullName.trim();
+    const selectedCompany = companies.find((c) => c.companyID === form.companyID);
+
     setSavingEmployee(true);
     try {
-      const r = await lookupsApi.createEmployee({ empFullName: employeeForm.empFullName.trim(), companyID: form.companyID });
+      if (selectedCompany?.countryID?.trim()) {
+        const matchesRes = await lookupsApi.checkEmployeePossibleMatches(form.companyID, trimmedName);
+        const matches = matchesRes.data as HrEmployee[];
+
+        if (matches.length > 0) {
+          const formattedMatches = matches
+            .map((match) => `• ${match.fullName}${match.prmName ? ` (${match.prmName})` : ''}`)
+            .join('\n');
+
+          const proceed = await confirm(
+            `Possible HR employee match(es) were found in ${selectedCompany.countryID.trim()}:\n\n${formattedMatches}\n\nDo you want to continue and create the internal employee anyway?`,
+            {
+              title: 'Possible HR employee match',
+              confirmLabel: 'Create anyway',
+              danger: false,
+            }
+          );
+
+          if (!proceed) {
+            return;
+          }
+        }
+      }
+
+      const r = await lookupsApi.createEmployee({ empFullName: trimmedName, companyID: form.companyID });
       const newEmployee = r.data as Employee;
       setEmployees((prev) => [...prev, newEmployee]);
       set('empIDUsedBy', newEmployee.empIDUsedBy);
@@ -752,6 +781,8 @@ const visibleCompanies = isAdmin()
           </MField>
         </QuickAddModal>
       )}
+
+      {confirmDialog}
 
       {/* ── Page header ── */}
       <div className="flex items-center gap-2 mb-5">

@@ -196,6 +196,16 @@ function StatusIcon({ statusId }: { statusId?: number }) {
   );
 }
 
+if (statusId === 14) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16v10H4z" />
+      <path d="M12 7v10" />
+      <path d="M4 12h16" />
+    </svg>
+  );
+}
+
 if (statusId === 13) {
   return (
     <svg
@@ -238,7 +248,7 @@ function statusTone(statusId?: number) {
   if (statusId === 6) 
     return 'bg-violet-50 text-violet-700 border-violet-200';
 
-  if (statusId === 12) 
+  if (statusId === 12 || statusId === 14) 
     return 'bg-blue-50 text-blue-700 border-blue-200';
 
   return 'bg-pearl-50 text-ink-700 border-pearl-200';

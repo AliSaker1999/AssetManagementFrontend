@@ -1,8 +1,10 @@
 import client from './client';
-import type { AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem } from '../types';
+import type { AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, LeftEmployeeAsset } from '../types';
 
 export const assetsApi = {
   getList: (companyId?: number) => client.get('/assets', { params: companyId ? { companyId } : {} }),
+  getLeftEmployees: (companyId?: number) =>
+    client.get<LeftEmployeeAsset[]>('/assets/left-employees', { params: companyId ? { companyId } : {} }),
   getListPaginated: (pageNumber: number = 1, pageSize: number = 10, companyId?: number) =>
     client.get<PaginatedResponse<AssetListItem>>('/assets/paginated', { params: { pageNumber, pageSize, ...(companyId ? { companyId } : {}) } }),
   get: (id: number) => client.get(`/assets/${id}`),

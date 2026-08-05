@@ -92,6 +92,7 @@ export interface HrEmployee {
   fullName: string;
   companyProfileID: number;
   prmName?: string;
+  leaveDate?: string | null;
 }
 
 export interface Employee {
@@ -99,6 +100,24 @@ export interface Employee {
   empFullName: string;
   companyID: number;
   companyName?: string;
+  leaveDate?: string | null;
+}
+
+export interface LeftEmployeeAssetItem {
+  assetID: number;
+  assetCode: string;
+  assetDesc: string;
+  status?: string | null;
+}
+
+export interface LeftEmployeeAsset {
+  source: 'Internal' | 'HR';
+  empID: string;
+  fullName: string;
+  companyID: number;
+  companyAbbreviation?: string | null;
+  leaveDate?: string | null;
+  assets: LeftEmployeeAssetItem[];
 }
 
 export interface AssetReportItem {

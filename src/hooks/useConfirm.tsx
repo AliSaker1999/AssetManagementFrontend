@@ -26,12 +26,12 @@ export function useConfirm() {
   }
 
   const dialog = state ? (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
         {state.title && (
           <h3 className="text-[15px] font-bold text-brand mb-2">{state.title}</h3>
         )}
-        <p className="text-[14px] text-[#444] leading-relaxed mb-6">{state.message}</p>
+        <div className="text-[14px] text-[#444] leading-relaxed mb-6 whitespace-pre-wrap max-h-[50vh] overflow-y-auto">{state.message}</div>
         <div className="flex justify-end gap-2">
           <button
             onClick={() => handleClose(false)}
