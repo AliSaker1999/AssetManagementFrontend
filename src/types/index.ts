@@ -26,6 +26,13 @@ export interface PaginatedResponse<T> {
 }
 
 // Assets
+/** One row per status from /assets/status-counts, for the assets-page status tiles. */
+export interface AssetStatusCount {
+  statusID: number | null;
+  status: string | null;
+  assetCount: number;
+}
+
 export interface AssetListItem {
   assetID: number;
   companyID: number;
@@ -85,6 +92,8 @@ export interface Asset {
   empIDUsedBy?: number;
   hrEmpIDUsedBy?: string;
   employeeName?: string | null;
+  /** Shared assets nobody is personally responsible for — no Used By employee needed. */
+  usedByNotMandatory?: boolean;
 }
 
 export interface HrEmployee {
@@ -182,6 +191,8 @@ export interface AssetCreateRequest {
   ownerID: number;
   ownerDesc?: string;
   hrEmpIDUsedBy?: string;
+  statusID?: number;
+  usedByNotMandatory?: boolean;
 }
 
 export interface DepreciationHistoryItem {

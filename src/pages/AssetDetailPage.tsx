@@ -1077,7 +1077,10 @@ function AssetInfo({ asset }: { asset: Asset }) {
                 : asset.empIDUsedBy
                   ? `${asset.employeeName} – ${asset.empIDUsedBy}`
                   : asset.employeeName
-              : asset.hrEmpIDUsedBy ?? asset.empIDUsedBy?.toString() ?? null
+              : asset.hrEmpIDUsedBy
+                ?? asset.empIDUsedBy?.toString()
+                // Shared asset with nobody responsible for it — say so instead of showing a dash.
+                ?? (asset.usedByNotMandatory ? 'Not required' : null)
           }
         />
         <InfoField label="Brand" value={asset.brandDesc} />

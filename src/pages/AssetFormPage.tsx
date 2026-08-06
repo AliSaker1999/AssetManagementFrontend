@@ -5,7 +5,7 @@ import { handleApiError } from '../utils/errors';
 import { confirmEmployeeMatches } from '../utils/employeeMatches';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
-import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee, Employee } from '../types';
+import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee, Employee, StatusType } from '../types';
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,8 @@ import { useConfirm } from '../hooks/useConfirm';
 
 const inputCls = 'border border-[#ddd] rounded-md px-2.5 py-2 text-sm outline-none focus:border-accent transition-colors w-full';
 const companyOwnerId = 1;
+// Status a brand-new asset starts on — the value the insert procedure used to hard-code.
+const defaultStatusId = 0;
 
 type ModalType = 'group' | 'category' | 'location' | 'locDetail' | 'currency' | 'company' | 'brand' | 'contact' | null;
 
@@ -52,9 +54,11 @@ export default function AssetFormPage() {
   const [form, setForm] = useState<Partial<Asset>>({
     purchasePrice: 0,
     donation: false,
+    usedByNotMandatory: false,
     inServiceDate: new Date().toISOString().slice(0, 10),
     purchaseCurCode: 'USD',
     ownerID: !isEdit ? companyOwnerId : undefined,
+    ...(!isEdit ? { statusID: defaultStatusId } : {}),
     ...(ctxCompanyId != null && !isEdit ? { companyID: ctxCompanyId } : {}),
   });
   
@@ -66,6 +70,7 @@ export default function AssetFormPage() {
   const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
   const [brands, setBrands] = useState<BrandType[]>([]);
   const [owners, setOwners] = useState<OwnerType[]>([]);
+  const [statuses, setStatuses] = useState<StatusType[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -122,7 +127,8 @@ const visibleCompanies = isAdmin()
       contactsApi.getLookup(),
       lookupsApi.getCountries(),
       lookupsApi.getContactTypes(),
-    ]).then(([c, g, cat, l, ld, b, o, cur, con, cty, ctypes]) => {
+      lookupsApi.getStatuses(),
+    ]).then(([c, g, cat, l, ld, b, o, cur, con, cty, ctypes, st]) => {
       const companiesData = c.data as Company[];
       setCompanies(companiesData);
       setGroups(g.data as GroupType[]);
@@ -135,6 +141,7 @@ const visibleCompanies = isAdmin()
       setContacts(con.data as Contact[]);
       setCountries(cty.data as Country[]);
       setContactTypes(ctypes.data as ContactType[]);
+      setStatuses(st.data as StatusType[]);
       if (!isEdit && ctxCompanyId != null) {
         const ctxCountry = companiesData.find((co) => co.companyID === ctxCompanyId)?.countryID?.trim();
         if (ctxCountry) {
@@ -202,14 +209,18 @@ const visibleCompanies = isAdmin()
       toast.error('Owner description is required for non-company ownership');
       return;
     }
+    if (form.statusID == null) {
+      toast.error('Select a status');
+      return;
+    }
     if (hasLiveHrEmployee && hasInternalEmployee) {
       toast.error('Select either an HR employee or an internal employee, not both');
       return;
     }
-    if (!hasHrEmployee && !hasInternalEmployee) {
+    if (!usedByNotMandatory && !hasHrEmployee && !hasInternalEmployee) {
       toast.error(canSelectHrEmployee
-        ? 'Select a Used By employee — either HR or internal'
-        : 'Select a Used By (Employee)');
+        ? 'Select a Used By employee — either HR or internal — or tick "Used By not mandatory"'
+        : 'Select a Used By (Employee) or tick "Used By not mandatory"');
       return;
     }
 
@@ -232,7 +243,7 @@ const visibleCompanies = isAdmin()
         const countryId = selectedCompany?.countryID?.trim() ?? '';
         const codeRes = await lookupsApi.getAssetCode(true, countryId);
         const assetCode = (codeRes.data as { assetCode: string }).assetCode;
-        const r = await assetsApi.create({ ...payload, assetCode, statusID: 0 } as Asset);
+        const r = await assetsApi.create({ ...payload, assetCode, statusID: form.statusID ?? defaultStatusId } as Asset);
         toast.success('Asset created');
         navigate(`/assets/${(r.data as { assetID: number }).assetID}`, { replace: true, state: { from: listUrl } });
       }
@@ -486,6 +497,9 @@ const visibleCompanies = isAdmin()
     : locations;
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
 
+  // Shared assets (corridor printer, meeting-room screen) have nobody personally
+  // responsible for them, so the "Used By" pair stops being required.
+  const usedByNotMandatory = !!form.usedByNotMandatory;
   // Exactly one of the two "Used By" fields must be filled: picking one disables the other.
   const hrEmpValue = (form.hrEmpIDUsedBy ?? '').toString().trim();
   const hasHrEmployee = hrEmpValue !== '';
@@ -871,8 +885,34 @@ const visibleCompanies = isAdmin()
             </DropWithAdd>
           </Field>
 
+          {/* Status */}
+          <Field label="Status *">
+            <Select value={form.statusID ?? ''} onChange={(e) => set('statusID', e.target.value === '' ? undefined : Number(e.target.value))} required>
+              <option value="">Select…</option>
+              {statuses.map((s) => <option key={s.statusID} value={s.statusID}>{s.status}</option>)}
+            </Select>
+            {isEdit && (
+              <p className="text-[11px] text-slate-500 mt-1">
+                Changing the status here does not add a status-history entry or send a notification —
+                use the status actions on the asset page for that.
+              </p>
+            )}
+          </Field>
+
+          <Field label="Used By Not Mandatory">
+            <label className="inline-flex items-center gap-2 text-[13px] text-[#374151] h-[38px] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={usedByNotMandatory}
+                onChange={(e) => set('usedByNotMandatory', e.target.checked)}
+                className="h-4 w-4 rounded border-[#d1d5db] text-accent focus:ring-accent"
+              />
+              No employee is responsible for this asset
+            </label>
+          </Field>
+
           {form.companyID && (
-            <Field label={isLegacyHrEmployee ? 'Used By (Employee)' : 'Used By (Employee) *'}>
+            <Field label={isLegacyHrEmployee || usedByNotMandatory ? 'Used By (Employee)' : 'Used By (Employee) *'}>
               <DropWithAdd onAdd={() => setEmployeeModalOpen(true)} showAdd={canAddEmployee && !hasLiveHrEmployee}>
                 <Select
                   value={form.empIDUsedBy ?? ''}
@@ -883,7 +923,7 @@ const visibleCompanies = isAdmin()
                     if (e.target.value && hasLiveHrEmployee) set('hrEmpIDUsedBy', undefined);
                   }}
                   disabled={loadingEmployees || hasLiveHrEmployee}
-                  required={!hasHrEmployee}
+                  required={!hasHrEmployee && !usedByNotMandatory}
                   searchable
                 >
                   <option value="">
@@ -898,6 +938,8 @@ const visibleCompanies = isAdmin()
               </DropWithAdd>
               {hasLiveHrEmployee ? (
                 <p className="text-[11px] text-slate-500 mt-1">Disabled — an HR employee is selected. Clear it to use an internal employee.</p>
+              ) : usedByNotMandatory ? (
+                <p className="text-[11px] text-slate-500 mt-1">Optional — "Used By Not Mandatory" is ticked.</p>
               ) : canAddEmployee && companyEmployees.length === 0 && !loadingEmployees ? (
                 <p className="text-[11px] text-slate-500 mt-1">No internal employees exist for this company yet. Use the add button to create one.</p>
               ) : isLegacyHrEmployee && hasInternalEmployee ? (
@@ -907,7 +949,7 @@ const visibleCompanies = isAdmin()
           )}
 
           {canSelectHrEmployee && (
-            <Field label="Used By (HR Employee) *">
+            <Field label={usedByNotMandatory ? 'Used By (HR Employee)' : 'Used By (HR Employee) *'}>
               <Select
                 value={form.hrEmpIDUsedBy ?? ''}
                 onChange={(e) => {
@@ -915,7 +957,7 @@ const visibleCompanies = isAdmin()
                   if (e.target.value) set('empIDUsedBy', undefined);
                 }}
                 disabled={loadingHrEmployees || hasInternalEmployee}
-                required={!hasInternalEmployee}
+                required={!hasInternalEmployee && !usedByNotMandatory}
                 searchable
               >
                 <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
@@ -925,9 +967,11 @@ const visibleCompanies = isAdmin()
                   </option>
                 ))}
               </Select>
-              {hasInternalEmployee && (
+              {hasInternalEmployee ? (
                 <p className="text-[11px] text-slate-500 mt-1">Disabled — an internal employee is selected. Clear it to use an HR employee.</p>
-              )}
+              ) : usedByNotMandatory ? (
+                <p className="text-[11px] text-slate-500 mt-1">Optional — "Used By Not Mandatory" is ticked.</p>
+              ) : null}
             </Field>
           )}
 
