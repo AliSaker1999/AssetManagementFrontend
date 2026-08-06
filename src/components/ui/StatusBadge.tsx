@@ -4,11 +4,11 @@ type Status = 'active' | 'inactive' | 'maintenance' | 'disposed' | 'missing' | s
 
 function normalize(raw: string | null | undefined): Status {
   const s = (raw ?? '').toLowerCase();
-  if (s.includes('activ')) return 'active';
   if (s.includes('inactiv') || s.includes('idle')) return 'inactive';
   if (s.includes('maint')) return 'maintenance';
   if (s.includes('dispos') || s.includes('retire')) return 'disposed';
   if (s.includes('miss') || s.includes('lost')) return 'missing';
+  if (s.includes('activ')) return 'active';
   return s || 'active';
 }
 

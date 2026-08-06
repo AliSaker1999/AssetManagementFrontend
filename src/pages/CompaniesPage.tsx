@@ -30,12 +30,15 @@ export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [search, setSearch] = useState('');
+  const [allCompaniesCache, setAllCompaniesCache] = useState<Company[] | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -54,30 +57,61 @@ export default function CompaniesPage() {
   }, [auditorMode]);
 
   useEffect(() => {
+    setPageNumber(1);
+    setAllCompaniesCache(null);
+  }, [search, pageSize]);
+
+  useEffect(() => {
+    lookupsApi.getCountries()
+      .then((r) => setCountries(r.data as Country[]))
+      .catch((err) => handleApiError(err, 'Failed to load countries'));
+    lookupsApi.getCurrencies()
+      .then((r) => setCurrencies(r.data as Currency[]))
+      .catch((err) => handleApiError(err, 'Failed to load currencies'));
+  }, []);
+
+  useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [companyResponse, countryResponse, currencyResponse] = await Promise.all([
-          lookupsApi.getCompaniesPaginated(pageNumber, pageSize),
-          lookupsApi.getCountries(),
-          lookupsApi.getCurrencies(),
-        ]);
+        if (search.trim() === '') {
+          const r = await lookupsApi.getCompaniesPaginated(pageNumber, pageSize);
+          const companyData = r.data as PaginatedResponse<Company>;
+          setCompanies(companyData.data);
+          setTotalPages(companyData.totalPages || 1);
+          setTotalCount(companyData.totalCount || companyData.data.length);
+          setAllCompaniesCache(null);
+          return;
+        }
 
-        const companyData = companyResponse.data as PaginatedResponse<Company>;
-        setCompanies(companyData.data);
-        setTotalPages(companyData.totalPages || 1);
-        setTotalCount(companyData.totalCount || companyData.data.length);
-        setCountries(countryResponse.data as Country[]);
-        setCurrencies(currencyResponse.data as Currency[]);
+        let allData = allCompaniesCache;
+        if (!allData) {
+          const r = await lookupsApi.getCompanies();
+          allData = r.data as Company[];
+          setAllCompaniesCache(allData);
+        }
+
+        const q = search.trim().toLowerCase();
+        const filtered = allData.filter((c) =>
+          c.companyName.toLowerCase().includes(q) ||
+          c.companyAbbreviation.toLowerCase().includes(q) ||
+          (countries.find(co => co.countryID === c.countryID)?.country ?? '').toLowerCase().includes(q)
+        );
+        const newTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        const start = (pageNumber - 1) * pageSize;
+        setCompanies(filtered.slice(start, start + pageSize));
+        setTotalPages(newTotalPages);
+        setTotalCount(filtered.length);
       } catch (err) {
-        handleApiError(err, 'Failed to load data');
+        handleApiError(err, 'Failed to load companies');
       } finally {
         setLoading(false);
+        setInitialLoading(false);
       }
     };
 
     void load();
-  }, [pageNumber, pageSize, reloadKey, auditorMode]);
+  }, [pageNumber, pageSize, search, reloadKey, auditorMode]);
 
   useEffect(() => {
     if (pageNumber > totalPages) {
@@ -86,6 +120,7 @@ export default function CompaniesPage() {
   }, [pageNumber, totalPages]);
 
   async function reload() {
+    setAllCompaniesCache(null);
     setReloadKey((value) => value + 1);
   }
 
@@ -222,7 +257,7 @@ export default function CompaniesPage() {
   }
 }
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (initialLoading) return <div className="p-8">Loading...</div>;
 
   return (
     <div className="px-4 sm:px-8 py-6 max-w-[1100px] mx-auto">
@@ -338,6 +373,15 @@ export default function CompaniesPage() {
 
       <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
         <div className="mb-4">
+          <input
+            className="w-full max-w-[360px] px-3.5 py-2.5 border border-[#d1d5db] rounded-lg text-sm outline-none focus:border-accent transition-colors"
+            placeholder="Search by name, abbreviation, or country…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="mb-4">
           <TablePagination
             summary={`Showing ${((pageNumber - 1) * pageSize) + 1}-${Math.min(pageNumber * pageSize, totalCount)} of ${totalCount} companies`}
             pageNumber={pageNumber}
@@ -424,7 +468,7 @@ export default function CompaniesPage() {
               );
             })}
             {visibleCompanies.length === 0 && (
-              <tr><td colSpan={canManage ? 10 : 9} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">No companies yet.</td></tr>
+              <tr><td colSpan={canManage ? 10 : 9} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">{search.trim() ? 'No companies found.' : 'No companies yet.'}</td></tr>
             )}
           </tbody>
         </table>

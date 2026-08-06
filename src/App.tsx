@@ -11,6 +11,7 @@ import AssetFormPage from './pages/AssetFormPage';
 import InventoriesPage from './pages/InventoriesPage';
 import DepreciationsPage from './pages/DepreciationsPage';
 import ContactsPage from './pages/ContactsPage';
+import EmployeesPage from './pages/EmployeesPage';
 import SettingsPage from './pages/SettingsPage';
 import UsersPage from './pages/UsersPage';
 import CompaniesPage from './pages/CompaniesPage';
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="inventories" element={<InventoriesPage />} />
             <Route path="depreciations" element={<DepreciationsPage />} />
             <Route path="contacts" element={<ContactsPage />} />
+            <Route path="employees" element={<EmployeesPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="companies" element={<CompaniesPage />} />
             <Route path="users" element={<UsersPage />} />

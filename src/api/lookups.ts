@@ -39,7 +39,12 @@ export const lookupsApi = {
   checkEmployeePossibleMatches: (companyId: number, empFullName: string) =>
     client.get<HrEmployee[]>('/lookups/employees/possible-matches', { params: { companyId, empFullName } }),
   getEmployees: () => client.get<Employee[]>('/lookups/employees'),
+  getEmployeesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
+    client.get<PaginatedResponse<Employee>>('/lookups/employees/paginated', { params: { pageNumber, pageSize } }),
   createEmployee: (data: { empFullName: string; companyID: number }) => client.post<Employee>('/lookups/employees', data),
+  updateEmployee: (id: number, data: { empFullName: string; companyID: number }) =>
+    client.put(`/lookups/employees/${id}`, data),
+  deleteEmployee: (id: number) => client.delete(`/lookups/employees/${id}`),
   setEmployeeLeaveDate: (id: number, leaveDate: string | null) =>
     client.put(`/lookups/employees/${id}/leave-date`, { leaveDate }),
   getCountriesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>

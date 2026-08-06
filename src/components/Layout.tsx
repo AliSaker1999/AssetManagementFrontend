@@ -42,6 +42,16 @@ function IconContacts() {
     </svg>
   );
 }
+function IconEmployees() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <circle cx="9" cy="10" r="2"/>
+      <path d="M6 16c0-1.66 1.34-3 3-3s3 1.34 3 3"/>
+      <line x1="13" y1="8" x2="18" y2="8"/><line x1="13" y1="12" x2="18" y2="12"/>
+    </svg>
+  );
+}
 function IconSettings() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -135,6 +145,7 @@ const navItems = [
   { to: '/depreciations', label: 'Depreciation',Icon: IconDepreciation },
   { to: '/reports',       label: 'Reports',     Icon: IconReports },
   { to: '/contacts',      label: 'Contacts',    Icon: IconContacts },
+  { to: '/employees',     label: 'Employees',   Icon: IconEmployees },
   { to: '/settings',      label: 'Settings',    Icon: IconSettings },
 ];
 
