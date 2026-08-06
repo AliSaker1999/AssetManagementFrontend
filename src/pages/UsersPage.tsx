@@ -22,6 +22,7 @@ const inputCls = 'w-full px-2.5 py-2 rounded-md border border-[#d1d5db] text-[13
 const labelCls = 'block text-xs font-semibold text-[#374151] mb-1 mt-3';
 const btnPrimary = 'px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors';
 const btnSmCls = 'px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]';
+const btnEditCls = 'bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]';
 const btnDangerCls = 'px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors';
 
 export default function UsersPage() {
@@ -252,7 +253,7 @@ export default function UsersPage() {
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.emailAddress}</td>
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.roleName}</td>
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6] whitespace-nowrap">
-                  <button className={btnSmCls} onClick={e => { e.stopPropagation(); openEdit(u); }}>Edit</button>
+                  <button className={btnEditCls} onClick={e => { e.stopPropagation(); openEdit(u); }}>Edit</button>
                   {' '}
                   <button className={btnDangerCls} onClick={e => { e.stopPropagation(); handleDelete(u.userID); }}>Del</button>
                 </td>

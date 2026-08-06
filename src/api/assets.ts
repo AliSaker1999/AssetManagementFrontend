@@ -1,8 +1,29 @@
 import client from './client';
 import type { AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, LeftEmployeeAsset } from '../types';
 
+async function downloadBlob(promise: Promise<{ data: ArrayBuffer; headers: Record<string, string> }>, fallbackName: string) {
+  const res = await promise;
+  const contentDisposition = res.headers?.['content-disposition'] as string | undefined;
+  let fileName = fallbackName;
+  if (contentDisposition) {
+    const m = contentDisposition.match(/filename="?([^";]+)"?/i);
+    if (m?.[1]) fileName = m[1].trim();
+  }
+  const url = URL.createObjectURL(new Blob([res.data]));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const assetsApi = {
   getList: (companyId?: number) => client.get('/assets', { params: companyId ? { companyId } : {} }),
+  export: (data: { format: 'excel' | 'pdf'; companyID?: number; search?: string; statusIDs: number[] }) =>
+    downloadBlob(
+      client.post('/assets/export', data, { responseType: 'arraybuffer' }) as never,
+      data.format === 'excel' ? 'Assets.xlsx' : 'Assets.pdf'
+    ),
   getLeftEmployees: (companyId?: number) =>
     client.get<LeftEmployeeAsset[]>('/assets/left-employees', { params: companyId ? { companyId } : {} }),
   getListPaginated: (pageNumber: number = 1, pageSize: number = 10, companyId?: number) =>

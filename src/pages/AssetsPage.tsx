@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { useLayoutEffect, useEffect, useRef, useState, type FormEvent , type ReactNode, type RefObject} from 'react';
+import { useCallback, useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type FormEvent , type ReactNode, type RefObject} from 'react';
 import { Link, useNavigate, useSearchParams  } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -19,25 +19,23 @@ import { useAuth } from '../contexts/AuthContext';
 import TransferAssetModal from '../components/TransferAssetModal';
 
 
-interface StatusMenuStyle {
-  position: 'fixed';
-  left: number;
-  top?: number;
-  bottom?: number;
-}
-
 interface StatusMenuProps {
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   children: ReactNode;
 }
+
+// Layout constants for the floating status menu.
+const APP_HEADER_HEIGHT = 44;   // fixed top bar (h-11) the menu must not slide under
+const MENU_GAP = 6;             // gap between the anchor button and the menu
+const MENU_MARGIN = 8;          // minimum breathing room against the viewport edges
+const MENU_MIN_HEIGHT = 180;    // below this the menu scrolls rather than flips
 const COLUMNS: { key: string; label: string }[] = [
   { key: 'code', label: 'Code' },
   { key: 'description', label: 'Description' },
   { key: 'category', label: 'Category' },
   { key: 'location', label: 'Location' },
   { key: 'employee', label: 'Employee' },
-  { key: 'installedAt', label: 'Installed At' },
   { key: 'status', label: 'Status' },
   { key: 'barcode', label: 'Barcode' },
 ];
@@ -48,7 +46,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   category: 100,
   location: 110,
   employee: 220,
-  installedAt: 130,
   status: 280,
   barcode: 40,
 };
@@ -59,7 +56,6 @@ const COLUMN_MIN_WIDTHS: Record<string, number> = {
   category: 70,
   location: 90,
   employee: 100,
-  installedAt: 90,
   status: 180, // needs room for the status button + Remove Status button
   barcode: 50,
 };
@@ -116,6 +112,172 @@ function IconClose() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>
+  );
+}
+
+function IconDownload() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  );
+}
+
+function IconSheet() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+    </svg>
+  );
+}
+
+function IconFileText() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+    </svg>
+  );
+}
+
+// Export menu — downloads whatever the table is currently showing.
+function ExportMenu({ busy, onExport }: { busy: boolean; onExport: (format: 'excel' | 'pdf') => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => setOpen((o) => !o)}
+        className="btn-secondary disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        <IconDownload />
+        {busy ? 'Exporting…' : 'Export'}
+        <IconChevronDown />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[190px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1">
+          <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">
+            Current view
+          </div>
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onExport('excel'); }}
+            className="w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] text-ink-700 hover:bg-pearl-50 transition-colors cursor-pointer bg-transparent border-none"
+          >
+            <IconSheet />
+            Excel (.xlsx)
+          </button>
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onExport('pdf'); }}
+            className="w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] text-ink-700 hover:bg-pearl-50 transition-colors cursor-pointer bg-transparent border-none"
+          >
+            <IconFileText />
+            PDF (.pdf)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Floating status menu. Declared at module scope so it keeps its identity across
+// parent re-renders — otherwise React remounts it and the measured position is lost.
+function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
+  const [style, setStyle] = useState<CSSProperties | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef.current;
+    const menu = menuRef.current;
+    if (!anchor || !menu) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const contentHeight = menu.scrollHeight;
+    const menuWidth = Math.max(menu.offsetWidth, 200);
+
+    const topBound = APP_HEADER_HEIGHT + MENU_MARGIN;
+    const bottomBound = window.innerHeight - MENU_MARGIN;
+
+    const spaceBelow = bottomBound - (rect.bottom + MENU_GAP);
+    const spaceAbove = (rect.top - MENU_GAP) - topBound;
+
+    // Flip up only when that genuinely gives more room.
+    const openUpward = contentHeight > spaceBelow && spaceAbove > spaceBelow;
+    const available = Math.max(MENU_MIN_HEIGHT, openUpward ? spaceAbove : spaceBelow);
+    const height = Math.min(contentHeight, available);
+
+    const top = openUpward
+      ? Math.max(topBound, rect.top - MENU_GAP - height)
+      : Math.min(rect.bottom + MENU_GAP, bottomBound - height);
+
+    const left = Math.min(
+      Math.max(MENU_MARGIN, rect.right - menuWidth),
+      Math.max(MENU_MARGIN, window.innerWidth - menuWidth - MENU_MARGIN)
+    );
+
+    setStyle({ position: 'fixed', top, left, maxHeight: height });
+  }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    updatePosition();
+
+    const handle = () => updatePosition();
+    window.addEventListener('resize', handle);
+    window.addEventListener('scroll', handle, true);   // capture: also follows inner scrollers
+    return () => {
+      window.removeEventListener('resize', handle);
+      window.removeEventListener('scroll', handle, true);
+    };
+  }, [updatePosition]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(target) &&
+        anchorRef.current &&
+        !anchorRef.current.contains(target)
+      ) {
+        onClose();
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose, anchorRef]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      style={style ?? { position: 'fixed', top: 0, left: 0, visibility: 'hidden' }}
+      // z-index sits above the fixed app header (z-50) but below modals (z-100+).
+      className="z-[60] min-w-[200px] overflow-y-auto overscroll-contain bg-white border border-pearl-200 rounded-xl shadow-xl p-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>,
+    document.body
   );
 }
 
@@ -724,17 +886,21 @@ function LeaveProcessModal({
                     <div className="border border-pearl-200 rounded-lg divide-y divide-pearl-100 max-h-64 overflow-y-auto">
                       {eligibleAssets.map((a) => {
                         const checked = selectedAssetIds.has(a.assetID);
-                        const categoryDesc = [a.category, a.assetDesc].filter(Boolean).join(' - ');
+                        // category - description - brand - model - serial number
+                        const identity = [a.category, a.assetDesc, a.brand, a.model, a.serialNumber]
+                          .map((part) => part?.trim())
+                          .filter(Boolean)
+                          .join(' - ');
                         return (
                           <label
                             key={a.assetID}
-                            className="flex items-center gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors cursor-pointer"
+                            className="flex items-start gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors cursor-pointer"
                           >
                             <LeaveCheckbox checked={checked} onClick={() => toggleAsset(a.assetID)} />
                             <div className="min-w-0 flex-1">
                               <p className="font-code text-[12px] font-semibold text-navy-700 truncate">{a.assetCode}</p>
-                              <p className="text-[12px] text-ink-500 truncate">
-                                {categoryDesc || '—'}
+                              <p className="text-[12px] text-ink-500 break-words">
+                                {identity || '—'}
                               </p>
                             </div>
                             <span className="text-[10px] font-semibold uppercase text-ink-300 shrink-0">
@@ -823,9 +989,33 @@ export default function AssetsPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number } | null>(null);
   const [leaveProcessOpen, setLeaveProcessOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
   const gridTemplateColumns = COLUMNS.map((c) => `${columnWidths[c.key]}px`).join(' ');
+
+  // Handed to the detail page so "Back to Assets" returns to this exact view
+  // (search, page, size and status filter all live in the query string).
+  const listUrl = `/assets${searchParams.toString() ? `?${searchParams}` : ''}`;
+
+  // Exports every asset matching the current view (company scope + search + status filter),
+  // not just the assets on the visible page.
+  async function handleExport(format: 'excel' | 'pdf') {
+    setExporting(true);
+    try {
+      await assetsApi.export({
+        format,
+        companyID: activeCompanyId ?? undefined,
+        search: search.trim() || undefined,
+        statusIDs: Array.from(selectedStatusIds),
+      });
+      toast.success(`${format === 'excel' ? 'Excel' : 'PDF'} downloaded`);
+    } catch (err) {
+      handleApiError(err, 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function handleColumnResizeStart(key: string) {
     return (e: React.MouseEvent) => {
@@ -1110,8 +1300,7 @@ useEffect(() => {
                 (a.employeeName ?? '').toLowerCase().includes(q) ||
                 (a.hrEmpIDUsedBy ?? '').toLowerCase().includes(q) ||
                 (a.floor ?? '').toLowerCase().includes(q) ||
-                (a.room ?? '').toLowerCase().includes(q) ||
-                (a.installedAt ?? '').toLowerCase().includes(q)
+                (a.room ?? '').toLowerCase().includes(q)
             );
           }
           if (selectedStatusIds.size > 0) {
@@ -1338,56 +1527,6 @@ useEffect(() => {
   const isSoldStatus = statusModalStatusId === 4;
   const countsLoading = allAssetsCache === null;
 
-function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
-  const [style, setStyle] = useState<StatusMenuStyle | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  
-
-  useLayoutEffect(() => {
-    const btn = anchorRef.current;
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    const menuHeight = menuRef.current?.offsetHeight ?? 320;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
-
-    setStyle({
-      position: 'fixed',
-      left: rect.right - 200,
-      top: openUpward ? undefined : rect.bottom + 6,
-      bottom: openUpward ? window.innerHeight - rect.top + 6 : undefined,
-    });
-  }, [anchorRef]);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(target) &&
-        anchorRef.current &&
-        !anchorRef.current.contains(target)
-      ) {
-        onClose();
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose, anchorRef]);
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      style={style ?? { position: 'fixed', visibility: 'hidden' }}
-      className="z-30 min-w-[200px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {children}
-    </div>,
-    document.body
-  );
-}
-
   return (
     <div>
       <PageHeader
@@ -1395,22 +1534,25 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
         subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} assets across your organization` : undefined}
         breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Assets' }]}
         actions={
-          !readOnly ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setLeaveProcessOpen(true)}
-                className="btn-secondary"
-              >
-                <IconLogout />
-                Leave Process
-              </button>
-              <Link to="/assets/new" className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
-                <IconPlus />
-                Add Asset
-              </Link>
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <ExportMenu busy={exporting} onExport={handleExport} />
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setLeaveProcessOpen(true)}
+                  className="btn-secondary"
+                >
+                  <IconLogout />
+                  Leave Process
+                </button>
+                <Link to="/assets/new" state={{ from: listUrl }} className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary no-underline">
+                  <IconPlus />
+                  Add Asset
+                </Link>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -1616,7 +1758,7 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
               {assets.map((a, idx) => (
                 <div
                   key={a.assetID}
-                  onClick={() => navigate(`/assets/${a.assetID}`)}
+                  onClick={() => navigate(`/assets/${a.assetID}`, { state: { from: listUrl } })}
                   className={clsx(
                     'grid gap-0 px-5 py-3.5 items-center cursor-pointer',
                     'hover:bg-pearl-50 transition-colors duration-100',
@@ -1655,14 +1797,6 @@ function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
                     title={a.employeeName ? (a.hrEmpIDUsedBy ? `${a.employeeName} – ${a.hrEmpIDUsedBy}` : a.employeeName) : undefined}
                   >
                     {a.employeeName ?? a.hrEmpIDUsedBy ?? a.empIDUsedBy?.toString() ?? '—'}
-                  </div>
-
-                  {/* Installed At */}
-                  <div
-                    className="text-[12px] text-ink-400 truncate pr-4 min-w-0"
-                    title={a.installedAt ? a.installedAt : undefined}
-                  >
-                    {a.installedAt ?? '—'}
                   </div>
 
                   {/* Status */}

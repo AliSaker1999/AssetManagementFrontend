@@ -7,6 +7,7 @@ import Select from '../components/ui/Select';
 import { assetsApi } from '../api/assets';
 import { maintenancesApi } from '../api/maintenances';
 import { warrantiesApi } from '../api/warranties';
+import { damagesApi } from '../api/damages';
 import { attachmentsApi } from '../api/attachments';
 import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
@@ -17,10 +18,12 @@ import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
 import type {
   Asset, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
-  Maintenance, Warranty, Attachment, Contact, Currency, StatusType, 
+  Maintenance, Warranty, Damage, Attachment, Contact, Currency, StatusType,
 } from '../types';
 
-type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'attachments' | 'remark';
+type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'damage' | 'attachments' | 'remark';
+
+const TAB_KEYS: Tab[] = ['info', 'depreciation', 'inventory', 'status', 'maintenance', 'warranty', 'damage', 'attachments', 'remark'];
 type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
 type StatusChangeForm = {
   statusDate: string;
@@ -264,8 +267,16 @@ export default function AssetDetailPage() {
   const navigate = useNavigate();
   const assetId = Number(id);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The Assets view we came from, so going back keeps its filters and page.
+  const backToListUrl = (location.state as { from?: string } | null)?.from ?? '/assets';
+
   const [asset, setAsset] = useState<Asset | null>(null);
-  const [tab, setTab] = useState<Tab>('info');
+  // Supports deep links such as /assets/12?tab=damage
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get('tab') as Tab | null;
+    return requested && TAB_KEYS.includes(requested) ? requested : 'info';
+  });
   const [loading, setLoading] = useState(true);
 
   const [depHistory, setDepHistory] = useState<DepreciationHistoryItem[]>([]);
@@ -273,6 +284,7 @@ export default function AssetDetailPage() {
   const [statusHistory, setStatusHistory] = useState<StatusHistoryItem[]>([]);
   const [maintenances, setMaintenances] = useState<Maintenance[]>([]);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
+  const [damages, setDamages] = useState<Damage[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -300,7 +312,6 @@ export default function AssetDetailPage() {
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const lookupsLoadedRef = useRef(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
-  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     Promise.all([
@@ -617,6 +628,10 @@ export default function AssetDetailPage() {
     }
     if (tab === 'warranty' && warranties.length === 0)
       warrantiesApi.getByAsset(assetId).then((r) => setWarranties(r.data as Warranty[]));
+    if (tab === 'damage' && damages.length === 0)
+      damagesApi.getByAsset(assetId)
+        .then((r) => setDamages(r.data))
+        .catch((err) => handleApiError(err, 'Failed to load damage records'));
     if (tab === 'attachments' && attachments.length === 0)
       attachmentsApi.getByAsset(assetId).then((r) => setAttachments(r.data as Attachment[]));
   }, [tab, assetId]);
@@ -657,6 +672,7 @@ export default function AssetDetailPage() {
     { key: 'status', label: 'Status History' },
     { key: 'maintenance', label: 'Maintenance' },
     { key: 'warranty', label: 'Warranty' },
+    { key: 'damage', label: 'Damage' },
     { key: 'attachments', label: 'Attachments' },
     { key: 'remark', label: 'Remark' },
   ];
@@ -680,7 +696,7 @@ export default function AssetDetailPage() {
       <div className="bg-white border-b border-pearl-200 px-4 sm:px-8 py-5">
         <button
         type="button"
-        onClick={() => (location.key === 'default' ? navigate('/assets') : navigate(-1))}
+        onClick={() => navigate(backToListUrl)}
         className="inline-flex items-center gap-1.5 text-[12px] text-ink-300 hover:text-ink-600 transition-colors mb-3 bg-transparent border-none p-0 cursor-pointer"
       >
         <IconBack />
@@ -717,7 +733,7 @@ export default function AssetDetailPage() {
               ) : readOnly ? (
                 <StatusBadge status={asset.statusName ?? (asset.statusID != null ? `Status ${asset.statusID}` : 'Unknown')} />
               ) : (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <div className="relative inline-flex items-center" data-status-menu-root="true">
                     <button
                       type="button"
@@ -791,7 +807,7 @@ export default function AssetDetailPage() {
                     type="button"
                     onClick={handleRemoveStatus}
                     disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12 || asset.statusID === 13}
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="shrink-0 whitespace-nowrap text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Remove Status
                   </button>
@@ -825,6 +841,7 @@ export default function AssetDetailPage() {
                 ) : (
                   <Link
                     to={`/assets/${assetId}/edit`}
+                    state={{ from: backToListUrl, ref: 'detail' }}
                     className="btn-secondary no-underline"
                   >
                     <IconEdit />
@@ -852,7 +869,12 @@ export default function AssetDetailPage() {
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => {
+                setTab(t.key);
+                const next = new URLSearchParams(searchParams);
+                if (t.key === 'info') next.delete('tab'); else next.set('tab', t.key);
+                setSearchParams(next, { replace: true });
+              }}
               className={clsx(
                 'px-4 py-3 text-[13px] font-medium border-b-2 -mb-px whitespace-nowrap transition-colors cursor-pointer border-none bg-transparent',
                 tab === t.key
@@ -886,6 +908,9 @@ export default function AssetDetailPage() {
         )}
         {tab === 'warranty' && (
           <WarrantyTab readOnly={readOnly} assetId={assetId} items={warranties} onChange={setWarranties} />
+        )}
+        {tab === 'damage' && (
+          <DamageTab readOnly={readOnly} assetId={assetId} items={damages} onChange={setDamages} />
         )}
         {tab === 'attachments' && (
           <AttachmentsTab readOnly={readOnly} assetId={assetId} items={attachments} onChange={setAttachments} />
@@ -1063,7 +1088,6 @@ function AssetInfo({ asset }: { asset: Asset }) {
         <InfoField label="Donation" value={asset.donation ? 'Yes' : 'No'} />
         <InfoField label="Owner" value={asset.ownerTypeDesc} />
         <InfoField label="Owner Description" value={asset.ownerDesc} />
-        <InfoField label="Installed At" value={asset.installedAt} />
       </div>
 
       {/* Financial card */}
@@ -1701,6 +1725,124 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
                   <div className="text-[11px] text-ink-400 mt-2">Choose a file only if you want to replace it.</div>
                 </div>
               )}
+            </FormRow>
+            <ModalActions saving={saving} onCancel={close} />
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// ─── Damage tab ──────────────────────────────────────────────────────────────
+
+type DamageForm = { damageDate: string; damageDesc: string };
+
+function DamageTab({ readOnly, assetId, items, onChange }: { readOnly: boolean; assetId: number; items: Damage[]; onChange: (v: Damage[]) => void }) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const [modal, setModal] = useState<'add' | 'edit' | null>(null);
+  const [editing, setEditing] = useState<Damage | null>(null);
+  const [form, setForm] = useState<DamageForm>({ damageDate: '', damageDesc: '' });
+  const [saving, setSaving] = useState(false);
+
+  function openAdd() {
+    if (readOnly) return;
+    setEditing(null);
+    setForm({ damageDate: new Date().toISOString().slice(0, 10), damageDesc: '' });
+    setModal('add');
+  }
+
+  function openEdit(item: Damage) {
+    if (readOnly) return;
+    setEditing(item);
+    setForm({ damageDate: item.damageDate, damageDesc: item.damageDesc });
+    setModal('edit');
+  }
+
+  function close() { setModal(null); setEditing(null); }
+  function setF<K extends keyof DamageForm>(k: K, v: DamageForm[K]) { setForm((p) => ({ ...p, [k]: v })); }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (readOnly) return;
+    const damageDesc = form.damageDesc.trim();
+    if (!damageDesc) { toast.error('Description is required'); return; }
+
+    setSaving(true);
+    try {
+      const payload = { assetID: assetId, damageDate: form.damageDate, damageDesc };
+      if (modal === 'add') {
+        const r = await damagesApi.create(payload);
+        onChange([r.data, ...items]);
+        toast.success('Damage added');
+      } else if (editing) {
+        const r = await damagesApi.update(editing.damageID, payload);
+        onChange(items.map((i) => (i.damageID === editing.damageID ? r.data : i)));
+        toast.success('Damage updated');
+      }
+      close();
+    } catch (err) { handleApiError(err, 'Save failed'); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(item: Damage) {
+    if (readOnly) return;
+    const ok = await confirm('This damage record will be permanently removed.', { title: 'Delete Damage?' });
+    if (!ok) return;
+    try {
+      await damagesApi.delete(item.damageID);
+      onChange(items.filter((i) => i.damageID !== item.damageID));
+      toast.success('Deleted');
+    } catch (err) { handleApiError(err, 'Delete failed'); }
+  }
+
+  return (
+    <>
+      {confirmDialog}
+      {!readOnly && (
+        <div className="flex justify-end mb-4">
+          <button onClick={openAdd} className="btn-primary"><IconPlus /> Add Damage</button>
+        </div>
+      )}
+
+      {items.length === 0 ? <EmptyState message="No damage records." /> : (
+        <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
+          <div className="grid grid-cols-[140px_1fr_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[560px]">
+            {['Date', 'Description', ''].map((h, i) => (
+              <div key={i} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
+            ))}
+          </div>
+          {items.map((d, i) => (
+            <div key={d.damageID} className={clsx(
+              'grid grid-cols-[140px_1fr_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[560px]',
+              i < items.length - 1 && 'border-b border-pearl-200'
+            )}>
+              <div className="text-[12px] text-ink-600">{d.damageDate}</div>
+              <div className="text-[12px] text-ink-800 font-medium break-words">{d.damageDesc}</div>
+              <div className="flex gap-1.5">
+                {!readOnly && <ActionBtn onClick={() => openEdit(d)}>Edit</ActionBtn>}
+                {!readOnly && <ActionBtn danger onClick={() => handleDelete(d)}>Delete</ActionBtn>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!readOnly && modal && (
+        <Modal title={modal === 'add' ? 'Add Damage' : 'Edit Damage'} onClose={close}>
+          <form onSubmit={handleSubmit}>
+            <FormRow label="Date *">
+              <input className={inp} type="date" value={form.damageDate} onChange={(e) => setF('damageDate', e.target.value)} required />
+            </FormRow>
+            <FormRow label="Description *">
+              <input
+                className={inp}
+                value={form.damageDesc}
+                onChange={(e) => setF('damageDesc', e.target.value)}
+                placeholder="e.g. Chair has a broken leg"
+                required
+                maxLength={100}
+              />
             </FormRow>
             <ModalActions saving={saving} onCancel={close} />
           </form>

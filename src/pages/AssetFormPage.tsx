@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
+import { confirmEmployeeMatches } from '../utils/employeeMatches';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
 import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee, Employee } from '../types';
@@ -26,6 +27,25 @@ export default function AssetFormPage() {
   const isEdit = Boolean(id);
   const assetId = Number(id);
   const { activeCompanyId: ctxCompanyId, user, isAdmin, isFullAccess } = useAuth();
+  const location = useLocation();
+
+  // Where this form was opened from. `ref: 'detail'` means the previous history entry
+  // is the asset page, so leaving pops it instead of pushing a duplicate entry —
+  // pushing is what used to trap Back between the form and the asset page.
+  const navState = location.state as { from?: string; ref?: string } | null;
+  const listUrl = navState?.from ?? '/assets';
+  const leaveTo = isEdit ? `/assets/${assetId}` : listUrl;
+
+  // Pop back to the asset page when it is the previous entry, otherwise replace this
+  // one — either way Back never returns to a form the user already left.
+  function goBackFromForm(fallback: string) {
+    if (navState?.ref === 'detail') navigate(-1);
+    else navigate(fallback, { replace: true, state: { from: listUrl } });
+  }
+
+  function leaveForm() {
+    goBackFromForm(leaveTo);
+  }
 
 
 
@@ -51,6 +71,10 @@ export default function AssetFormPage() {
   const [countries, setCountries] = useState<Country[]>([]);
   const [hrEmployees, setHrEmployees] = useState<HrEmployee[]>([]);
   const [loadingHrEmployees, setLoadingHrEmployees] = useState(false);
+  const [hrEmployeesSettled, setHrEmployeesSettled] = useState(false);
+  // The HR employee this asset was saved with — kept so it survives an HR lookup
+  // that has since been switched off (country HR connect disabled, profile removed…).
+  const [savedHrEmployee, setSavedHrEmployee] = useState<{ empId: string; companyID: number } | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -121,7 +145,12 @@ const visibleCompanies = isAdmin()
       }
     });
     if (isEdit) {
-      assetsApi.get(assetId).then((r) => setForm(r.data as Asset));
+      assetsApi.get(assetId).then((r) => {
+        const asset = r.data as Asset;
+        setForm(asset);
+        const savedHrId = (asset.hrEmpIDUsedBy ?? '').trim();
+        setSavedHrEmployee(savedHrId ? { empId: savedHrId, companyID: asset.companyID } : null);
+      });
     }
   }, [isEdit, assetId]);
 
@@ -173,6 +202,16 @@ const visibleCompanies = isAdmin()
       toast.error('Owner description is required for non-company ownership');
       return;
     }
+    if (hasLiveHrEmployee && hasInternalEmployee) {
+      toast.error('Select either an HR employee or an internal employee, not both');
+      return;
+    }
+    if (!hasHrEmployee && !hasInternalEmployee) {
+      toast.error(canSelectHrEmployee
+        ? 'Select a Used By employee — either HR or internal'
+        : 'Select a Used By (Employee)');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -180,19 +219,22 @@ const visibleCompanies = isAdmin()
         ...form,
         model: form.model?.trim(),
         ownerDesc: requiresOwnerDesc ? form.ownerDesc?.trim() : undefined,
+        // Choosing an internal employee always releases the HR link, including a
+        // legacy one that is only displayed read-only.
+        hrEmpIDUsedBy: hasInternalEmployee ? undefined : form.hrEmpIDUsedBy,
       } as Asset;
 
       if (isEdit) {
         await assetsApi.update(assetId, payload);
         toast.success('Asset updated');
-        navigate(`/assets/${assetId}`);
+        goBackFromForm(`/assets/${assetId}`);
       } else {
         const countryId = selectedCompany?.countryID?.trim() ?? '';
         const codeRes = await lookupsApi.getAssetCode(true, countryId);
         const assetCode = (codeRes.data as { assetCode: string }).assetCode;
         const r = await assetsApi.create({ ...payload, assetCode, statusID: 0 } as Asset);
         toast.success('Asset created');
-        navigate(`/assets/${(r.data as { assetID: number }).assetID}`);
+        navigate(`/assets/${(r.data as { assetID: number }).assetID}`, { replace: true, state: { from: listUrl } });
       }
     } catch (err) {
       handleApiError(err, 'Save failed');
@@ -403,32 +445,12 @@ const visibleCompanies = isAdmin()
     }
 
     const trimmedName = employeeForm.empFullName.trim();
-    const selectedCompany = companies.find((c) => c.companyID === form.companyID);
 
     setSavingEmployee(true);
     try {
-      if (selectedCompany?.countryID?.trim()) {
-        const matchesRes = await lookupsApi.checkEmployeePossibleMatches(form.companyID, trimmedName);
-        const matches = matchesRes.data as HrEmployee[];
-
-        if (matches.length > 0) {
-          const formattedMatches = matches
-            .map((match) => `• ${match.fullName}${match.prmName ? ` (${match.prmName})` : ''}`)
-            .join('\n');
-
-          const proceed = await confirm(
-            `Possible HR employee match(es) were found in ${selectedCompany.countryID.trim()}:\n\n${formattedMatches}\n\nDo you want to continue and create the internal employee anyway?`,
-            {
-              title: 'Possible HR employee match',
-              confirmLabel: 'Create anyway',
-              danger: false,
-            }
-          );
-
-          if (!proceed) {
-            return;
-          }
-        }
+      const proceed = await confirmEmployeeMatches(form.companyID, trimmedName, confirm);
+      if (!proceed) {
+        return;
       }
 
       const r = await lookupsApi.createEmployee({ empFullName: trimmedName, companyID: form.companyID });
@@ -464,12 +486,19 @@ const visibleCompanies = isAdmin()
     : locations;
   const filteredLocDetails = form.locationID ? locDetails.filter((d) => d.locationID === form.locationID) : locDetails;
 
-  const usedByValue = (form.hrEmpIDUsedBy ?? '').toString().trim();
-  const installedAtValue = (form.installedAt ?? '').trim();
+  // Exactly one of the two "Used By" fields must be filled: picking one disables the other.
+  const hrEmpValue = (form.hrEmpIDUsedBy ?? '').toString().trim();
+  const hasHrEmployee = hrEmpValue !== '';
   const hasInternalEmployee = !!form.empIDUsedBy;
-  const usedByRequired = shouldLoadHrEmployees && !installedAtValue && !hasInternalEmployee;
-  const installedAtRequired = !hasInternalEmployee && (shouldLoadHrEmployees ? !usedByValue : !installedAtValue);
-
+  // An HR id the lookup can no longer resolve (country HR connect turned off, HR profile
+  // removed, employee deleted). It stays visible read-only instead of blocking the form.
+  const hrLookupResolved = hrEmployeesSettled && !loadingHrEmployees;
+  const isLegacyHrEmployee = hasHrEmployee
+    && hrLookupResolved
+    && !hrEmployees.some((e) => (e.empID ?? '').trim() === hrEmpValue);
+  const hasLiveHrEmployee = hasHrEmployee && !isLegacyHrEmployee;
+  // The dropdown is only useful while the HR lookup actually returns employees.
+  const canSelectHrEmployee = shouldLoadHrEmployees && (!hrLookupResolved || hrEmployees.length > 0);
 
 
   useEffect(() => {
@@ -502,13 +531,20 @@ const visibleCompanies = isAdmin()
   }, []);
 
   useEffect(() => {
+    // Never discard the id the asset was saved with — it is shown read-only as previous data.
+    const isSavedHrValue = savedHrEmployee !== null
+      && form.companyID === savedHrEmployee.companyID
+      && (form.hrEmpIDUsedBy ?? '').toString().trim() === savedHrEmployee.empId;
+
     if (!form.companyID || !shouldLoadHrEmployees) {
       setHrEmployees([]);
-      set('hrEmpIDUsedBy', '');
+      setHrEmployeesSettled(true);
+      if (!isSavedHrValue && (form.hrEmpIDUsedBy ?? '') !== '') set('hrEmpIDUsedBy', '');
       return;
     }
 
     let isMounted = true;
+    setHrEmployeesSettled(false);
     setLoadingHrEmployees(true);
     lookupsApi.getHrEmployees(form.companyID)
       .then((r) => {
@@ -518,15 +554,17 @@ const visibleCompanies = isAdmin()
       .catch((err) => {
         if (!isMounted) return;
         setHrEmployees([]);
-        set('hrEmpIDUsedBy', '');
+        if (!isSavedHrValue) set('hrEmpIDUsedBy', '');
         handleApiError(err, 'Failed to load HR employees');
       })
       .finally(() => {
-        if (isMounted) setLoadingHrEmployees(false);
+        if (!isMounted) return;
+        setLoadingHrEmployees(false);
+        setHrEmployeesSettled(true);
       });
 
     return () => { isMounted = false; };
-  }, [form.companyID, shouldLoadHrEmployees]);
+  }, [form.companyID, shouldLoadHrEmployees, savedHrEmployee]);
 
   useEffect(() => {
     if (activeModal !== 'company' || !compForm.countryID || !shouldShowHrCompany) {
@@ -786,15 +824,16 @@ const visibleCompanies = isAdmin()
 
       {/* ── Page header ── */}
       <div className="flex items-center gap-2 mb-5">
-        <Link
-          to={isEdit ? `/assets/${assetId}` : '/assets'}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6b7280] bg-white border border-[#e5e7eb] rounded-lg px-3 py-1.5 no-underline hover:border-brand hover:text-brand transition-colors shadow-sm"
+        <button
+          type="button"
+          onClick={leaveForm}
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6b7280] bg-white border border-[#e5e7eb] rounded-lg px-3 py-1.5 cursor-pointer hover:border-brand hover:text-brand transition-colors shadow-sm"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
           {isEdit ? 'Back to Asset' : 'Back to Assets'}
-        </Link>
+        </button>
       </div>
       <h2 className="text-[22px] font-bold text-brand mb-6">
         {isEdit ? 'Edit Asset' : 'New Asset'}
@@ -833,12 +872,18 @@ const visibleCompanies = isAdmin()
           </Field>
 
           {form.companyID && (
-            <Field label="Used By (Employee)">
-              <DropWithAdd onAdd={() => setEmployeeModalOpen(true)} showAdd={canAddEmployee}>
+            <Field label={isLegacyHrEmployee ? 'Used By (Employee)' : 'Used By (Employee) *'}>
+              <DropWithAdd onAdd={() => setEmployeeModalOpen(true)} showAdd={canAddEmployee && !hasLiveHrEmployee}>
                 <Select
                   value={form.empIDUsedBy ?? ''}
-                  onChange={(e) => set('empIDUsedBy', e.target.value ? Number(e.target.value) : undefined)}
-                  disabled={loadingEmployees}
+                  onChange={(e) => {
+                    set('empIDUsedBy', e.target.value ? Number(e.target.value) : undefined);
+                    // A live HR pick is mutually exclusive; a legacy id stays on screen and is
+                    // dropped on save instead, so the previous data remains visible.
+                    if (e.target.value && hasLiveHrEmployee) set('hrEmpIDUsedBy', undefined);
+                  }}
+                  disabled={loadingEmployees || hasLiveHrEmployee}
+                  required={!hasHrEmployee}
                   searchable
                 >
                   <option value="">
@@ -851,19 +896,26 @@ const visibleCompanies = isAdmin()
                   ))}
                 </Select>
               </DropWithAdd>
-              {canAddEmployee && companyEmployees.length === 0 && !loadingEmployees && (
+              {hasLiveHrEmployee ? (
+                <p className="text-[11px] text-slate-500 mt-1">Disabled — an HR employee is selected. Clear it to use an internal employee.</p>
+              ) : canAddEmployee && companyEmployees.length === 0 && !loadingEmployees ? (
                 <p className="text-[11px] text-slate-500 mt-1">No internal employees exist for this company yet. Use the add button to create one.</p>
-              )}
+              ) : isLegacyHrEmployee && hasInternalEmployee ? (
+                <p className="text-[11px] text-slate-500 mt-1">Saving replaces the previous HR employee with this one.</p>
+              ) : null}
             </Field>
           )}
 
-          {shouldLoadHrEmployees && (
-            <Field label={usedByRequired ? 'Used By (HR Employee) *' : 'Used By (HR Employee)'}>
+          {canSelectHrEmployee && (
+            <Field label="Used By (HR Employee) *">
               <Select
                 value={form.hrEmpIDUsedBy ?? ''}
-                onChange={(e) => set('hrEmpIDUsedBy', e.target.value || undefined)}
-                disabled={loadingHrEmployees}
-                required={usedByRequired}
+                onChange={(e) => {
+                  set('hrEmpIDUsedBy', e.target.value || undefined);
+                  if (e.target.value) set('empIDUsedBy', undefined);
+                }}
+                disabled={loadingHrEmployees || hasInternalEmployee}
+                required={!hasInternalEmployee}
                 searchable
               >
                 <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
@@ -873,6 +925,26 @@ const visibleCompanies = isAdmin()
                   </option>
                 ))}
               </Select>
+              {hasInternalEmployee && (
+                <p className="text-[11px] text-slate-500 mt-1">Disabled — an internal employee is selected. Clear it to use an HR employee.</p>
+              )}
+            </Field>
+          )}
+
+          {isLegacyHrEmployee && (
+            <Field
+              label={<>Used By (HR Employee) <span className="text-danger">Previous Data</span></>}
+            >
+              <input
+                className={`${inputCls} bg-[#f5f5f5] cursor-default text-[#555]`}
+                value={hrEmpValue}
+                readOnly
+                tabIndex={-1}
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                HR lookup is not available for this company, so this stored HR employee ID cannot be changed.
+                Pick an internal employee above to replace it.
+              </p>
             </Field>
           )}
 
@@ -1034,15 +1106,6 @@ const visibleCompanies = isAdmin()
             </Select>
           </DropWithAdd>
         </Field>
-          <Field label={installedAtRequired ? 'Installed At *' : 'Installed At'}>
-            <input
-              className={inputCls}
-              value={form.installedAt ?? ''}
-              onChange={(e) => set('installedAt', e.target.value)}
-              maxLength={50}
-              required={installedAtRequired}
-            />
-          </Field>
           <Field label="Donation">
             <Select value={form.donation ? 'true' : 'false'} onChange={(e) => set('donation', e.target.value === 'true')}>
               <option value="false">No</option>
@@ -1058,9 +1121,9 @@ const visibleCompanies = isAdmin()
           <button type="submit" disabled={saving} className="bg-[#9a7c4b] text-white border-none rounded-lg px-7 py-2.5 text-sm font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70">
             {saving ? 'Saving…' : isEdit ? 'Update Asset' : 'Create Asset'}
           </button>
-          <Link to={isEdit ? `/assets/${assetId}` : '/assets'} className="px-5 py-2.5 rounded-lg border border-[#ccc] text-[#555] no-underline text-sm hover:bg-surface-2">
+          <button type="button" onClick={leaveForm} className="px-5 py-2.5 rounded-lg border border-[#ccc] bg-white text-[#555] text-sm cursor-pointer hover:bg-surface-2">
             Cancel
-          </Link>
+          </button>
         </div>
       </form>
     </div>
@@ -1069,7 +1132,7 @@ const visibleCompanies = isAdmin()
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-bold text-[#555] uppercase">{label}</label>

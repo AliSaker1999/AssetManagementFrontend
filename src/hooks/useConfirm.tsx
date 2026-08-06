@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 interface ConfirmOptions {
   title?: string;
@@ -7,14 +7,14 @@ interface ConfirmOptions {
 }
 
 interface ConfirmState extends ConfirmOptions {
-  message: string;
+  message: ReactNode;
   resolve: (confirmed: boolean) => void;
 }
 
 export function useConfirm() {
   const [state, setState] = useState<ConfirmState | null>(null);
 
-  function confirm(message: string, options?: ConfirmOptions): Promise<boolean> {
+  function confirm(message: ReactNode, options?: ConfirmOptions): Promise<boolean> {
     return new Promise((resolve) => {
       setState({ message, resolve, danger: true, ...options });
     });

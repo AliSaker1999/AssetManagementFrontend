@@ -1,5 +1,5 @@
 import client from './client';
-import type { CategoryType, Company, Country, Employee, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
+import type { CategoryType, Company, Country, Employee, EmployeePossibleMatches, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
 
 export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
@@ -36,8 +36,10 @@ export const lookupsApi = {
     client.get<HrEmployee[]>('/lookups/hr-employees', { params: { companyId } }),
   getHrEmployeesByCompanyProfile: (countryId: string, companyProfileId: number) =>
     client.get<HrEmployee[]>('/lookups/hr-employees', { params: { countryId, companyProfileId } }),
-  checkEmployeePossibleMatches: (companyId: number, empFullName: string) =>
-    client.get<HrEmployee[]>('/lookups/employees/possible-matches', { params: { companyId, empFullName } }),
+  checkEmployeePossibleMatches: (companyId: number, empFullName: string, excludeEmpId?: number) =>
+    client.get<EmployeePossibleMatches>('/lookups/employees/possible-matches', {
+      params: { companyId, empFullName, excludeEmpId },
+    }),
   getEmployees: () => client.get<Employee[]>('/lookups/employees'),
   getEmployeesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
     client.get<PaginatedResponse<Employee>>('/lookups/employees/paginated', { params: { pageNumber, pageSize } }),

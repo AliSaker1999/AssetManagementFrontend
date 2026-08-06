@@ -459,7 +459,7 @@ export default function CompaniesPage() {
                   </td> */}
                   {canManage && (
                     <td className="px-3 py-2.5 border-b border-[#f3f4f6] whitespace-nowrap">
-                      <button className="px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]" onClick={() => startEdit(c)}>Edit</button>
+                      <button className="bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]" onClick={() => startEdit(c)}>Edit</button>
                       {' '}
                       <button className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors" onClick={() => handleDelete(c)}>Delete</button>
                     </td>

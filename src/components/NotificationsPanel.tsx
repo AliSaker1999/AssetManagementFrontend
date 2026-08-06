@@ -38,7 +38,7 @@ export default function NotificationsPanel({ onClose }: Props) {
   }
 
   return (
-    <div className="absolute right-0 top-9 w-80 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.18)] border border-[#e5e7eb] z-50 overflow-hidden">
+    <div className="absolute right-0 top-9 w-[22rem] max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.18)] border border-[#e5e7eb] z-50 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e7eb]">
         <span className="text-[13px] font-semibold text-[#111827]">
@@ -55,7 +55,7 @@ export default function NotificationsPanel({ onClose }: Props) {
       </div>
 
       {/* List */}
-      <div className="max-h-[400px] overflow-y-auto">
+      <div className="max-h-[70vh] overflow-y-auto">
         {notifications.length === 0 ? (
           <p className="px-4 py-8 text-[13px] text-[#9ca3af] text-center">No notifications</p>
         ) : (
@@ -72,7 +72,7 @@ export default function NotificationsPanel({ onClose }: Props) {
                 <NotifIcon type={n.type} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className={clsx('text-[12px] leading-snug text-[#374151]', !n.isRead && 'font-semibold')} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <p className={clsx('text-[12px] leading-snug text-[#374151] whitespace-pre-line break-words', !n.isRead && 'font-semibold')}>
                   {n.message}
                 </p>
                 <p className="mt-0.5 text-[11px] text-[#9ca3af]">{n.type} · {timeAgo(n.createdAt)}</p>

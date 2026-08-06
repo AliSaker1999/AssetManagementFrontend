@@ -41,12 +41,13 @@ export interface AssetListItem {
   status?: string;
   barcodeNumber?: string;
   serialNumber?: string;
+  brand?: string;
+  model?: string;
   purchaseOrderNo?: string;
   invoiceNo?: string;
   hrEmpIDUsedBy?: string | null;
   empIDUsedBy?: number;
   employeeName?: string | null;
-  installedAt?: string | null;
   }
 
 export interface Asset {
@@ -78,7 +79,6 @@ export interface Asset {
   statusName?: string;
   statusDate?: string;
   remark?: string;
-  installedAt?: string;
   ownerID: number;
   ownerDesc?: string;
   ownerTypeDesc?: string;
@@ -101,6 +101,12 @@ export interface Employee {
   companyID: number;
   companyName?: string;
   leaveDate?: string | null;
+}
+
+export interface EmployeePossibleMatches {
+  countryID?: string | null;
+  hrMatches: HrEmployee[];
+  internalMatches: Employee[];
 }
 
 export interface LeftEmployeeAssetItem {
@@ -173,7 +179,6 @@ export interface AssetCreateRequest {
   brandID: number;
   model: string;
   remark?: string;
-  installedAt?: string;
   ownerID: number;
   ownerDesc?: string;
   hrEmpIDUsedBy?: string;
@@ -304,6 +309,13 @@ export interface Warranty {
   fromDate: string;
   toDate: string;
   remark?: string;
+}
+
+export interface Damage {
+  damageID: number;
+  assetID: number;
+  damageDate: string;
+  damageDesc: string;
 }
 
 // Contacts
