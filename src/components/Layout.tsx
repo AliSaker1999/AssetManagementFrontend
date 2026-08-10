@@ -197,6 +197,7 @@ export default function Layout() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [companyDropOpen, setCompanyDropOpen] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const companyDropRef = useRef<HTMLDivElement>(null);
 
@@ -357,7 +358,7 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
           {/* Company switcher */}
           <div className="px-3 py-3 border-b border-navy-700 relative" ref={companyDropRef}>
             <button
-              onClick={() => setCompanyDropOpen((v) => !v)}
+              onClick={() => { setCompanyDropOpen((v) => !v); setCompanySearch(''); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 bg-navy-700 hover:bg-navy-500 rounded-lg text-left transition-colors cursor-pointer border-none"
             >
               {/* <div className="w-6 h-6 rounded bg-gold-400/20 flex items-center justify-center shrink-0">
@@ -379,48 +380,56 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
 
             {/* Dropdown */}
             {companyDropOpen && companies.length > 0 && (
-              <div className="absolute left-3 right-3 top-full mt-1 bg-navy-800 border border-navy-600 rounded-lg shadow-card-lg z-10 overflow-hidden">
-                {/* All Companies option */}
-                <button
-                  onClick={() => { setActiveCompanyId(null); setCompanyDropOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-navy-700 transition-colors cursor-pointer border-none bg-transparent border-b border-navy-700"
-                >
-                  <span className={clsx('w-4 shrink-0', activeCompanyId === null ? 'text-gold-400' : 'text-transparent')}>
-                    <IconCheck />
-                  </span>
-                  <span className={clsx('truncate', activeCompanyId === null ? 'text-white font-semibold' : 'text-navy-300')}>
-                    All Companies
-                  </span>
-                </button>
-                {/* {companies.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => { setActiveCompanyId(c.id); setCompanyDropOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-navy-700 transition-colors cursor-pointer border-none bg-transparent"
-                  >
-                    <span className={clsx('w-4 shrink-0', c.id === activeCompanyId ? 'text-gold-400' : 'text-transparent')}>
-                      <IconCheck />
-                    </span>
-                    <span className={clsx('truncate', c.id === activeCompanyId ? 'text-white font-semibold' : 'text-navy-200')}>
-                      {c.name}
-                    </span>
-                  </button>
-                ))} */}
+              <div className="absolute left-3 right-3 top-full mt-1 bg-navy-800 border border-navy-600 rounded-lg shadow-card-lg z-10 flex flex-col overflow-hidden">
+                {/* Search box */}
+                <div className="p-2 border-b border-navy-700 shrink-0">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={companySearch}
+                    onChange={(e) => setCompanySearch(e.target.value)}
+                    placeholder="Search companies..."
+                    className="w-full px-2.5 py-1.5 rounded-md bg-navy-700 border border-navy-600 text-[13px] text-white placeholder:text-navy-300 focus:outline-none focus:border-gold-400"
+                  />
+                </div>
 
-                {companies.map((c) => (
-                  <button
-                    key={c.companyID}
-                    onClick={() => { setActiveCompanyId(c.companyID); setCompanyDropOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-navy-700 transition-colors cursor-pointer border-none bg-transparent"
-                  >
-                    <span className={clsx('w-4 shrink-0', c.companyID === activeCompanyId ? 'text-gold-400' : 'text-transparent')}>
-                      <IconCheck />
-                    </span>
-                    <span className={clsx('truncate', c.companyID === activeCompanyId ? 'text-white font-semibold' : 'text-navy-200')}>
-                      {formatCompanyLabel(c)}
-                    </span>
-                  </button>
-                ))}
+                <div className="max-h-64 overflow-y-auto scrollbar-dark">
+                  {/* All Companies option */}
+                  {!companySearch && (
+                    <button
+                      onClick={() => { setActiveCompanyId(null); setCompanyDropOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-navy-700 transition-colors cursor-pointer border-none bg-transparent border-b border-navy-700"
+                    >
+                      <span className={clsx('w-4 shrink-0', activeCompanyId === null ? 'text-gold-400' : 'text-transparent')}>
+                        <IconCheck />
+                      </span>
+                      <span className={clsx('truncate', activeCompanyId === null ? 'text-white font-semibold' : 'text-navy-300')}>
+                        All Companies
+                      </span>
+                    </button>
+                  )}
+
+                  {companies
+                    .filter((c) => formatCompanyLabel(c).toLowerCase().includes(companySearch.trim().toLowerCase()))
+                    .map((c) => (
+                      <button
+                        key={c.companyID}
+                        onClick={() => { setActiveCompanyId(c.companyID); setCompanyDropOpen(false); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] hover:bg-navy-700 transition-colors cursor-pointer border-none bg-transparent"
+                      >
+                        <span className={clsx('w-4 shrink-0', c.companyID === activeCompanyId ? 'text-gold-400' : 'text-transparent')}>
+                          <IconCheck />
+                        </span>
+                        <span className={clsx('truncate', c.companyID === activeCompanyId ? 'text-white font-semibold' : 'text-navy-200')}>
+                          {formatCompanyLabel(c)}
+                        </span>
+                      </button>
+                    ))}
+
+                  {companies.filter((c) => formatCompanyLabel(c).toLowerCase().includes(companySearch.trim().toLowerCase())).length === 0 && (
+                    <div className="px-3 py-3 text-[13px] text-navy-300 text-center">No companies found</div>
+                  )}
+                </div>
               </div>
             )}
           </div>

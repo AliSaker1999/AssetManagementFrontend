@@ -31,6 +31,7 @@ export default function CompaniesPage() {
   const [countries, setCountries] = useState<Country[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [search, setSearch] = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
   const [allCompaniesCache, setAllCompaniesCache] = useState<Company[] | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
@@ -59,7 +60,7 @@ export default function CompaniesPage() {
   useEffect(() => {
     setPageNumber(1);
     setAllCompaniesCache(null);
-  }, [search, pageSize]);
+  }, [search, countryFilter, pageSize]);
 
   useEffect(() => {
     lookupsApi.getCountries()
@@ -74,7 +75,7 @@ export default function CompaniesPage() {
     const load = async () => {
       setLoading(true);
       try {
-        if (search.trim() === '') {
+        if (search.trim() === '' && !countryFilter) {
           const r = await lookupsApi.getCompaniesPaginated(pageNumber, pageSize);
           const companyData = r.data as PaginatedResponse<Company>;
           setCompanies(companyData.data);
@@ -93,9 +94,11 @@ export default function CompaniesPage() {
 
         const q = search.trim().toLowerCase();
         const filtered = allData.filter((c) =>
-          c.companyName.toLowerCase().includes(q) ||
-          c.companyAbbreviation.toLowerCase().includes(q) ||
-          (countries.find(co => co.countryID === c.countryID)?.country ?? '').toLowerCase().includes(q)
+          (countryFilter ? c.countryID === countryFilter : true) &&
+          (q === '' ||
+            c.companyName.toLowerCase().includes(q) ||
+            c.companyAbbreviation.toLowerCase().includes(q) ||
+            (countries.find(co => co.countryID === c.countryID)?.country ?? '').toLowerCase().includes(q))
         );
         const newTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
         const start = (pageNumber - 1) * pageSize;
@@ -111,7 +114,7 @@ export default function CompaniesPage() {
     };
 
     void load();
-  }, [pageNumber, pageSize, search, reloadKey, auditorMode]);
+  }, [pageNumber, pageSize, search, countryFilter, reloadKey, auditorMode]);
 
   useEffect(() => {
     if (pageNumber > totalPages) {
@@ -372,13 +375,21 @@ export default function CompaniesPage() {
       )}
 
       <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap gap-3">
           <input
             className="w-full max-w-[360px] px-3.5 py-2.5 border border-[#d1d5db] rounded-lg text-sm outline-none focus:border-accent transition-colors"
             placeholder="Search by name, abbreviation, or country…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <Select
+            className="w-full max-w-[220px]"
+            value={countryFilter}
+            onChange={(e) => setCountryFilter(e.target.value)}
+          >
+            <option value="">All Countries</option>
+            {countries.filter(c => c.activeCountry).map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
+          </Select>
         </div>
 
         <div className="mb-4">
@@ -468,7 +479,7 @@ export default function CompaniesPage() {
               );
             })}
             {visibleCompanies.length === 0 && (
-              <tr><td colSpan={canManage ? 10 : 9} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">{search.trim() ? 'No companies found.' : 'No companies yet.'}</td></tr>
+              <tr><td colSpan={canManage ? 10 : 9} className="px-3 py-8 text-[13px] text-[#9ca3af] text-center">{search.trim() || countryFilter ? 'No companies found.' : 'No companies yet.'}</td></tr>
             )}
           </tbody>
         </table>

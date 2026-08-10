@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { confirmEmployeeMatches } from '../utils/employeeMatches';
@@ -8,10 +9,17 @@ import { lookupsApi } from '../api/lookups';
 import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee, Employee, StatusType } from '../types';
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
+import PageHeader from '../components/ui/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../hooks/useConfirm';
 
-const inputCls = 'border border-[#ddd] rounded-md px-2.5 py-2 text-sm outline-none focus:border-accent transition-colors w-full';
+// Matches the Select trigger exactly so inputs and dropdowns read as one control set.
+const inputCls = 'w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-2 text-sm text-ink-800 '
+  + 'placeholder:text-ink-300 shadow-[0_1px_3px_rgba(0,0,0,0.07)] outline-none transition-all duration-150 '
+  + 'hover:border-[#9ca3af] focus:border-brand focus:ring-2 focus:ring-[rgba(31,43,123,0.15)] '
+  + 'disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[#f9fafb]';
+// One grid rhythm for every section card.
+const gridCls = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-4';
 const companyOwnerId = 1;
 // Status a brand-new asset starts on — the value the insert procedure used to hard-code.
 const defaultStatusId = 0;
@@ -641,7 +649,7 @@ const visibleCompanies = isAdmin()
   }
 
   return (
-    <div className="px-4 sm:px-8 py-6 max-w-[900px]">
+    <div className="pb-10">
       {/* ── Quick-add modals ── */}
       {activeModal === 'group' && (
         <QuickAddModal title="New Group" onClose={() => setActiveModal(null)} onSubmit={saveGroup} saving={modalSaving}>
@@ -836,338 +844,419 @@ const visibleCompanies = isAdmin()
 
       {confirmDialog}
 
-      {/* ── Page header ── */}
-      <div className="flex items-center gap-2 mb-5">
-        <button
-          type="button"
-          onClick={leaveForm}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6b7280] bg-white border border-[#e5e7eb] rounded-lg px-3 py-1.5 cursor-pointer hover:border-brand hover:text-brand transition-colors shadow-sm"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7" />
-          </svg>
-          {isEdit ? 'Back to Asset' : 'Back to Assets'}
-        </button>
-      </div>
-      <h2 className="text-[22px] font-bold text-brand mb-6">
-        {isEdit ? 'Edit Asset' : 'New Asset'}
-      </h2>
-
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 bg-white p-4 sm:p-6 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        {/* ── Page header ── */}
+        <PageHeader
+          title={isEdit ? 'Edit Asset' : 'Add New Asset'}
+          subtitle={isEdit ? 'Update the details of this asset' : 'Fill in the details below to create a new asset'}
+          breadcrumbs={[
+            { label: 'Dashboard', to: '/' },
+            { label: 'Assets', to: listUrl },
+            { label: isEdit ? 'Edit' : 'New Asset' },
+          ]}
+          actions={
+            <>
+              <button type="button" onClick={leaveForm} className="btn-secondary">
+                Cancel
+              </button>
+              <button type="submit" disabled={saving} className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary disabled:opacity-70">
+                {saving ? 'Saving…' : isEdit ? 'Update Asset' : 'Save Asset'}
+              </button>
+            </>
+          }
+        />
 
-          {/* Company */}
-          <Field label="Company *">
-            <DropWithAdd onAdd={() => openModal('company')} showAdd={isAdmin()}>
-              <Select value={form.companyID ?? ''} onChange={(e) => {
-                const newCompanyId = Number(e.target.value);
-                set('companyID', newCompanyId);
-                set('hrEmpIDUsedBy', '');
-                set('empIDUsedBy', undefined);
-                reset('groupID', 'locationID', 'locDetailID');
-                if (!isEdit) {
-                  const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
-                  if (newCountry) {
-                    lookupsApi.getAssetCode(false, newCountry)
-                      .then((r) => set('assetCode', (r.data as { assetCode: string }).assetCode));
-                  } else {
-                    set('assetCode', '');
-                  }
-                }
-              }} required>
-                <option value="">Select…</option>
-                {visibleCompanies.map((c) => (
-                  <option key={c.companyID} value={c.companyID}>
-                    {formatCompanyLabel(c)}
-                  </option>
-                ))}
-              </Select>
-            </DropWithAdd>
-          </Field>
+        <div className="px-4 sm:px-8 py-6 max-w-[1180px] flex flex-col gap-5">
 
-          {/* Status */}
-          <Field label="Status *">
-            <Select value={form.statusID ?? ''} onChange={(e) => set('statusID', e.target.value === '' ? undefined : Number(e.target.value))} required>
-              <option value="">Select…</option>
-              {statuses.map((s) => <option key={s.statusID} value={s.statusID}>{s.status}</option>)}
-            </Select>
-            {isEdit && (
-              <p className="text-[11px] text-slate-500 mt-1">
-                Changing the status here does not add a status-history entry or send a notification —
-                use the status actions on the asset page for that.
-              </p>
-            )}
-          </Field>
+          {/* ── Basic information ── */}
+          <FormSection
+            title="Basic Information"
+            subtitle="What the asset is and where it belongs in the register"
+            icon={<IconInfo />}
+          >
+            <div className={gridCls}>
 
-          <Field label="Used By Not Mandatory">
-            <label className="inline-flex items-center gap-2 text-[13px] text-[#374151] h-[38px] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={usedByNotMandatory}
-                onChange={(e) => set('usedByNotMandatory', e.target.checked)}
-                className="h-4 w-4 rounded border-[#d1d5db] text-accent focus:ring-accent"
-              />
-              No employee is responsible for this asset
-            </label>
-          </Field>
+              {/* Company */}
+              <Field label="Company *">
+                <DropWithAdd onAdd={() => openModal('company')} showAdd={isAdmin()}>
+                  <Select value={form.companyID ?? ''} onChange={(e) => {
+                    const newCompanyId = Number(e.target.value);
+                    set('companyID', newCompanyId);
+                    set('hrEmpIDUsedBy', '');
+                    set('empIDUsedBy', undefined);
+                    reset('groupID', 'locationID', 'locDetailID');
+                    if (!isEdit) {
+                      const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
+                      if (newCountry) {
+                        lookupsApi.getAssetCode(false, newCountry)
+                          .then((r) => set('assetCode', (r.data as { assetCode: string }).assetCode));
+                      } else {
+                        set('assetCode', '');
+                      }
+                    }
+                  }} required>
+                    <option value="">Select…</option>
+                    {visibleCompanies.map((c) => (
+                      <option key={c.companyID} value={c.companyID}>
+                        {formatCompanyLabel(c)}
+                      </option>
+                    ))}
+                  </Select>
+                </DropWithAdd>
+              </Field>
 
-          {form.companyID && (
-            <Field label={isLegacyHrEmployee || usedByNotMandatory ? 'Used By (Employee)' : 'Used By (Employee) *'}>
-              <DropWithAdd onAdd={() => setEmployeeModalOpen(true)} showAdd={canAddEmployee && !hasLiveHrEmployee}>
-                <Select
-                  value={form.empIDUsedBy ?? ''}
-                  onChange={(e) => {
-                    set('empIDUsedBy', e.target.value ? Number(e.target.value) : undefined);
-                    // A live HR pick is mutually exclusive; a legacy id stays on screen and is
-                    // dropped on save instead, so the previous data remains visible.
-                    if (e.target.value && hasLiveHrEmployee) set('hrEmpIDUsedBy', undefined);
-                  }}
-                  disabled={loadingEmployees || hasLiveHrEmployee}
-                  required={!hasHrEmployee && !usedByNotMandatory}
-                  searchable
-                >
-                  <option value="">
-                    {loadingEmployees ? 'Loading employees…' : companyEmployees.length ? 'None' : 'No employees found'}
-                  </option>
-                  {companyEmployees.map((emp) => (
-                    <option key={emp.empIDUsedBy} value={emp.empIDUsedBy}>
-                      {emp.empFullName} ({emp.empIDUsedBy})
+              {/* Asset Code */}
+              <Field label="Asset Code *">
+                <div className="flex gap-2">
+                  <input
+                    className={`${inputCls} font-code tracking-[0.02em]${!isEdit ? ' bg-pearl-100 text-navy-600 cursor-default select-all' : ''}`}
+                    value={form.assetCode ?? ''}
+                    onChange={(e) => { if (isEdit) set('assetCode', e.target.value); }}
+                    readOnly={!isEdit}
+                    required
+                    maxLength={20}
+                    placeholder="Auto-generated"
+                  />
+                  {!isEdit && (
+                    <button
+                      type="button"
+                      onClick={generateCode}
+                      disabled={generatingCode}
+                      className="shrink-0 rounded-lg border border-navy-200 bg-navy-50 px-3 text-[12px] font-semibold text-navy-600 cursor-pointer hover:bg-navy-100 transition-colors disabled:opacity-60 whitespace-nowrap"
+                    >
+                      {generatingCode ? '…' : form.assetCode ? 'Regenerate' : 'Generate'}
+                    </button>
+                  )}
+                </div>
+              </Field>
+
+              {/* Description */}
+              <Field label="Description *">
+                <input className={inputCls} value={form.assetDesc ?? ''} onChange={(e) => set('assetDesc', e.target.value)} required maxLength={50} />
+              </Field>
+
+              <Field label="Brand *">
+                <DropWithAdd onAdd={() => openModal('brand')}>
+                  <Select value={form.brandID ?? ''} onChange={(e) => set('brandID', Number(e.target.value))} required searchable>
+                    <option value="">Select…</option>
+                    {brands.map((b) => <option key={b.brandID} value={b.brandID}>{b.brandDesc}</option>)}
+                  </Select>
+                </DropWithAdd>
+              </Field>
+
+              <Field label="Model *">
+                <input className={inputCls} value={form.model ?? ''} onChange={(e) => set('model', e.target.value)} required maxLength={50} />
+              </Field>
+
+              {/* Group */}
+              <Field label="Group *">
+                <DropWithAdd onAdd={() => openModal('group') } showAdd={isAdmin()}>
+                  <Select value={form.groupID ?? ''} onChange={(e) => set('groupID', Number(e.target.value))} required>
+                    <option value="">Select…</option>
+                    {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
+                  </Select>
+                </DropWithAdd>
+              </Field>
+
+              {/* Category */}
+              <Field label="Category *">
+                <DropWithAdd onAdd={() => openModal('category')}>
+                  <Select value={form.categoryID ?? ''} onChange={(e) => set('categoryID', Number(e.target.value))} required searchable>
+                    <option value="">Select…</option>
+                    {filteredCategories.map((c) => <option key={c.categoryID} value={c.categoryID}>{c.category}</option>)}
+                  </Select>
+                </DropWithAdd>
+              </Field>
+
+              {/* Status */}
+              <Field label="Status *">
+                <Select value={form.statusID ?? ''} onChange={(e) => set('statusID', e.target.value === '' ? undefined : Number(e.target.value))} required>
+                  <option value="">Select…</option>
+                  {statuses.map((s) => <option key={s.statusID} value={s.statusID}>{s.status}</option>)}
+                </Select>
+                {isEdit && (
+                  <FieldHint>
+                    Changing the status here does not add a status-history entry or send a notification —
+                    use the status actions on the asset page for that.
+                  </FieldHint>
+                )}
+              </Field>
+
+            </div>
+          </FormSection>
+
+          {/* ── Location ── */}
+          <FormSection
+            title="Location"
+            subtitle="Where the asset physically sits"
+            icon={<IconPin />}
+          >
+            <div className={gridCls}>
+
+              {/* Location */}
+              <Field label="Location *">
+                <DropWithAdd onAdd={() => openModal('location')}>
+                  <Select value={form.locationID ?? ''} onChange={(e) => { set('locationID', Number(e.target.value)); reset('locDetailID'); }} required>
+                    <option value="">Select…</option>
+                    {filteredLocations.map((l) => <option key={l.locationID} value={l.locationID}>{l.location}</option>)}
+                  </Select>
+                </DropWithAdd>
+              </Field>
+
+              {/* Location Detail */}
+              <Field label="Location Detail *">
+                <DropWithAdd onAdd={() => openModal('locDetail')}>
+                  <Select value={form.locDetailID ?? ''} onChange={(e) => set('locDetailID', Number(e.target.value))} required>
+                    <option value="">Select…</option>
+                    {filteredLocDetails.map((d) => (
+                    <option key={d.locDetailID} value={d.locDetailID}>
+                      {formatLocationDetailLabel(d)}
                     </option>
                   ))}
-                </Select>
-              </DropWithAdd>
-              {hasLiveHrEmployee ? (
-                <p className="text-[11px] text-slate-500 mt-1">Disabled — an HR employee is selected. Clear it to use an internal employee.</p>
-              ) : usedByNotMandatory ? (
-                <p className="text-[11px] text-slate-500 mt-1">Optional — "Used By Not Mandatory" is ticked.</p>
-              ) : canAddEmployee && companyEmployees.length === 0 && !loadingEmployees ? (
-                <p className="text-[11px] text-slate-500 mt-1">No internal employees exist for this company yet. Use the add button to create one.</p>
-              ) : isLegacyHrEmployee && hasInternalEmployee ? (
-                <p className="text-[11px] text-slate-500 mt-1">Saving replaces the previous HR employee with this one.</p>
-              ) : null}
-            </Field>
-          )}
+                  </Select>
+                </DropWithAdd>
+              </Field>
 
-          {canSelectHrEmployee && (
-            <Field label={usedByNotMandatory ? 'Used By (HR Employee)' : 'Used By (HR Employee) *'}>
-              <Select
-                value={form.hrEmpIDUsedBy ?? ''}
-                onChange={(e) => {
-                  set('hrEmpIDUsedBy', e.target.value || undefined);
-                  if (e.target.value) set('empIDUsedBy', undefined);
-                }}
-                disabled={loadingHrEmployees || hasInternalEmployee}
-                required={!hasInternalEmployee && !usedByNotMandatory}
-                searchable
-              >
-                <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
-                {hrEmployees.map((emp) => (
-                  <option key={emp.empID} value={emp.empID}>
-                    {formatHrEmployeeLabel(emp)}
-                  </option>
-                ))}
-              </Select>
-              {hasInternalEmployee ? (
-                <p className="text-[11px] text-slate-500 mt-1">Disabled — an internal employee is selected. Clear it to use an HR employee.</p>
-              ) : usedByNotMandatory ? (
-                <p className="text-[11px] text-slate-500 mt-1">Optional — "Used By Not Mandatory" is ticked.</p>
-              ) : null}
-            </Field>
-          )}
+            </div>
+          </FormSection>
 
-          {isLegacyHrEmployee && (
-            <Field
-              label={<>Used By (HR Employee) <span className="text-danger">Previous Data</span></>}
-            >
-              <input
-                className={`${inputCls} bg-[#f5f5f5] cursor-default text-[#555]`}
-                value={hrEmpValue}
-                readOnly
-                tabIndex={-1}
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                HR lookup is not available for this company, so this stored HR employee ID cannot be changed.
-                Pick an internal employee above to replace it.
-              </p>
-            </Field>
-          )}
+          {/* ── Ownership & assignment ── */}
+          <FormSection
+            title="Ownership & Assignment"
+            subtitle="Who owns the asset and who is responsible for it"
+            icon={<IconUser />}
+          >
+            <div className={gridCls}>
 
-          {/* Asset Code */}
-          <Field label="Asset Code *">
-            <div className="flex gap-2">
-              <input className={`${inputCls}${!isEdit ? ' bg-[#f5f5f5] cursor-default select-all' : ''}`} value={form.assetCode ?? ''} onChange={(e) => { if (isEdit) set('assetCode', e.target.value); }} readOnly={!isEdit} required maxLength={20} />
-              {!isEdit && (
+              {/* Used By not mandatory */}
+              <div className="md:col-span-2 xl:col-span-3 flex items-center justify-between gap-4 rounded-lg border border-pearl-200 bg-pearl-50 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-ink-800">Used By Not Mandatory</div>
+                  <div className="text-[11px] text-ink-300 mt-0.5">
+                    Turn on for shared assets that no employee is personally responsible for.
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={generateCode}
-                  disabled={generatingCode}
-                  className="shrink-0 bg-[#9a7c4b] text-white border-none rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70 whitespace-nowrap"
+                  aria-pressed={usedByNotMandatory}
+                  onClick={() => set('usedByNotMandatory', !usedByNotMandatory)}
+                  className={`relative shrink-0 inline-flex h-7 w-[52px] items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[rgba(31,43,123,0.25)] ${usedByNotMandatory ? 'bg-navy-600' : 'bg-ink-100'}`}
+                  title={usedByNotMandatory ? 'Used By not mandatory — ON' : 'Used By not mandatory — OFF'}
                 >
-                  {generatingCode ? '…' : form.assetCode ? 'Regenerate' : 'Generate'}
+                  <span
+                    className={`transform rounded-full bg-white shadow h-5 w-5 transition-transform ${usedByNotMandatory ? 'translate-x-[26px]' : 'translate-x-1'}`}
+                  />
                 </button>
+              </div>
+
+              {form.companyID && !usedByNotMandatory && (
+                <Field label={isLegacyHrEmployee ? 'Used By (Employee)' : 'Used By (Employee) *'}>
+                  <DropWithAdd onAdd={() => setEmployeeModalOpen(true)} showAdd={canAddEmployee && !hasLiveHrEmployee}>
+                    <Select
+                      value={form.empIDUsedBy ?? ''}
+                      onChange={(e) => {
+                        set('empIDUsedBy', e.target.value ? Number(e.target.value) : undefined);
+                        // A live HR pick is mutually exclusive; a legacy id stays on screen and is
+                        // dropped on save instead, so the previous data remains visible.
+                        if (e.target.value && hasLiveHrEmployee) set('hrEmpIDUsedBy', undefined);
+                      }}
+                      disabled={loadingEmployees || hasLiveHrEmployee}
+                      required={!hasHrEmployee && !usedByNotMandatory}
+                      searchable
+                    >
+                      <option value="">
+                        {loadingEmployees ? 'Loading employees…' : companyEmployees.length ? 'None' : 'No employees found'}
+                      </option>
+                      {companyEmployees.map((emp) => (
+                        <option key={emp.empIDUsedBy} value={emp.empIDUsedBy}>
+                          {emp.empFullName} ({emp.empIDUsedBy})
+                        </option>
+                      ))}
+                    </Select>
+                  </DropWithAdd>
+                  {hasLiveHrEmployee ? (
+                    <FieldHint>Disabled — an HR employee is selected. Clear it to use an internal employee.</FieldHint>
+                  ) : usedByNotMandatory ? (
+                    <FieldHint>Optional — "Used By Not Mandatory" is ticked.</FieldHint>
+                  ) : canAddEmployee && companyEmployees.length === 0 && !loadingEmployees ? (
+                    <FieldHint>No internal employees exist for this company yet. Use the add button to create one.</FieldHint>
+                  ) : isLegacyHrEmployee && hasInternalEmployee ? (
+                    <FieldHint>Saving replaces the previous HR employee with this one.</FieldHint>
+                  ) : null}
+                </Field>
               )}
+
+              {canSelectHrEmployee && !usedByNotMandatory && (
+                <Field label={usedByNotMandatory ? 'Used By (HR Employee)' : 'Used By (HR Employee) *'}>
+                  <Select
+                    value={form.hrEmpIDUsedBy ?? ''}
+                    onChange={(e) => {
+                      set('hrEmpIDUsedBy', e.target.value || undefined);
+                      if (e.target.value) set('empIDUsedBy', undefined);
+                    }}
+                    disabled={loadingHrEmployees || hasInternalEmployee}
+                    required={!hasInternalEmployee && !usedByNotMandatory}
+                    searchable
+                  >
+                    <option value="">{loadingHrEmployees ? 'Loading employees…' : 'None'}</option>
+                    {hrEmployees.map((emp) => (
+                      <option key={emp.empID} value={emp.empID}>
+                        {formatHrEmployeeLabel(emp)}
+                      </option>
+                    ))}
+                  </Select>
+                  {hasInternalEmployee ? (
+                    <FieldHint>Disabled — an internal employee is selected. Clear it to use an HR employee.</FieldHint>
+                  ) : usedByNotMandatory ? (
+                    <FieldHint>Optional — "Used By Not Mandatory" is ticked.</FieldHint>
+                  ) : null}
+                </Field>
+              )}
+
+              {isLegacyHrEmployee && !usedByNotMandatory && (
+                <Field
+                  label={<>Used By (HR Employee) <span className="text-danger normal-case tracking-normal">Previous Data</span></>}
+                >
+                  <input
+                    className={`${inputCls} font-code bg-pearl-100 cursor-default text-ink-500`}
+                    value={hrEmpValue}
+                    readOnly
+                    tabIndex={-1}
+                  />
+                  <FieldHint>
+                    HR lookup is not available for this company, so this stored HR employee ID cannot be changed.
+                    Pick an internal employee above to replace it.
+                  </FieldHint>
+                </Field>
+              )}
+
+              <Field label="Owner *">
+                <Select value={form.ownerID ?? ''} onChange={(e) => {
+                  const nextOwnerId = Number(e.target.value);
+                  set('ownerID', nextOwnerId);
+                  if (nextOwnerId === resolvedCompanyOwnerId) {
+                    set('ownerDesc', '');
+                  }
+                }} required>
+                  {ownersOrdered.map((o) => <option key={o.ownerID} value={o.ownerID}>{o.ownerDesc}</option>)}
+                </Select>
+              </Field>
+
+              <Field label={requiresOwnerDesc ? 'Owner Description *' : 'Owner Description'}>
+                <input
+                  className={inputCls}
+                  value={form.ownerDesc ?? ''}
+                  onChange={(e) => set('ownerDesc', e.target.value)}
+                  maxLength={50}
+                  required={requiresOwnerDesc}
+                  disabled={!requiresOwnerDesc}
+                  placeholder={requiresOwnerDesc ? 'Required for rented / leased / borrowed assets' : 'Only needed when not company-owned'}
+                />
+              </Field>
+
             </div>
-          </Field>
+          </FormSection>
 
-          {/* Description */}
-          <Field label="Description *">
-            <input className={inputCls} value={form.assetDesc ?? ''} onChange={(e) => set('assetDesc', e.target.value)} required maxLength={50} />
-          </Field>
+          {/* ── Purchase & financial ── */}
+          <FormSection
+            title="Purchase & Financial"
+            subtitle="Cost, dates and accounting references"
+            icon={<IconMoney />}
+          >
+            <div className={gridCls}>
 
-          <Field label="Brand *">
-            <DropWithAdd onAdd={() => openModal('brand')}>
-              <Select value={form.brandID ?? ''} onChange={(e) => set('brandID', Number(e.target.value))} required searchable>
-                <option value="">Select…</option>
-                {brands.map((b) => <option key={b.brandID} value={b.brandID}>{b.brandDesc}</option>)}
-              </Select>
-            </DropWithAdd>
-          </Field>
+              {/* In Service Date */}
+              <Field label="In Service Date *">
+                <input className={inputCls} type="date" value={form.inServiceDate ?? ''} onChange={(e) => set('inServiceDate', e.target.value)} required />
+              </Field>
 
-          <Field label="Model *">
-            <input className={inputCls} value={form.model ?? ''} onChange={(e) => set('model', e.target.value)} required maxLength={50} />
-          </Field>
+              {/* Purchase Price */}
+              <Field label="Purchase Price">
+                <input className={inputCls} type="number" step="0.01" value={form.purchasePrice ?? 0} onChange={(e) => set('purchasePrice', Number(e.target.value))} />
+              </Field>
 
-          {/* Group */}
-          <Field label="Group *">
-            <DropWithAdd onAdd={() => openModal('group') } showAdd={isAdmin()}>
-              <Select value={form.groupID ?? ''} onChange={(e) => set('groupID', Number(e.target.value))} required>
-                <option value="">Select…</option>
-                {filteredGroups.map((g) => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
-              </Select>
-            </DropWithAdd>
-          </Field>
+              {/* Currency */}
+              <Field label="Currency *">
+                <DropWithAdd onAdd={() => openModal('currency') } showAdd={isAdmin()}>
+                  <Select value={form.purchaseCurCode ?? ''} onChange={(e) => set('purchaseCurCode', e.target.value)} required>
+                    {currencies.map((c) => (
+                    <option key={c.curCode} value={c.curCode}>
+                      {formatCurrencyLabel(c)}
+                    </option>
+                  ))}
+                  </Select>
+                </DropWithAdd>
+              </Field>
 
-          {/* Category */}
-          <Field label="Category *">
-            <DropWithAdd onAdd={() => openModal('category')}>
-              <Select value={form.categoryID ?? ''} onChange={(e) => set('categoryID', Number(e.target.value))} required searchable>
-                <option value="">Select…</option>
-                {filteredCategories.map((c) => <option key={c.categoryID} value={c.categoryID}>{c.category}</option>)}
-              </Select>
-            </DropWithAdd>
-          </Field>
+              <Field label="Purchase Date">
+                <input className={inputCls} type="date" value={form.purchaseDate ?? ''} onChange={(e) => set('purchaseDate', e.target.value)} />
+              </Field>
+              <Field label="Purchase Order No">
+                <input className={inputCls} value={form.purchaseOrderNo ?? ''} onChange={(e) => set('purchaseOrderNo', e.target.value)} maxLength={10} />
+              </Field>
+              <Field label="Invoice No">
+                <input className={inputCls} value={form.invoiceNo ?? ''} onChange={(e) => set('invoiceNo', e.target.value)} maxLength={10} />
+              </Field>
+              <Field label="Invoice Date">
+                <input className={inputCls} type="date" value={form.invoiceDate ?? ''} onChange={(e) => set('invoiceDate', e.target.value)} />
+              </Field>
+              <Field label="Accounting Entry Date">
+                <input className={inputCls} type="date" value={form.accountingEntryDate ?? ''} onChange={(e) => set('accountingEntryDate', e.target.value)} />
+              </Field>
+              <Field label="Accounting JV No">
+                <input className={inputCls} value={form.accountingEntryJVNo ?? ''} onChange={(e) => set('accountingEntryJVNo', e.target.value)} maxLength={10} />
+              </Field>
+            </div>
+          </FormSection>
 
-          {/* Location */}
-          <Field label="Location *">
-            <DropWithAdd onAdd={() => openModal('location')}>
-              <Select value={form.locationID ?? ''} onChange={(e) => { set('locationID', Number(e.target.value)); reset('locDetailID'); }} required>
-                <option value="">Select…</option>
-                {filteredLocations.map((l) => <option key={l.locationID} value={l.locationID}>{l.location}</option>)}
-              </Select>
-            </DropWithAdd>
-          </Field>
+          {/* ── Identification & additional ── */}
+          <FormSection
+            title="Additional Information"
+            subtitle="Identifiers, supplier and free-text notes"
+            icon={<IconTag />}
+          >
+            <div className={gridCls}>
 
-          {/* Location Detail */}
-          <Field label="Location Detail *">
-            <DropWithAdd onAdd={() => openModal('locDetail')}>
-              <Select value={form.locDetailID ?? ''} onChange={(e) => set('locDetailID', Number(e.target.value))} required>
-                <option value="">Select…</option>
-                {filteredLocDetails.map((d) => (
-                <option key={d.locDetailID} value={d.locDetailID}>
-                  {formatLocationDetailLabel(d)}
-                </option>
-              ))}
-              </Select>
-            </DropWithAdd>
-          </Field>
+              <Field label="Barcode Number">
+                <input className={`${inputCls} font-code`} value={form.barcodeNumber ?? ''} onChange={(e) => set('barcodeNumber', e.target.value)} maxLength={20} />
+              </Field>
+              <Field label="Serial Number">
+                <input className={`${inputCls} font-code`} value={form.serialNumber ?? ''} onChange={(e) => set('serialNumber', e.target.value)} maxLength={50} />
+              </Field>
+              <Field label="Contact / Supplier">
+                <DropWithAdd onAdd={() => openModal('contact')}>
+                  <Select value={form.contactID ?? ''} onChange={(e) => set('contactID', e.target.value ? Number(e.target.value) : undefined)}>
+                    <option value="">None</option>
+                    {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
+                  </Select>
+                </DropWithAdd>
+              </Field>
+              <Field label="Donation">
+                <Select value={form.donation ? 'true' : 'false'} onChange={(e) => set('donation', e.target.value === 'true')}>
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
+                </Select>
+              </Field>
+              <Field label="Remark" className="md:col-span-2 xl:col-span-3">
+                <input className={inputCls} value={form.remark ?? ''} onChange={(e) => set('remark', e.target.value)} maxLength={100} placeholder="Optional note about this asset" />
+              </Field>
+            </div>
+          </FormSection>
 
-          <Field label="Owner *">
-            <Select value={form.ownerID ?? ''} onChange={(e) => {
-              const nextOwnerId = Number(e.target.value);
-              set('ownerID', nextOwnerId);
-              if (nextOwnerId === resolvedCompanyOwnerId) {
-                set('ownerDesc', '');
-              }
-            }} required>
-              {ownersOrdered.map((o) => <option key={o.ownerID} value={o.ownerID}>{o.ownerDesc}</option>)}
-            </Select>
-          </Field>
-
-          <Field label={requiresOwnerDesc ? 'Owner Description *' : 'Owner Description'}>
-            <input
-              className={inputCls}
-              value={form.ownerDesc ?? ''}
-              onChange={(e) => set('ownerDesc', e.target.value)}
-              maxLength={50}
-              required={requiresOwnerDesc}
-              disabled={!requiresOwnerDesc}
-              placeholder={requiresOwnerDesc ? 'Required for rented / leased / borrowed assets' : 'Only needed when not company-owned'}
-            />
-          </Field>
-
-          {/* In Service Date */}
-          <Field label="In Service Date *">
-            <input className={inputCls} type="date" value={form.inServiceDate ?? ''} onChange={(e) => set('inServiceDate', e.target.value)} required />
-          </Field>
-
-          {/* Purchase Price */}
-          <Field label="Purchase Price">
-            <input className={inputCls} type="number" step="0.01" value={form.purchasePrice ?? 0} onChange={(e) => set('purchasePrice', Number(e.target.value))} />
-          </Field>
-
-          {/* Currency */}
-          <Field label="Currency *">
-            <DropWithAdd onAdd={() => openModal('currency') } showAdd={isAdmin()}>
-              <Select value={form.purchaseCurCode ?? ''} onChange={(e) => set('purchaseCurCode', e.target.value)} required>
-                {currencies.map((c) => (
-                <option key={c.curCode} value={c.curCode}>
-                  {formatCurrencyLabel(c)}
-                </option>
-              ))}
-              </Select>
-            </DropWithAdd>
-          </Field>
-
-          <Field label="Purchase Date">
-            <input className={inputCls} type="date" value={form.purchaseDate ?? ''} onChange={(e) => set('purchaseDate', e.target.value)} />
-          </Field>
-          <Field label="Purchase Order No">
-            <input className={inputCls} value={form.purchaseOrderNo ?? ''} onChange={(e) => set('purchaseOrderNo', e.target.value)} maxLength={10} />
-          </Field>
-          <Field label="Invoice No">
-            <input className={inputCls} value={form.invoiceNo ?? ''} onChange={(e) => set('invoiceNo', e.target.value)} maxLength={10} />
-          </Field>
-          <Field label="Invoice Date">
-            <input className={inputCls} type="date" value={form.invoiceDate ?? ''} onChange={(e) => set('invoiceDate', e.target.value)} />
-          </Field>
-          <Field label="Accounting Entry Date">
-            <input className={inputCls} type="date" value={form.accountingEntryDate ?? ''} onChange={(e) => set('accountingEntryDate', e.target.value)} />
-          </Field>
-          <Field label="Accounting JV No">
-            <input className={inputCls} value={form.accountingEntryJVNo ?? ''} onChange={(e) => set('accountingEntryJVNo', e.target.value)} maxLength={10} />
-          </Field>
-          <Field label="Barcode Number">
-            <input className={inputCls} value={form.barcodeNumber ?? ''} onChange={(e) => set('barcodeNumber', e.target.value)} maxLength={20} />
-          </Field>
-          <Field label="Serial Number">
-            <input className={inputCls} value={form.serialNumber ?? ''} onChange={(e) => set('serialNumber', e.target.value)} maxLength={50} />
-          </Field>
-        <Field label="Contact / Supplier">
-          <DropWithAdd onAdd={() => openModal('contact')}>
-            <Select value={form.contactID ?? ''} onChange={(e) => set('contactID', e.target.value ? Number(e.target.value) : undefined)}>
-              <option value="">None</option>
-              {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
-            </Select>
-          </DropWithAdd>
-        </Field>
-          <Field label="Donation">
-            <Select value={form.donation ? 'true' : 'false'} onChange={(e) => set('donation', e.target.value === 'true')}>
-              <option value="false">No</option>
-              <option value="true">Yes</option>
-            </Select>
-          </Field>
-          <Field label="Remark">
-            <input className={inputCls} value={form.remark ?? ''} onChange={(e) => set('remark', e.target.value)} maxLength={100} />
-          </Field>
-        </div>
-
-        <div className="mt-7 flex gap-3">
-          <button type="submit" disabled={saving} className="bg-[#9a7c4b] text-white border-none rounded-lg px-7 py-2.5 text-sm font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors disabled:opacity-70">
-            {saving ? 'Saving…' : isEdit ? 'Update Asset' : 'Create Asset'}
-          </button>
-          <button type="button" onClick={leaveForm} className="px-5 py-2.5 rounded-lg border border-[#ccc] bg-white text-[#555] text-sm cursor-pointer hover:bg-surface-2">
-            Cancel
-          </button>
+          {/* ── Footer actions ── */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-pearl-200 bg-white shadow-card px-5 py-4">
+            <p className="text-[12px] text-ink-300">
+              Fields marked <span className="text-danger font-semibold">*</span> are required.
+            </p>
+            <div className="flex items-center gap-2.5">
+              <button type="button" onClick={leaveForm} className="btn-secondary">
+                Cancel
+              </button>
+              <button type="submit" disabled={saving} className="bg-[#9a7c4b] hover:bg-[#7d6339] btn-primary px-6 disabled:opacity-70">
+                {saving ? 'Saving…' : isEdit ? 'Update Asset' : 'Create Asset'}
+              </button>
+            </div>
+          </div>
         </div>
       </form>
     </div>
@@ -1176,21 +1265,110 @@ const visibleCompanies = isAdmin()
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+/** Titled card that groups a set of related fields. */
+function FormSection({ title, subtitle, icon, children }: {
+  title: string;
+  subtitle?: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-bold text-[#555] uppercase">{label}</label>
+    <section className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-3.5 bg-pearl-100/70 border-b border-pearl-200">
+        <div className="w-8 h-8 rounded-lg bg-navy-50 border border-navy-100 text-navy-600 flex items-center justify-center shrink-0">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-bold text-ink-800 leading-tight">{title}</h3>
+          {subtitle && <p className="text-[11px] text-ink-300 mt-0.5 truncate">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+/** Renders the trailing " *" of a label as a red asterisk instead of plain text. */
+function renderLabel(label: React.ReactNode) {
+  if (typeof label === 'string' && label.endsWith(' *')) {
+    return <>{label.slice(0, -2)}<span className="text-danger ml-0.5">*</span></>;
+  }
+  return label;
+}
+
+function Field({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={clsx('flex flex-col gap-1.5', className)}>
+      <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400">
+        {renderLabel(label)}
+      </label>
       {children}
     </div>
   );
 }
 
+function FieldHint({ children }: { children: React.ReactNode }) {
+  return <p className="text-[11px] leading-snug text-ink-300 mt-1">{children}</p>;
+}
+
 function MField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">{label}</label>
+      <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">
+        {renderLabel(label)}
+      </label>
       {children}
     </div>
+  );
+}
+
+// ── Section icons ──────────────────────────────────────────────────────────────
+
+const iconProps = {
+  width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+};
+
+function IconInfo() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  );
+}
+
+function IconPin() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+function IconUser() {
+  return (
+    <svg {...iconProps}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function IconMoney() {
+  return (
+    <svg {...iconProps}>
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+
+function IconTag() {
+  return (
+    <svg {...iconProps}>
+      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+      <line x1="7" y1="7" x2="7.01" y2="7" />
+    </svg>
   );
 }
 
