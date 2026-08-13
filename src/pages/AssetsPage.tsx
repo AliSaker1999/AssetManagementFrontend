@@ -44,7 +44,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   code: 110,
   description: 180,
   category: 100,
-  location: 110,
+  location: 220,
   employee: 220,
   status: 280,
   barcode: 40,

@@ -1,5 +1,5 @@
 import client from './client';
-import type { CategoryType, Company, Country, Employee, EmployeePossibleMatches, HrCompanyProfile, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
+import type { CategoryType, Company, Country, Employee, EmployeePossibleMatches, HrCompanyProfile, HrDatabase, HrSource, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
 
 export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
@@ -29,13 +29,21 @@ export const lookupsApi = {
   getCurrenciesPaginated: (pageNumber: number = 1, pageSize: number = 10) =>
     client.get<PaginatedResponse<{ curCode: string; curName: string }>>('/lookups/currencies/paginated', { params: { pageNumber, pageSize } }),
   getCountries: () => client.get('/lookups/countries'),
-  getHrDatabases: () => client.get<string[]>('/lookups/hr-databases'),
-  getHrCompanies: (countryId: string) =>
-    client.get<HrCompanyProfile[]>('/lookups/hr-companies', { params: { countryId } }),
+  getHrDatabases: () => client.get<HrDatabase[]>('/lookups/hr-databases'),
+  getHrSources: (activeOnly = false) =>
+    client.get<HrSource[]>('/lookups/hr-sources', { params: { activeOnly } }),
+  createHrSource: (payload: Partial<HrSource>) => client.post<HrSource>('/lookups/hr-sources', payload),
+  updateHrSource: (id: number, payload: Partial<HrSource>) => client.put(`/lookups/hr-sources/${id}`, payload),
+  deleteHrSource: (id: number) => client.delete(`/lookups/hr-sources/${id}`),
+  testHrSource: (id: number) => client.post<{ message: string }>(`/lookups/hr-sources/${id}/test`),
+  // Keyed by HR source, not country: a country can have more than one, and the company
+  // create form has no CompanyID yet but does have the chosen source.
+  getHrCompanies: (hrSourceId: number) =>
+    client.get<HrCompanyProfile[]>('/lookups/hr-companies', { params: { hrSourceId } }),
   getHrEmployees: (companyId: number) =>
     client.get<HrEmployee[]>('/lookups/hr-employees', { params: { companyId } }),
-  getHrEmployeesByCompanyProfile: (countryId: string, companyProfileId: number) =>
-    client.get<HrEmployee[]>('/lookups/hr-employees', { params: { countryId, companyProfileId } }),
+  getHrEmployeesByCompanyProfile: (hrSourceId: number, companyProfileId: number) =>
+    client.get<HrEmployee[]>('/lookups/hr-employees', { params: { hrSourceId, companyProfileId } }),
   checkEmployeePossibleMatches: (companyId: number, empFullName: string, excludeEmpId?: number) =>
     client.get<EmployeePossibleMatches>('/lookups/employees/possible-matches', {
       params: { companyId, empFullName, excludeEmpId },

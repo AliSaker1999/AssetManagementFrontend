@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import { useAuth } from '../contexts/AuthContext';
-import type { Company, Country, Currency, HrCompanyProfile, PaginatedResponse } from '../types';
+import type { Company, Country, Currency, HrCompanyProfile, HrSource, PaginatedResponse } from '../types';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
@@ -15,6 +15,7 @@ const emptyForm = {
   companyPrmCurCode: '',
   companyScdCurCode: '',
   countryID: '',
+  hrSourceID: '',
   hrCompanyProfileID: '',
   assetController: false,
   assetControllerEmail: '',
@@ -44,6 +45,7 @@ export default function CompaniesPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [hrCompanies, setHrCompanies] = useState<HrCompanyProfile[]>([]);
+  const [hrSources, setHrSources] = useState<HrSource[]>([]);
   const [loadingHrCompanies, setLoadingHrCompanies] = useState(false);
   const [saving, setSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
@@ -69,6 +71,9 @@ export default function CompaniesPage() {
     lookupsApi.getCurrencies()
       .then((r) => setCurrencies(r.data as Currency[]))
       .catch((err) => handleApiError(err, 'Failed to load currencies'));
+    lookupsApi.getHrSources(true)
+      .then((r) => setHrSources(r.data ?? []))
+      .catch((err) => handleApiError(err, 'Failed to load HR sources'));
   }, []);
 
   useEffect(() => {
@@ -127,18 +132,23 @@ export default function CompaniesPage() {
     setReloadKey((value) => value + 1);
   }
 
-  const selectedCountry = countries.find((c) => c.countryID.trim() === form.countryID.trim());
-  const shouldShowHrCompany = !!selectedCountry?.hrConnect && !!selectedCountry?.hrDatabase;
+  // HR availability now comes from the sources configured for the country, not from a
+  // flag on the country itself — a country can have several sources, or none.
+  const countryHrSources = hrSources.filter(
+    (s) => s.isActive && s.countryID.trim() === form.countryID.trim(),
+  );
+  const shouldShowHrCompany = countryHrSources.length > 0;
+  const selectedHrSource = countryHrSources.find((s) => String(s.hrSourceID) === form.hrSourceID);
 
   useEffect(() => {
-    if (!mode || !form.countryID || !shouldShowHrCompany) {
+    if (!mode || !form.hrSourceID) {
       setHrCompanies([]);
       return;
     }
 
     let isMounted = true;
     setLoadingHrCompanies(true);
-    lookupsApi.getHrCompanies(form.countryID.trim())
+    lookupsApi.getHrCompanies(Number(form.hrSourceID))
       .then((r) => {
         if (!isMounted) return;
         setHrCompanies(r.data as HrCompanyProfile[]);
@@ -153,7 +163,7 @@ export default function CompaniesPage() {
       });
 
     return () => { isMounted = false; };
-  }, [mode, form.countryID, shouldShowHrCompany]);
+  }, [mode, form.hrSourceID]);
 
   function startAdd() {
     if (!canManage) return;
@@ -170,6 +180,7 @@ export default function CompaniesPage() {
       companyPrmCurCode: c.companyPrmCurCode,
       companyScdCurCode: c.companyScdCurCode,
       countryID: c.countryID,
+      hrSourceID: c.hrSourceID != null ? String(c.hrSourceID) : '',
       hrCompanyProfileID: c.hrCompanyProfileID != null ? String(c.hrCompanyProfileID) : '',
       assetController: c.assetController ?? false,
       assetControllerEmail: c.assetControllerEmail ?? '',
@@ -190,6 +201,7 @@ export default function CompaniesPage() {
     setSaving(true);
     const payload = {
       ...form,
+      hrSourceID: form.hrSourceID ? Number(form.hrSourceID) : null,
       hrCompanyProfileID: form.hrCompanyProfileID ? Number(form.hrCompanyProfileID) : null,
       assetController: !!form.assetController,
       assetControllerEmail: form.assetControllerEmail.trim(),
@@ -245,6 +257,7 @@ export default function CompaniesPage() {
       companyPrmCurCode: c.companyPrmCurCode,
       companyScdCurCode: c.companyScdCurCode,
       countryID: c.countryID,
+      hrSourceID: c.hrSourceID,
       hrCompanyProfileID: c.hrCompanyProfileID,
       assetController: newStatus,
       assetControllerEmail: c.assetControllerEmail,
@@ -305,28 +318,59 @@ export default function CompaniesPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className={labelCls}>Country *</label>
-                <Select value={form.countryID} onChange={e => setForm(f => ({ ...f, countryID: e.target.value, hrCompanyProfileID: '' }))} required>
+                <Select value={form.countryID} onChange={e => setForm(f => ({ ...f, countryID: e.target.value, hrSourceID: '', hrCompanyProfileID: '' }))} required>
                   <option value="">Select country…</option>
                   {countries.filter(c => c.activeCountry).map(c => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
                 </Select>
               </div>
               {shouldShowHrCompany && (
-                <div className="flex flex-col gap-1">
-                  <label className={labelCls}>HR Company *</label>
-                  <Select
-                    value={form.hrCompanyProfileID}
-                    onChange={e => setForm(f => ({ ...f, hrCompanyProfileID: e.target.value }))}
-                    required
-                    disabled={loadingHrCompanies}
-                  >
-                    <option value="">{loadingHrCompanies ? 'Loading HR companies…' : 'Select HR company…'}</option>
-                    {hrCompanies.map(h => (
-                      <option key={h.companyProfileID} value={h.companyProfileID}>
-                        {h.prmName} ({h.companyProfileID})
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className={labelCls}>HR Database *</label>
+                    <Select
+                      value={form.hrSourceID}
+                      onChange={e => setForm(f => ({ ...f, hrSourceID: e.target.value, hrCompanyProfileID: '' }))}
+                      required
+                    >
+                      <option value="">
+                        {countryHrSources.length === 1 ? 'Select HR database…' : 'Select which HR database…'}
                       </option>
-                    ))}
-                  </Select>
-                </div>
+                      {countryHrSources.map(s => (
+                        <option key={s.hrSourceID} value={s.hrSourceID}>
+                          {`${s.sourceName} — ${s.databaseName}`}
+                        </option>
+                      ))}
+                    </Select>
+                    {selectedHrSource && !selectedHrSource.isOnAppInstance && (
+                      <span className="text-[11px] text-[#b45309]">
+                        On {selectedHrSource.serverName}. HR lookups work, but employee names will
+                        not appear in the asset list and asset transfers are unavailable for this source.
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className={labelCls}>HR Company *</label>
+                    <Select
+                      value={form.hrCompanyProfileID}
+                      onChange={e => setForm(f => ({ ...f, hrCompanyProfileID: e.target.value }))}
+                      required
+                      disabled={loadingHrCompanies || !form.hrSourceID}
+                    >
+                      <option value="">
+                        {!form.hrSourceID
+                          ? 'Select an HR database first…'
+                          : loadingHrCompanies
+                            ? 'Loading HR companies…'
+                            : 'Select HR company…'}
+                      </option>
+                      {hrCompanies.map(h => (
+                        <option key={h.companyProfileID} value={h.companyProfileID}>
+                          {`${h.prmName} (${h.companyProfileID})`}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </>
               )}
               <div className="flex flex-col gap-1 col-span-full">
                 <label className={labelCls}>Asset Controller</label>

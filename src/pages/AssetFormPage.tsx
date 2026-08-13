@@ -6,7 +6,7 @@ import { handleApiError } from '../utils/errors';
 import { confirmEmployeeMatches } from '../utils/employeeMatches';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
-import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrEmployee, Employee, StatusType } from '../types';
+import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrSource, HrEmployee, Employee, StatusType } from '../types';
 import { contactsApi } from '../api/contacts';
 import Select from '../components/ui/Select';
 import PageHeader from '../components/ui/PageHeader';
@@ -105,8 +105,9 @@ export default function AssetFormPage() {
   const [locDetailForm, setLocDetailForm] = useState({ locationID: 0, floor: '', zone: '', room: '' });
   const [brandForm, setBrandForm] = useState({ brandDesc: '' });
   const [curForm, setCurForm] = useState({ curCode: '', curName: '' });
-  const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrCompanyProfileID: '' });
+  const [compForm, setCompForm] = useState({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrSourceID: '', hrCompanyProfileID: '' });
   const [hrCompanies, setHrCompanies] = useState<HrCompanyProfile[]>([]);
+  const [hrSources, setHrSources] = useState<HrSource[]>([]);
   const [loadingHrCompanies, setLoadingHrCompanies] = useState(false);
   const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
   const [contactForm, setContactForm] = useState({
@@ -148,6 +149,10 @@ const visibleCompanies = isAdmin()
       setCurrencies(cur.data as Currency[]);
       setContacts(con.data as Contact[]);
       setCountries(cty.data as Country[]);
+      // Only needed by the quick-add company modal, so a failure here must not break the form.
+      void lookupsApi.getHrSources(true)
+        .then((r) => setHrSources(r.data ?? []))
+        .catch(() => setHrSources([]));
       setContactTypes(ctypes.data as ContactType[]);
       setStatuses(st.data as StatusType[]);
       if (!isEdit && ctxCompanyId != null) {
@@ -277,7 +282,7 @@ const visibleCompanies = isAdmin()
     } else if (type === 'currency') {
       setCurForm({ curCode: '', curName: '' });
     } else if (type === 'company') {
-      setCompForm({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrCompanyProfileID: '' });
+      setCompForm({ companyName: '', companyAbbreviation: '', companyPrmCurCode: '', companyScdCurCode: '', countryID: '', hrSourceID: '', hrCompanyProfileID: '' });
       setHrCompanies([]);
     } else if (type === 'contact') {
       setContactForm({
@@ -411,6 +416,7 @@ const visibleCompanies = isAdmin()
     try {
       const payload = {
         ...compForm,
+        hrSourceID: compForm.hrSourceID ? Number(compForm.hrSourceID) : null,
         hrCompanyProfileID: compForm.hrCompanyProfileID ? Number(compForm.hrCompanyProfileID) : null,
       };
       const r = await lookupsApi.createCompany(payload);
@@ -490,8 +496,10 @@ const visibleCompanies = isAdmin()
   const shouldLoadHrEmployees = !!selectedCompany?.hrCompanyProfileID;
   const companyEmployees = form.companyID ? employees.filter((e) => e.companyID === form.companyID) : [];
   const canAddEmployee = isAdmin() || isFullAccess();
-  const selectedCompCountry = countries.find((c) => c.countryID.trim() === compForm.countryID.trim());
-  const shouldShowHrCompany = !!selectedCompCountry?.hrConnect && !!selectedCompCountry?.hrDatabase;
+  const compCountryHrSources = hrSources.filter(
+    (s) => s.isActive && s.countryID.trim() === compForm.countryID.trim(),
+  );
+  const shouldShowHrCompany = compCountryHrSources.length > 0;
   const resolvedCompanyOwnerId = owners.find((o) => o.ownerDesc.trim().toLowerCase() === 'company')?.ownerID ?? companyOwnerId;
   const ownersOrdered = [
     ...owners.filter((o) => o.ownerID === resolvedCompanyOwnerId),
@@ -589,14 +597,14 @@ const visibleCompanies = isAdmin()
   }, [form.companyID, shouldLoadHrEmployees, savedHrEmployee]);
 
   useEffect(() => {
-    if (activeModal !== 'company' || !compForm.countryID || !shouldShowHrCompany) {
+    if (activeModal !== 'company' || !compForm.hrSourceID) {
       setHrCompanies([]);
       return;
     }
 
     let isMounted = true;
     setLoadingHrCompanies(true);
-    lookupsApi.getHrCompanies(compForm.countryID.trim())
+    lookupsApi.getHrCompanies(Number(compForm.hrSourceID))
       .then((r) => {
         if (!isMounted) return;
         setHrCompanies(r.data as HrCompanyProfile[]);
@@ -611,7 +619,7 @@ const visibleCompanies = isAdmin()
       });
 
     return () => { isMounted = false; };
-  }, [activeModal, compForm.countryID, shouldShowHrCompany]);
+  }, [activeModal, compForm.hrSourceID]);
 
   function formatCompanyLabel(company: Company) {
     const countryId = company.countryID?.trim() ?? "";
@@ -765,25 +773,43 @@ const visibleCompanies = isAdmin()
             <input className={inputCls} value={compForm.companyAbbreviation} onChange={(e) => setCompForm((p) => ({ ...p, companyAbbreviation: e.target.value }))} required maxLength={10} placeholder="e.g. GT" />
           </MField>
           <MField label="Country *">
-            <Select value={compForm.countryID} onChange={(e) => setCompForm((p) => ({ ...p, countryID: e.target.value, hrCompanyProfileID: '' }))} required>
+            <Select value={compForm.countryID} onChange={(e) => setCompForm((p) => ({ ...p, countryID: e.target.value, hrSourceID: '', hrCompanyProfileID: '' }))} required>
               <option value="">Select country…</option>
               {countries.filter((c) => c.workingCountry).map((c) => <option key={c.countryID} value={c.countryID}>{c.country}</option>)}
             </Select>
           </MField>
           {shouldShowHrCompany && (
-            <MField label="HR Company *">
-              <Select
-                value={compForm.hrCompanyProfileID}
-                onChange={(e) => setCompForm((p) => ({ ...p, hrCompanyProfileID: e.target.value }))}
-                required
-                disabled={loadingHrCompanies}
-              >
-                <option value="">{loadingHrCompanies ? 'Loading HR companies…' : 'Select HR company…'}</option>
-                {hrCompanies.map((h) => (
-                  <option key={h.companyProfileID} value={h.companyProfileID}>{h.prmName} ({h.companyProfileID})</option>
-                ))}
-              </Select>
-            </MField>
+            <>
+              <MField label="HR Database *">
+                <Select
+                  value={compForm.hrSourceID}
+                  onChange={(e) => setCompForm((p) => ({ ...p, hrSourceID: e.target.value, hrCompanyProfileID: '' }))}
+                  required
+                >
+                  <option value="">Select HR database…</option>
+                  {compCountryHrSources.map((s) => (
+                    <option key={s.hrSourceID} value={s.hrSourceID}>{`${s.sourceName} — ${s.databaseName}`}</option>
+                  ))}
+                </Select>
+              </MField>
+              <MField label="HR Company *">
+                <Select
+                  value={compForm.hrCompanyProfileID}
+                  onChange={(e) => setCompForm((p) => ({ ...p, hrCompanyProfileID: e.target.value }))}
+                  required
+                  disabled={loadingHrCompanies || !compForm.hrSourceID}
+                >
+                  <option value="">
+                    {!compForm.hrSourceID
+                      ? 'Select an HR database first…'
+                      : loadingHrCompanies ? 'Loading HR companies…' : 'Select HR company…'}
+                  </option>
+                  {hrCompanies.map((h) => (
+                    <option key={h.companyProfileID} value={h.companyProfileID}>{`${h.prmName} (${h.companyProfileID})`}</option>
+                  ))}
+                </Select>
+              </MField>
+            </>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MField label="Primary Currency *">

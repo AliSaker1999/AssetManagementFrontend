@@ -93,7 +93,9 @@ export default function TransferAssetModal({
   );
   const [transferCompanyProfileID, setTransferCompanyProfileID] = useState<number | ''>('');
   const [transferEmpID, setTransferEmpID] = useState<string>('');
-  const [transferCountryId, setTransferCountryId] = useState<string>('');
+  // The asset's company names its HR source directly. This used to derive a countryID
+  // instead, which cannot work once a country has more than one HR database.
+  const [transferHrSourceId, setTransferHrSourceId] = useState<number | ''>('');
   const [transferCompanies, setTransferCompanies] = useState<HrCompanyProfile[]>([]);
   const [transferEmployees, setTransferEmployees] = useState<HrEmployee[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
@@ -108,17 +110,17 @@ export default function TransferAssetModal({
       setTransferDate(new Date().toISOString().slice(0, 10));
       setTransferCompanyProfileID('');
       setTransferEmpID('');
-      setTransferCountryId('');
+      setTransferHrSourceId('');
       setTransferCompanies([]);
       setTransferEmployees([]);
     }
   }, [open]);
 
-  // Load transfer companies based on asset's country
+  // Load transfer companies from the HR source the asset's company reads
   useEffect(() => {
     if (!open || !asset) {
       setTransferCompanies([]);
-      setTransferCountryId('');
+      setTransferHrSourceId('');
       return;
     }
 
@@ -127,28 +129,25 @@ export default function TransferAssetModal({
 
     (async () => {
       try {
-        // 1. Fetch all companies (or use cached list)
         const companiesRes = await lookupsApi.getCompanies();
         const allCompanies = companiesRes.data as Company[];
 
-        // 2. Find the asset's company to get its countryID
         const assetCompany = allCompanies.find(
           (c) => c.companyID === asset.companyID
         );
-        const countryId = assetCompany?.countryID?.trim();
-        if (!countryId) {
-          throw new Error('Asset country is not configured for transfer lookups.');
+        const hrSourceId = assetCompany?.hrSourceID;
+        if (!hrSourceId) {
+          throw new Error("This asset's company has no HR database configured, so it cannot be transferred to an HR employee.");
         }
 
-        // 3. Fetch HR companies for that country
-        const hrCompaniesRes = await lookupsApi.getHrCompanies(countryId);
+        const hrCompaniesRes = await lookupsApi.getHrCompanies(hrSourceId);
         if (!isMounted) return;
 
-        setTransferCountryId(countryId);
+        setTransferHrSourceId(hrSourceId);
         setTransferCompanies(hrCompaniesRes.data as HrCompanyProfile[]);
       } catch (err) {
         if (!isMounted) return;
-        setTransferCountryId('');
+        setTransferHrSourceId('');
         setTransferCompanies([]);
         handleApiError(err, 'Failed to load transfer companies');
       } finally {
@@ -163,7 +162,7 @@ export default function TransferAssetModal({
 
   // Load employees when a company is selected
   useEffect(() => {
-    if (!open || !transferCountryId || !transferCompanyProfileID) {
+    if (!open || !transferHrSourceId || !transferCompanyProfileID) {
       setTransferEmployees([]);
       return;
     }
@@ -173,7 +172,7 @@ export default function TransferAssetModal({
 
     lookupsApi
       .getHrEmployeesByCompanyProfile(
-        transferCountryId,
+        Number(transferHrSourceId),
         Number(transferCompanyProfileID)
       )
       .then((res) => {
@@ -192,7 +191,7 @@ export default function TransferAssetModal({
     return () => {
       isMounted = false;
     };
-  }, [open, transferCountryId, transferCompanyProfileID]);
+  }, [open, transferHrSourceId, transferCompanyProfileID]);
 
   // ─── Handlers ───────────────────────────────────────────────────────────
 
@@ -209,7 +208,7 @@ export default function TransferAssetModal({
       toast.error('Transfer date is required');
       return;
     }
-    if (!transferCountryId) {
+    if (!transferHrSourceId) {
       toast.error('Transfer company lookups are not available for this asset.');
       return;
     }

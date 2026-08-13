@@ -6,13 +6,14 @@ import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { useConfirm } from '../hooks/useConfirm';
-import type { GroupType, CategoryType, LocationType, LocationDetail, Country, Currency, Setting, BrandType } from '../types';
+import type { GroupType, CategoryType, LocationType, LocationDetail, Country, Currency, Setting, BrandType, HrSource } from '../types';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
+import HrSourcesSection from '../components/HrSourcesSection';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
-type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'brands' | 'currencies' | 'countries';
+type Section = 'asset-code' | 'notifications' | 'groups' | 'categories' | 'locations' | 'location-details' | 'brands' | 'currencies' | 'countries' | 'hr-sources';
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'asset-code', label: 'Asset Code' },
@@ -24,6 +25,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'brands', label: 'Brands' },
   { key: 'currencies', label: 'Currencies' },
   { key: 'countries', label: 'Countries' },
+  { key: 'hr-sources', label: 'HR Databases' },
 ];
 
 const inputCls = 'w-full px-2.5 py-[7px] border border-[#ddd] rounded-md text-sm outline-none focus:border-accent transition-colors box-border';
@@ -118,6 +120,7 @@ export default function SettingsPage() {
       {section === 'brands' && (<BrandsSection onReload={reloadBrands} />)}
       {section === 'currencies' && <CurrenciesSection  onReload={reloadCurrencies} />}
       {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
+      {section === 'hr-sources' && <HrSourcesSection />}
     </div>
   );
 }
@@ -1337,9 +1340,9 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
   const [form, setForm] = useState(emptyCountry);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [hrDatabases, setHrDatabases] = useState<string[]>([]);
-  const [hrDatabasesLoading, setHrDatabasesLoading] = useState(false);
-  const [hrDatabasesLoaded, setHrDatabasesLoaded] = useState(false);
+  // HR targets are configured per country as GSET.HRSources rows now, not as a single
+  // name on the country, so this section only reports how many exist.
+  const [hrSources, setHrSources] = useState<HrSource[]>([]);
   const [search, setSearch] = useState('');
   const [activeOnly, setActiveOnly] = useState(true);
   const [pageNumber, setPageNumber] = useState(1);
@@ -1392,26 +1395,14 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
   }, [pageNumber, pageSize, search, activeOnly, reloadKey]);
 
   useEffect(() => {
-    if (mode !== null && form.hrConnect) {
-      void loadHrDatabases();
-    }
-  }, [mode, form.hrConnect]);
+    lookupsApi.getHrSources(false)
+      .then((r) => setHrSources(r.data ?? []))
+      .catch(() => setHrSources([]));
+  }, [reloadKey]);
 
-  async function loadHrDatabases(force = false) {
-    if (hrDatabasesLoading) return;
-    if (hrDatabasesLoaded && !force) return;
-
-    setHrDatabasesLoading(true);
-    try {
-      const r = await lookupsApi.getHrDatabases();
-      setHrDatabases((r.data as string[]) ?? []);
-      setHrDatabasesLoaded(true);
-    } catch (err) {
-      handleApiError(err, 'Failed to load HR databases');
-    } finally {
-      setHrDatabasesLoading(false);
-    }
-  }
+  const countryHrSourceCount = hrSources.filter(
+    (s) => s.countryID.trim() === (editID ?? form.countryID).trim(),
+  ).length;
 
   function startAdd() { setForm(emptyCountry); setEditID(null); setMode('add'); }
   function startEdit(c: Country) {
@@ -1427,18 +1418,11 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
     });
     setEditID(c.countryID.trim());
     setMode('edit');
-    if (c.hrConnect) {
-      void loadHrDatabases();
-    }
   }
   function cancel() { setMode(null); setEditID(null); }
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (form.hrConnect && !form.hrDatabase.trim()) {
-      toast.error('HR Database is required when HR Connect is enabled');
-      return;
-    }
     setSaving(true);
     try {
       const payload = {
@@ -1536,27 +1520,14 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
                 </div>
               </Field>
               {form.hrConnect && (
-                <Field label="HR Database *">
-                  <Select
-                    value={form.hrDatabase}
-                    onChange={e => setForm(f => ({ ...f, hrDatabase: e.target.value }))}
-                    required
-                    searchable
-                  >
-                    <option value="">
-                      {hrDatabasesLoading
-                        ? 'Loading databases...'
-                        : hrDatabases.length === 0
-                          ? 'No eligible databases found'
-                          : 'Select HR database'}
-                    </option>
-                    {form.hrDatabase && !hrDatabases.includes(form.hrDatabase) && (
-                      <option value={form.hrDatabase}>{form.hrDatabase}</option>
-                    )}
-                    {hrDatabases.map(dbName => (
-                      <option key={dbName} value={dbName}>{dbName}</option>
-                    ))}
-                  </Select>
+                <Field label="HR Databases">
+                  <p className="text-[12px] text-[#6b7280] leading-relaxed">
+                    {countryHrSourceCount === 0
+                      ? 'No HR database is configured for this country yet. Add one under Settings → HR Databases; until then its companies cannot be linked to HR.'
+                      : countryHrSourceCount === 1
+                        ? 'One HR database is configured for this country, under Settings → HR Databases. Each company chooses its HR company profile from it.'
+                        : `${countryHrSourceCount} HR databases are configured for this country, under Settings → HR Databases. Each company chooses which one it reads from.`}
+                  </p>
                 </Field>
               )}
             </div>
@@ -1610,7 +1581,9 @@ function CountriesSection({ onReload }: { onReload: () => Promise<void> }) {
                       {c.activeCountry ? 'Active' : 'Inactive'}
                     </span>
                     <span className={clsx('inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold', c.hrConnect ? 'bg-[#dbeafe] text-[#1d4ed8]' : 'bg-[#f3f4f6] text-[#9ca3af]')}>
-                      {c.hrConnect ? `HR: ${c.hrDatabase ?? 'On'}` : 'HR: Off'}
+                      {c.hrConnect
+                        ? `HR: ${hrSources.filter(s => s.countryID.trim() === c.countryID.trim()).length} database(s)`
+                        : 'HR: Off'}
                     </span>
                   </td>
                   <td className="px-3 py-2">

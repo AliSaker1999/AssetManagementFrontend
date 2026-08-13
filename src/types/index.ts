@@ -358,6 +358,7 @@ export interface Company {
   companyPrmCurCode: string;
   companyScdCurCode: string;
   countryID: string;
+  hrSourceID?: number | null;
   hrCompanyProfileID?: number | null;
   assetController?: boolean | null;
   assetControllerEmail?: string | null;
@@ -367,6 +368,38 @@ export interface Company {
 export interface HrCompanyProfile {
   companyProfileID: number;
   prmName: string;
+}
+
+/** A row of the HR-side registry (HR_Common.dbo.hr_Databases) — used to pick a target when adding an HR source. */
+export interface HrDatabase {
+  dbId: number;
+  connectTo: string;
+  serverName: string;
+  databaseName: string;
+  /** False when the database is not on the Assets SQL instance, so three-part-name queries cannot read it. */
+  isReachable: boolean;
+}
+
+/**
+ * One HR database the asset system reads from. A company points at exactly one of
+ * these; HRCompanyProfileID is only meaningful alongside it, because profile ids
+ * restart in every HR database.
+ */
+export interface HrSource {
+  hrSourceID: number;
+  hrdbid?: number | null;
+  sourceName: string;
+  serverName: string;
+  databaseName: string;
+  countryID: string;
+  isActive: boolean;
+  /**
+   * False when the database is on another SQL instance. HR dropdowns still work,
+   * but employee names in the asset list and asset transfers do not resolve,
+   * because those go through stored procedures that use three-part names.
+   */
+  isOnAppInstance: boolean;
+  companyCount: number;
 }
 
 export interface CategoryType {

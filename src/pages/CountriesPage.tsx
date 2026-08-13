@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import clsx from 'clsx';
 import { lookupsApi } from '../api/lookups';
-import type { Country } from '../types';
+import type { Country, HrDatabase } from '../types';
 import Select from '../components/ui/Select';
 
 const emptyForm = {
@@ -27,7 +27,7 @@ export default function CountriesPage() {
   const [editID, setEditID] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [hrDatabases, setHrDatabases] = useState<string[]>([]);
+  const [hrDatabases, setHrDatabases] = useState<HrDatabase[]>([]);
   const [hrDatabasesLoading, setHrDatabasesLoading] = useState(false);
   const [hrDatabasesLoaded, setHrDatabasesLoaded] = useState(false);
 
@@ -76,7 +76,7 @@ export default function CountriesPage() {
     setHrDatabasesLoading(true);
     try {
       const r = await lookupsApi.getHrDatabases();
-      setHrDatabases((r.data as string[]) ?? []);
+      setHrDatabases(r.data ?? []);
       setHrDatabasesLoaded(true);
     } catch (err) {
       handleApiError(err, 'Failed to load HR databases');
@@ -184,14 +184,18 @@ export default function CountriesPage() {
                       {hrDatabasesLoading
                         ? 'Loading databases...'
                         : hrDatabases.length === 0
-                          ? 'No eligible databases found'
+                          ? 'No HR databases configured'
                           : 'Select HR database'}
                     </option>
-                    {form.hrDatabase && !hrDatabases.includes(form.hrDatabase) && (
+                    {form.hrDatabase && !hrDatabases.some(d => d.databaseName === form.hrDatabase) && (
                       <option value={form.hrDatabase}>{form.hrDatabase}</option>
                     )}
-                    {hrDatabases.map(dbName => (
-                      <option key={dbName} value={dbName}>{dbName}</option>
+                    {hrDatabases.map(d => (
+                      <option key={d.dbId} value={d.databaseName} disabled={!d.isReachable}>
+                        {d.isReachable
+                          ? `${d.connectTo} — ${d.databaseName}`
+                          : `${d.connectTo} — ${d.databaseName}  (on ${d.serverName} — not reachable from the Assets server)`}
+                      </option>
                     ))}
                   </Select>
                 </div>
