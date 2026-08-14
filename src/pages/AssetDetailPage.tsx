@@ -293,7 +293,7 @@ export default function AssetDetailPage() {
   const [changingStatus, setChangingStatus] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(false);
   const [statusMaintenanceModalOpen, setStatusMaintenanceModalOpen] = useState(false);
-  const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [statusMaintAttachmentFile, setStatusMaintAttachmentFile] = useState<File | null>(null);
   const [savingStatusMaintenance, setSavingStatusMaintenance] = useState(false);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -343,7 +343,7 @@ export default function AssetDetailPage() {
   function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
     return {
       attID: null,
-      fromDate: '',
+      fromDate: new Date().toISOString().slice(0, 10),
       toDate: '',
       supplierContactID: cs[0]?.contactID ?? 0,
       cost: 0,
@@ -633,7 +633,7 @@ export default function AssetDetailPage() {
         .then((r) => setDamages(r.data))
         .catch((err) => handleApiError(err, 'Failed to load damage records'));
     if (tab === 'attachments' && attachments.length === 0)
-      attachmentsApi.getByAsset(assetId).then((r) => setAttachments(r.data as Attachment[]));
+      attachmentsApi.getGeneralByAsset(assetId).then((r) => setAttachments(r.data as Attachment[]));
   }, [tab, assetId]);
 
   useEffect(() => {
@@ -711,8 +711,11 @@ export default function AssetDetailPage() {
               </svg>
             </div>
             <div className="min-w-0">
-              <div className="font-code text-[12px] text-navy-500 font-medium mb-0.5">{asset.assetCode}</div>
-              <h1 className="text-[18px] sm:text-[20px] font-extrabold text-ink-800 leading-tight break-words">{asset.assetDesc}</h1>
+              <div className="font-code text-[16px] sm:text-[18px] text-navy-500 font-bold mb-0.5">{asset.assetCode}</div>
+              <h1 className="text-[18px] sm:text-[20px] text-ink-800 leading-tight break-words">
+                {asset.category && <span className="font-extrabold">{asset.category}{' '}</span>}
+                <span className={asset.category ? 'font-medium text-ink-600' : 'font-extrabold'}>{asset.assetDesc}</span>
+              </h1>
               {asset.inServiceDate && (
                 <span className="text-[11px] text-ink-300 mt-1 block">
                   In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -817,46 +820,53 @@ export default function AssetDetailPage() {
 
             <div className="w-px h-8 bg-pearl-200" />
 
-            <button
-              onClick={() => setShowBarcodeModal(true)}
-              disabled={!asset.barcodeNumber}
-              title={asset.barcodeNumber ? 'Print barcode label' : 'No barcode number assigned'}
-              className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <IconBarcode />
-              Print Barcode
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowBarcodeModal(true)}
+                disabled={!asset.barcodeNumber}
+                title={asset.barcodeNumber ? 'Print barcode label' : 'No barcode number assigned'}
+                className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <IconBarcode />
+                Print Barcode
+              </button>
+            </div>
+
             {!readOnly && (
               <>
-                {isUnderInventory ? (
+                <div className="w-px h-8 bg-pearl-200" />
+
+                <div className="flex items-center gap-2">
+                  {isUnderInventory ? (
+                    <button
+                      type="button"
+                      disabled
+                      title="Edit is disabled while asset is under inventory"
+                      className="btn-secondary no-underline opacity-50 cursor-not-allowed"
+                    >
+                      <IconEdit />
+                      Edit
+                    </button>
+                  ) : (
+                    <Link
+                      to={`/assets/${assetId}/edit`}
+                      state={{ from: backToListUrl, ref: 'detail' }}
+                      className="btn-secondary no-underline"
+                    >
+                      <IconEdit />
+                      Edit
+                    </Link>
+                  )}
                   <button
-                    type="button"
-                    disabled
-                    title="Edit is disabled while asset is under inventory"
-                    className="btn-secondary no-underline opacity-50 cursor-not-allowed"
+                    onClick={handleDelete}
+                    disabled={isUnderInventory}
+                    title={isUnderInventory ? 'Delete is disabled while asset is under inventory' : undefined}
+                    className={clsx('btn-danger', isUnderInventory && 'opacity-50 cursor-not-allowed')}
                   >
-                    <IconEdit />
-                    Edit
+                    <IconTrash />
+                    Delete
                   </button>
-                ) : (
-                  <Link
-                    to={`/assets/${assetId}/edit`}
-                    state={{ from: backToListUrl, ref: 'detail' }}
-                    className="btn-secondary no-underline"
-                  >
-                    <IconEdit />
-                    Edit
-                  </Link>
-                )}
-                <button
-                  onClick={handleDelete}
-                  disabled={isUnderInventory}
-                  title={isUnderInventory ? 'Delete is disabled while asset is under inventory' : undefined}
-                  className={clsx('btn-danger', isUnderInventory && 'opacity-50 cursor-not-allowed')}
-                >
-                  <IconTrash />
-                  Delete
-                </button>
+                </div>
               </>
             )}
           </div>
@@ -899,7 +909,7 @@ export default function AssetDetailPage() {
             readOnly={readOnly}
             assetId={assetId}
             assetStatusID={asset?.statusID ?? null}
-            onAssetStatusChange={(sid) => setAsset(a => a ? { ...a, statusID: sid } : a)}
+            onAssetStatusChange={(sid) => setAsset(a => a ? { ...a, statusID: sid, statusName: statuses.find((s) => s.statusID === sid)?.status ?? 'Active' } : a)}
             items={maintenances}
             contacts={contacts}
             currencies={currencies}
@@ -987,11 +997,22 @@ export default function AssetDetailPage() {
             assetID: asset.assetID,
             companyID: asset.companyID,
             statusID: asset.statusID,
+            locationID: asset.locationID,
+            locDetailID: asset.locDetailID,
           }}
           open={transferModalOpen}
           onClose={() => setTransferModalOpen(false)}
           onTransferred={(newEmpID) => {
-            setAsset((prev) => prev ? { ...prev, hrEmpIDUsedBy: newEmpID } : prev);
+            // employeeName is resolved server-side, so it has to be cleared here too —
+            // keeping it would show the previous employee's name beside the new id until
+            // the refetch lands. The company and location move as well, hence the refetch
+            // rather than a field-by-field patch.
+            setAsset((prev) =>
+              prev ? { ...prev, hrEmpIDUsedBy: newEmpID, employeeName: null } : prev
+            );
+            assetsApi.get(assetId)
+              .then((r) => setAsset(r.data as Asset))
+              .catch((err) => handleApiError(err, 'Transferred, but the asset could not be reloaded'));
             // Refresh status history
             assetsApi.getStatusHistory(assetId)
               .then((r) => setStatusHistory(r.data as StatusHistoryItem[]))
@@ -1051,11 +1072,20 @@ export default function AssetDetailPage() {
 
 function InfoField({ label, value, mono }: { label: string; value: unknown; mono?: boolean }) {
   return (
-    <div className="py-3 border-b border-pearl-200 last:border-0">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300 mb-0.5">{label}</div>
-      <div className={clsx('text-[13px] text-ink-800', mono && 'font-code text-navy-600')}>
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300 mb-1">{label}</div>
+      <div className={clsx('text-[13px] text-ink-800 font-medium', mono && 'font-code text-navy-600')}>
         {String(value ?? '—')}
       </div>
+    </div>
+  );
+}
+
+function CardSectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 mb-5">
+      <span className="w-1 h-4 rounded-full bg-navy-500" />
+      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-400">{children}</span>
     </div>
   );
 }
@@ -1065,44 +1095,50 @@ function AssetInfo({ asset }: { asset: Asset }) {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Identification card */}
       <div className="bg-white rounded-xl border border-pearl-200 shadow-card p-5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-300 mb-3">Identification</div>
-        <InfoField label="Asset Code" value={asset.assetCode} mono />
-        <InfoField label="Description" value={asset.assetDesc} />
-        <InfoField
-          label="Used By"
-          value={
-            asset.employeeName
-              ? asset.hrEmpIDUsedBy
-                ? `${asset.employeeName} – ${asset.hrEmpIDUsedBy}`
-                : asset.empIDUsedBy
-                  ? `${asset.employeeName} – ${asset.empIDUsedBy}`
-                  : asset.employeeName
-              : asset.hrEmpIDUsedBy
-                ?? asset.empIDUsedBy?.toString()
-                // Shared asset with nobody responsible for it — say so instead of showing a dash.
-                ?? (asset.usedByNotMandatory ? 'Not required' : null)
-          }
-        />
-        <InfoField label="Brand" value={asset.brandDesc} />
-        <InfoField label="Model" value={asset.model} />
-        <InfoField label="Barcode" value={asset.barcodeNumber} mono />
-        <InfoField label="Serial Number" value={asset.serialNumber} mono />
-        <InfoField label="In Service Date" value={asset.inServiceDate} />
-        <InfoField label="Donation" value={asset.donation ? 'Yes' : 'No'} />
-        <InfoField label="Owner" value={asset.ownerTypeDesc} />
-        <InfoField label="Owner Description" value={asset.ownerDesc} />
+        <CardSectionTitle>Identification</CardSectionTitle>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+          <InfoField
+            label="Company"
+            value={asset.companyName ? `${asset.countryID ?? ''}-${asset.companyName}` : null}
+          />
+          <InfoField label="Country" value={asset.country} />
+          <InfoField
+            label="Used By"
+            value={
+              asset.employeeName
+                ? asset.hrEmpIDUsedBy
+                  ? `${asset.employeeName} – ${asset.hrEmpIDUsedBy}`
+                  : asset.empIDUsedBy
+                    ? `${asset.employeeName} – ${asset.empIDUsedBy}`
+                    : asset.employeeName
+                : asset.hrEmpIDUsedBy
+                  ?? asset.empIDUsedBy?.toString()
+                  // Shared asset with nobody responsible for it — say so instead of showing a dash.
+                  ?? (asset.usedByNotMandatory ? 'Not required' : null)
+            }
+          />
+          <InfoField label="Owner" value={asset.ownerTypeDesc} />
+          <InfoField label="Brand" value={asset.brandDesc} />
+          <InfoField label="Model" value={asset.model} />
+          <InfoField label="Barcode" value={asset.barcodeNumber} mono />
+          <InfoField label="Serial Number" value={asset.serialNumber} mono />
+          <InfoField label="Donation" value={asset.donation ? 'Yes' : 'No'} />
+          <InfoField label="Owner Description" value={asset.ownerDesc} />
+        </div>
       </div>
 
       {/* Financial card */}
       <div className="bg-white rounded-xl border border-pearl-200 shadow-card p-5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-300 mb-3">Financial</div>
-        <InfoField label="Purchase Price" value={`${asset.purchaseCurCode ?? ''} ${asset.purchasePrice ?? '—'}`} />
-        <InfoField label="Purchase Date" value={asset.purchaseDate} />
-        <InfoField label="Purchase Order No" value={asset.purchaseOrderNo} mono />
-        <InfoField label="Invoice No" value={asset.invoiceNo} mono />
-        <InfoField label="Invoice Date" value={asset.invoiceDate} />
-        <InfoField label="Accounting Entry Date" value={asset.accountingEntryDate} />
-        <InfoField label="Accounting JV No" value={asset.accountingEntryJVNo} mono />
+        <CardSectionTitle>Financial</CardSectionTitle>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+          <InfoField label="Purchase Price" value={`${asset.purchaseCurCode ?? ''} ${asset.purchasePrice ?? '—'}`} />
+          <InfoField label="Purchase Date" value={asset.purchaseDate} />
+          <InfoField label="Purchase Order No" value={asset.purchaseOrderNo} mono />
+          <InfoField label="Invoice No" value={asset.invoiceNo} mono />
+          <InfoField label="Invoice Date" value={asset.invoiceDate} />
+          <InfoField label="Accounting Entry Date" value={asset.accountingEntryDate} />
+          <InfoField label="Accounting JV No" value={asset.accountingEntryJVNo} mono />
+        </div>
       </div>
 
       {/* Remark */}
@@ -1278,7 +1314,7 @@ function MaintenanceTab({
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Maintenance | null>(null);
-  const [form, setForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [form, setForm] = useState<MaintForm>({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
@@ -1311,7 +1347,7 @@ function MaintenanceTab({
 
   async function handleReturn(m: Maintenance) {
     if (readOnly) return;
-    const ok = await confirm(`Mark asset as returned from maintenance?`, { title: 'Return From Maintenance' });
+    const ok = await confirm(`Mark asset as returned from maintenance?`, { title: 'Return From Maintenance', confirmLabel: 'Return', danger: false });
     if (!ok) return;
     setReturning(m.maintID);
     try {
@@ -1324,7 +1360,7 @@ function MaintenanceTab({
 
   function openAdd() {
     if (readOnly) return;
-    setForm({ attID: null, fromDate: '', toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
+    setForm({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
     setAttachmentFile(null);
     setModal('add');
   }
@@ -1404,28 +1440,29 @@ function MaintenanceTab({
   }
 
   const contactName = (id: number) => contacts.find((c) => c.contactID === id)?.contactName ?? String(id);
+  const currentMaintID = items.length > 0 ? Math.max(...items.map((i) => i.maintID)) : null;
 
   return (
     <>
       {confirmDialog}
-      {!readOnly && (
+      {/* {!readOnly && (
         <div className="flex justify-end mb-4">
           <button onClick={openAdd} className="btn-primary">
             <IconPlus /> Add Maintenance
           </button>
         </div>
-      )}
+      )} */}
 
       {items.length === 0 ? <EmptyState message="No maintenance records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[900px]">
+          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_190px_250px] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[1050px]">
             {['From', 'To', 'Supplier', 'Cost', 'Currency', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((m, i) => (
             <div key={m.maintID} className={clsx(
-              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[900px]',
+              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_190px_250px] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[1050px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-700">{m.fromDate}</div>
@@ -1436,16 +1473,16 @@ function MaintenanceTab({
               <div className="text-[12px] text-ink-400 truncate">{m.remark ?? '—'}</div>
               <div>
                 {m.attID ? (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <ActionBtn onClick={() => downloadAttachmentById(m.attID!, `maintenance-${m.maintID}-attachment`)}>Download</ActionBtn>
                     <ActionBtn onClick={() => previewAttachmentById(m.attID!)}>Preview</ActionBtn>
                   </div>
                 ) : <span className="text-[12px] text-ink-300">—</span>}
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {!readOnly && <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
-                {!readOnly && assetStatusID === 8 && (
+                {!readOnly && assetStatusID === 8 && m.maintID === currentMaintID && (
                   <ActionBtn onClick={() => handleReturn(m)} disabled={returning === m.maintID}>
                     {returning === m.maintID ? '…' : 'Mark Returned'}
                   </ActionBtn>
@@ -1534,7 +1571,7 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Warranty | null>(null);
-  const [form, setForm] = useState<WarrForm>({ attID: null, warrantyDesc: '', fromDate: '', toDate: '', remark: '' });
+  const [form, setForm] = useState<WarrForm>({ attID: null, warrantyDesc: '', fromDate: new Date().toISOString().slice(0, 10), toDate: '', remark: '' });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
@@ -1564,7 +1601,7 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
       .catch(() => setAttachmentNames({}));
   }, [assetId, items]);
 
-  function openAdd() { if (readOnly) return; setForm({ attID: null, warrantyDesc: '', fromDate: '', toDate: '', remark: '' }); setAttachmentFile(null); setModal('add'); }
+  function openAdd() { if (readOnly) return; setForm({ attID: null, warrantyDesc: '', fromDate: new Date().toISOString().slice(0, 10), toDate: '', remark: '' }); setAttachmentFile(null); setModal('add'); }
   function openEdit(item: Warranty) {
     if (readOnly) return;
     setEditing(item);
@@ -1649,14 +1686,14 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
 
       {items.length === 0 ? <EmptyState message="No warranty records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[760px]">
+          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_190px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[840px]">
             {['Description', 'From Date', 'To Date', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((w, i) => (
             <div key={w.warntID} className={clsx(
-              'grid grid-cols-[2fr_1fr_1fr_2fr_110px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[760px]',
+              'grid grid-cols-[2fr_1fr_1fr_2fr_190px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[840px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-800 font-medium truncate">{w.warrantyDesc}</div>
@@ -1665,13 +1702,13 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
               <div className="text-[12px] text-ink-400 truncate">{w.remark ?? '—'}</div>
               <div>
                 {w.attID ? (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <ActionBtn onClick={() => downloadAttachmentById(w.attID!, `warranty-${w.warntID}-attachment`)}>Download</ActionBtn>
                     <ActionBtn onClick={() => previewAttachmentById(w.attID!)}>Preview</ActionBtn>
                   </div>
                 ) : <span className="text-[12px] text-ink-300">—</span>}
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {!readOnly && <ActionBtn onClick={() => openEdit(w)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(w)}>Delete</ActionBtn>}
               </div>

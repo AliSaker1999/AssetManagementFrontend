@@ -964,7 +964,7 @@ export default function AssetsPage() {
   const [changingStatus, setChangingStatus] = useState<Set<number>>(new Set());
   const [openStatusMenuAssetId, setOpenStatusMenuAssetId] = useState<number | null>(null);
   const [maintenanceModalAsset, setMaintenanceModalAsset] = useState<AssetListItem | null>(null);
-  const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ attID: null, fromDate: '', toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [maintenanceAttachmentFile, setMaintenanceAttachmentFile] = useState<File | null>(null);
   const [savingMaintenanceModal, setSavingMaintenanceModal] = useState(false);
   const [statusModalAsset, setStatusModalAsset] = useState<AssetListItem | null>(null);
@@ -987,7 +987,11 @@ export default function AssetsPage() {
     return new Set(raw ? raw.split(',').map(Number).filter((n) => !Number.isNaN(n)) : []);
   });
   const [transferModalOpen, setTransferModalOpen] = useState(false);
-  const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number } | null>(null);
+  // Bumped when an action changes data the server resolves for us (e.g. a transfer's
+  // employee name). Nulling allAssetsCache alone refreshes nothing — no effect depends
+  // on it — so both load effects watch this instead.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number; locationID?: number | null; locDetailID?: number | null } | null>(null);
   const [leaveProcessOpen, setLeaveProcessOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -1065,7 +1069,7 @@ export default function AssetsPage() {
   function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
     return {
       attID: null,
-      fromDate: '',
+      fromDate: new Date().toISOString().slice(0, 10),
       toDate: '',
       supplierContactID: cs[0]?.contactID ?? 0,
       cost: 0,
@@ -1215,6 +1219,8 @@ export default function AssetsPage() {
       assetID: fullAsset.data.assetID,
       companyID: fullAsset.data.companyID,
       statusID: fullAsset.data.statusID,
+      locationID: fullAsset.data.locationID,
+      locDetailID: fullAsset.data.locDetailID,
     });
     setTransferModalOpen(true);
   } catch (err) {
@@ -1262,7 +1268,7 @@ useEffect(() => {
       .then((r) => { if (!cancelled) setAllAssetsCache(r.data as AssetListItem[]); })
       .catch((err) => { if (!cancelled) handleApiError(err, 'Failed to load asset counts'); });
     return () => { cancelled = true; };
-  }, [activeCompanyId]);
+  }, [activeCompanyId, refreshKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1324,7 +1330,7 @@ useEffect(() => {
 
     loadData();
     return () => controller.abort();
-  }, [pageNumber, pageSize, search, activeCompanyId, selectedStatusIds]);
+  }, [pageNumber, pageSize, search, activeCompanyId, selectedStatusIds, refreshKey]);
 
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
@@ -1530,7 +1536,7 @@ useEffect(() => {
   return (
     <div>
       <PageHeader
-        title="Assets Register"
+        title="Assets List"
         subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} assets across your organization` : undefined}
         breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Assets' }]}
         actions={
@@ -1926,9 +1932,12 @@ useEffect(() => {
                                 setTransferAsset(null);
                               }}
                               onTransferred={() => {
-                                // Force refresh the list to reflect any changes (e.g., used-by)
+                                // The employee name, company and location are all resolved
+                                // server-side, so refetch rather than patching the row.
+                                // Nulling the cache makes the filtered path re-read from
+                                // the server instead of reusing stale rows.
                                 setAllAssetsCache(null);
-                                toast.success('Asset transferred successfully');
+                                setRefreshKey((k) => k + 1);
                               }}
                             />
                           )}

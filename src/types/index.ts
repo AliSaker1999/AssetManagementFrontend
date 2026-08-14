@@ -60,12 +60,17 @@ export interface AssetListItem {
 export interface Asset {
   assetID: number;
   companyID: number;
+  companyName?: string;
+  companyAbbreviation?: string;
+  countryID?: string;
+  country?: string;
   assetCode: string;
   assetDesc: string;
   locationID: number;
   locDetailID: number;
   groupID: number;
   categoryID: number;
+  category?: string;
   donation: boolean;
   contactID?: number;
   purchaseOrderNo?: string;
