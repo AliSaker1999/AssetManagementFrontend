@@ -4,7 +4,9 @@ import toast from 'react-hot-toast';
 const client = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 10000,
+  // The API and the SQL Server it queries can both be several VPN hops from the browser,
+  // so a normal request needs more headroom than a LAN round-trip would.
+  timeout: 30000,
 });
 
 client.interceptors.request.use((config) => {

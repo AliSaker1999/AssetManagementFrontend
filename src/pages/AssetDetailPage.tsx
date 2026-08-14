@@ -1053,8 +1053,18 @@ export default function AssetDetailPage() {
         {tab === 'status' && (
           // StatusDate is a date-only column, so the Status Date cell shows CreatedByDateTime —
           // the one field carrying both the day and the clock time of the change.
+          //
+          // Newest first. Migration 22 makes AT.stpStatusHistoryS return it in this order;
+          // sorting here as well keeps the tab correct against a database that has not had
+          // that migration applied, and stops the order being whatever the query plan felt
+          // like. statusHistID breaks the tie when two changes share a timestamp to the
+          // second — which the create-then-activate pair on a new asset always does.
           <SimpleTable
-            data={statusHistory.map((r) => ({ ...r, statusDate: fmtDateTime(r.createdByDateTime) }))}
+            data={[...statusHistory]
+              .sort((a, b) =>
+                (Date.parse(b.createdByDateTime) - Date.parse(a.createdByDateTime))
+                || (b.statusHistID - a.statusHistID))
+              .map((r) => ({ ...r, statusDate: fmtDateTime(r.createdByDateTime) }))}
             columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']}
           />
         )}
@@ -1566,7 +1576,10 @@ function MaintenanceTab({
   contacts: Contact[];
   currencies: Currency[];
   onChange: (v: Maintenance[]) => void;
-  /** A return settles the damage too, so the Damage tab has to be re-read. */
+  /**
+   * Called whenever a damage's result changes — by returning a maintenance, or by
+   * correcting that result in Edit Maintenance — since the Damage tab has to be re-read.
+   */
   onReturned: () => void;
 }) {
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -1581,6 +1594,10 @@ function MaintenanceTab({
   const [returnTarget, setReturnTarget] = useState<Maintenance | null>(null);
   const [returnForm, setReturnForm] = useState<{ workPerformed: string; fixed: boolean | null }>({ workPerformed: '', fixed: null });
   const [returning, setReturning] = useState(false);
+  // The damage's own fixed flag, editable so the answer given at return time can be
+  // corrected. Kept out of MaintForm because it belongs to the damage, not the
+  // maintenance, and null while editing a record whose damage is not settled yet.
+  const [editDamageFixed, setEditDamageFixed] = useState<boolean | null>(null);
 
   useEffect(() => {
     const linkedIds = new Set(
@@ -1643,9 +1660,11 @@ function MaintenanceTab({
       supplierContactID: item.supplierContactID, cost: item.cost, curCode: item.curCode,
       remark: item.remark ?? '', workPerformed: item.workPerformed ?? '',
     });
+    // Only a returned maintenance has a damage result to correct.
+    setEditDamageFixed(item.returnedDate == null ? null : item.damageFixed ?? false);
     setAttachmentFile(null);
   }
-  function close() { setEditing(null); setAttachmentFile(null); }
+  function close() { setEditing(null); setAttachmentFile(null); setEditDamageFixed(null); }
   function setF<K extends keyof MaintForm>(k: K, v: MaintForm[K]) { setForm((p) => ({ ...p, [k]: v })); }
 
   async function handleSubmit(e: FormEvent) {
@@ -1677,8 +1696,12 @@ function MaintenanceTab({
       }
 
       if (editing) {
+        const fixedChanged = editDamageFixed !== null && editDamageFixed !== (editing.damageFixed ?? false);
         const r = await maintenancesApi.update(editing.maintID, {
           assetID: assetId, maintID: editing.maintID, ...form, attID,
+          // Omitted entirely when there is nothing to correct, so an ordinary edit cannot
+          // touch the damage.
+          ...(editDamageFixed !== null ? { damageFixed: editDamageFixed } : {}),
           original_MaintID: editing.maintID, original_AssetID: editing.assetID,
           isNull_AttID: editing.attID == null ? 1 : 0, original_AttID: editing.attID ?? null,
           original_FromDate: editing.fromDate, original_ToDate: editing.toDate,
@@ -1686,8 +1709,18 @@ function MaintenanceTab({
           original_CurCode: editing.curCode, isNull_Remark: editing.remark == null ? 1 : 0,
           original_Remark: editing.remark ?? null,
         });
-        onChange(items.map((i) => i.maintID === editing.maintID ? r.data as Maintenance : i));
-        toast.success('Maintenance updated');
+
+        if (fixedChanged) {
+          // Fixed lives on the damage, and every maintenance for that damage joins it in
+          // for its pill, so patching this one row would leave the siblings stale.
+          const all = await maintenancesApi.getByAsset(assetId);
+          onChange(all.data as Maintenance[]);
+          onReturned();
+          toast.success(editDamageFixed ? 'Updated — damage marked fixed' : 'Updated — damage left open');
+        } else {
+          onChange(items.map((i) => i.maintID === editing.maintID ? r.data as Maintenance : i));
+          toast.success('Maintenance updated');
+        }
       }
       close();
     } catch (err) { handleApiError(err, 'Save failed'); }
@@ -1710,6 +1743,12 @@ function MaintenanceTab({
   }
 
   const contactName = (id: number) => contacts.find((c) => c.contactID === id)?.contactName ?? String(id);
+  // A later maintenance on the same damage is still open, so that attempt owns the result
+  // and this one must not overwrite it. Mirrors the rule the API enforces, so the choice is
+  // hidden rather than offered and then rejected.
+  const damageSentOutAgain = editing != null && items.some(
+    (i) => i.damageID === editing.damageID && i.maintID !== editing.maintID && i.returnedDate == null
+  );
   // Fixed tracks throughout, for the same reason as DAMAGE_COLS: each row is its own grid
   // container, so an `auto` column would size per row and break vertical alignment.
   const cols = 'grid-cols-[2fr_1fr_1fr_1.6fr_1fr_2fr_2fr_170px_265px]';
@@ -1843,6 +1882,47 @@ function MaintenanceTab({
               <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-300 mb-1">Damage</div>
               <div className="text-[13px] text-ink-800 font-medium">{editing.damageDesc ?? '—'}</div>
             </div>
+
+            {/* The damage's result. Editable here so a wrong answer at return time can be
+                corrected without sending the asset out for repair a second time. */}
+            {editing.returnedDate == null ? (
+              <div className="rounded-lg border border-pearl-200 bg-white px-4 py-3 mb-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-300 mb-1">Damage Result</div>
+                <div className="text-[11px] text-ink-400 leading-snug">
+                  Still out for repair — use <span className="font-semibold text-ink-600">Mark Returned</span> to record whether the damage was fixed.
+                </div>
+              </div>
+            ) : damageSentOutAgain ? (
+              <div className="rounded-lg border border-pearl-200 bg-white px-4 py-3 mb-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-300 mb-1">Damage Result</div>
+                <div className="text-[11px] text-ink-400 leading-snug">
+                  This damage is out for repair again, so the newer maintenance record carries its result.
+                </div>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400 mb-2">
+                  Is the damage fixed?
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FixedChoice
+                    selected={editDamageFixed === true}
+                    tone="green"
+                    title="Fixed"
+                    detail="Closes the damage. It won't be offered for maintenance again."
+                    onClick={() => setEditDamageFixed(true)}
+                  />
+                  <FixedChoice
+                    selected={editDamageFixed === false}
+                    tone="amber"
+                    title="Not fixed"
+                    detail="Leaves the damage open so it can be sent out again."
+                    onClick={() => setEditDamageFixed(false)}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={form.fromDate} max={form.toDate || undefined} onChange={(e) => setF('fromDate', e.target.value)} required />

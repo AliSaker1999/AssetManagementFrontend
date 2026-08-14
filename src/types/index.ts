@@ -342,7 +342,10 @@ export interface Damage {
   assetID: number;
   damageDate: string;
   damageDesc: string;
-  /** Closed by a repair. Set only by returning a maintenance as fixed, never by hand. */
+  /**
+   * Closed by a repair. Reachable only through a maintenance — by returning one as fixed,
+   * or by correcting that answer in Edit Maintenance — never from the Damage tab.
+   */
   fixed: boolean;
   /** A maintenance for this damage is still open, so it cannot be sent again. */
   underMaintenance: boolean;

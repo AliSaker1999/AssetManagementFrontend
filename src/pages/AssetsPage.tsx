@@ -12,7 +12,7 @@ import { lookupsApi } from '../api/lookups';
 import { companyPrmCurrency } from '../utils/currency';
 import { damagesApi } from '../api/damages';
 import DamagePicker, { emptyNewDamage, type NewDamageForm } from '../components/DamagePicker';
-import type { AssetListItem, Attachment, Company, Contact, Currency, Damage, Employee, LeftEmployeeAsset, PaginatedResponse, StatusType } from '../types';
+import type { AssetListItem, AssetStatusCount, Attachment, Company, Contact, Currency, Damage, Employee, LeftEmployeeAsset, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
@@ -1012,6 +1012,9 @@ export default function AssetsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [allAssetsCache, setAllAssetsCache] = useState<AssetListItem[] | null>(null);
+  // One row per status, from SQL. null = not loaded yet, which is what the tiles show
+  // their placeholder for.
+  const [statusCounts, setStatusCounts] = useState<AssetStatusCount[] | null>(null);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -1303,6 +1306,9 @@ export default function AssetsPage() {
           prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: 8, status: maintenanceName } : a) : prev
         );
       }
+      // The tiles are a SQL aggregate now, so they have to be re-read after a status
+      // change rather than recounted from the cache above. Silent: the change succeeded.
+      void loadStatusCounts(false);
 
       setMaintenanceModalAsset(null);
       setMaintenanceAttachmentFile(null);
@@ -1364,15 +1370,37 @@ useEffect(() => {
     }
   }, [search, selectedStatusIds, activeCompanyId]);
 
+  // The status tiles used to be counted in the browser from a download of every asset,
+  // which is the request that times out on a slow link. /assets/status-counts returns
+  // one row per status instead, so the tiles no longer depend on the full list.
+  const loadStatusCounts = useCallback(async (notifyOnError = true) => {
+    try {
+      const r = await assetsApi.getStatusCounts(activeCompanyId ?? undefined);
+      setStatusCounts(r.data);
+    } catch (err) {
+      if (notifyOnError) handleApiError(err, 'Failed to load asset counts');
+    }
+  }, [activeCompanyId]);
+
   useEffect(() => {
+    setStatusCounts(null);
+    // The full list is now only fetched for the leave-process modal, so it has to be
+    // dropped here too or that modal would keep showing the previous company's assets.
+    setAllAssetsCache(null);
+    void loadStatusCounts();
+  }, [loadStatusCounts, refreshKey]);
+
+  // Only the leave-process modal still needs every asset, so it is fetched when that
+  // modal opens rather than on every visit to the page. The modal already renders a
+  // "Loading asset data…" hint while allAssets is null.
+  useEffect(() => {
+    if (!leaveProcessOpen || allAssetsCache !== null) return;
     let cancelled = false;
-    // setAllAssetsCache(null);
-    const companyFilter = activeCompanyId ?? undefined;
-    assetsApi.getList(companyFilter)
+    assetsApi.getList(activeCompanyId ?? undefined)
       .then((r) => { if (!cancelled) setAllAssetsCache(r.data as AssetListItem[]); })
-      .catch((err) => { if (!cancelled) handleApiError(err, 'Failed to load asset counts'); });
+      .catch((err) => { if (!cancelled) handleApiError(err, 'Failed to load asset data'); });
     return () => { cancelled = true; };
-  }, [activeCompanyId, refreshKey]);
+  }, [leaveProcessOpen, allAssetsCache, activeCompanyId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1381,47 +1409,20 @@ useEffect(() => {
     const loadData = async () => {
       try {
         const companyFilter = activeCompanyId ?? undefined;
-        if (search.trim() === '' && selectedStatusIds.size === 0) {
-          const response = await assetsApi.getListPaginated(pageNumber, pageSize, companyFilter);
-          const data = response.data as PaginatedResponse<AssetListItem>;
-          setAssets(data.data);
-          setTotalPages(data.totalPages);
-          setTotalCount(data.totalCount);
-          // setAllAssetsCache(null);
-        } else {
-          let allData: AssetListItem[];
-          if (allAssetsCache === null) {
-            const response = await assetsApi.getList(companyFilter);
-            allData = response.data as AssetListItem[];
-            setAllAssetsCache(allData);
-          } else {
-            allData = allAssetsCache;
-          }
-          let filtered = allData;
-          if (search.trim()) {
-            const q = search.toLowerCase();
-            filtered = filtered.filter(
-              (a) =>
-                a.assetCode.toLowerCase().includes(q) ||
-                a.assetDesc.toLowerCase().includes(q) ||
-                (a.barcodeNumber ?? '').toLowerCase().includes(q) ||
-                (a.category ?? '').toLowerCase().includes(q) ||
-                (a.location ?? '').toLowerCase().includes(q) ||
-                (a.employeeName ?? '').toLowerCase().includes(q) ||
-                (a.hrEmpIDUsedBy ?? '').toLowerCase().includes(q) ||
-                (a.floor ?? '').toLowerCase().includes(q) ||
-                (a.room ?? '').toLowerCase().includes(q)
-            );
-          }
-          if (selectedStatusIds.size > 0) {
-            filtered = filtered.filter((a) => selectedStatusIds.has(a.statusID ?? 0));
-          }
-          const newTotalPages = Math.ceil(filtered.length / pageSize);
-          const start = (pageNumber - 1) * pageSize;
-          setAssets(filtered.slice(start, start + pageSize));
-          setTotalPages(newTotalPages);
-          setTotalCount(filtered.length);
-        }
+        // Searching and status filtering used to download every asset and filter in the
+        // browser. AT.stpAssetsListPaged applies both in SQL over the same nine columns,
+        // so one page of rows comes back instead of the whole table.
+        const response = await assetsApi.getListPaginated(
+          pageNumber,
+          pageSize,
+          companyFilter,
+          search.trim() || undefined,
+          selectedStatusIds.size > 0 ? Array.from(selectedStatusIds) : undefined,
+        );
+        const data = response.data as PaginatedResponse<AssetListItem>;
+        setAssets(data.data);
+        setTotalPages(data.totalPages);
+        setTotalCount(data.totalCount);
       } catch (error) {
         if ((error as any).name !== 'AbortError') {
           handleApiError(error, 'Failed to load assets');
@@ -1466,6 +1467,7 @@ useEffect(() => {
           prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: newCurrentStatusId, status: newStatusName } : a) : prev
         );
       }
+      void loadStatusCounts(false);
       toast.success('Status updated');
     } catch (err) {
       handleApiError(err, 'Failed to update status');
@@ -1516,6 +1518,7 @@ useEffect(() => {
           prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: statusModalStatusId, status: newStatusName } : a) : prev
         );
       }
+      void loadStatusCounts(false);
 
       setStatusModalAsset(null);
       setStatusModalStatusId(null);
@@ -1550,6 +1553,7 @@ useEffect(() => {
           prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: 0, status: activeName } : a) : prev
         );
       }
+      void loadStatusCounts(false);
       setOpenStatusMenuAssetId(null);
       setRemoveStatusModalAsset(null);
       toast.success('Status removed');
@@ -1616,6 +1620,7 @@ useEffect(() => {
       setAllAssetsCache((prev) =>
         prev ? prev.map((a) => resultMap.has(a.assetID) ? { ...a, ...resultMap.get(a.assetID)! } : a) : prev
       );
+      void loadStatusCounts(false);
 
       toast.success('Leave process completed');
       return true;
@@ -1626,16 +1631,15 @@ useEffect(() => {
   }
 
 
-  // const maintenanceCount = visibleAssets.filter((a) => a.statusID === 8).length;
-  const maintenanceCount = (allAssetsCache ?? []).filter((a) => a.statusID === 8).length;
-  const instockCount = (allAssetsCache ?? []).filter((a) => a.statusID === 12).length;
-
-  // const activeCount = visibleAssets.filter((a) => a.statusID === 0).length;
-  const activeCount = (allAssetsCache ?? []).filter((a) => a.statusID === 0).length;
+  const countForStatus = (statusId: number) =>
+    (statusCounts ?? []).find((c) => c.statusID === statusId)?.assetCount ?? 0;
+  const maintenanceCount = countForStatus(8);
+  const instockCount = countForStatus(12);
+  const activeCount = countForStatus(0);
   const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
   const isDonationStatus = statusModalStatusId === 1;
   const isSoldStatus = statusModalStatusId === 4;
-  const countsLoading = allAssetsCache === null;
+  const countsLoading = statusCounts === null;
 
   return (
     <div>
