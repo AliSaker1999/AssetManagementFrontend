@@ -307,6 +307,8 @@ export interface Attachment {
 export interface Maintenance {
   maintID: number;
   assetID: number;
+  /** The damage this maintenance repairs. Every maintenance has one. */
+  damageID: number;
   attID?: number | null;
   fromDate: string;
   toDate: string;
@@ -314,6 +316,14 @@ export interface Maintenance {
   cost: number;
   curCode: string;
   remark?: string;
+  /** What the supplier did. Filled when the asset is marked returned. */
+  workPerformed?: string | null;
+  /** null means the asset is still out for repair — not ToDate, which is only the plan. */
+  returnedDate?: string | null;
+  // Joined from the damage so the table can name the fault without a second request.
+  damageDesc?: string | null;
+  damageDate?: string | null;
+  damageFixed?: boolean;
 }
 
 // Warranties
@@ -332,6 +342,10 @@ export interface Damage {
   assetID: number;
   damageDate: string;
   damageDesc: string;
+  /** Closed by a repair. Set only by returning a maintenance as fixed, never by hand. */
+  fixed: boolean;
+  /** A maintenance for this damage is still open, so it cannot be sent again. */
+  underMaintenance: boolean;
 }
 
 // Contacts

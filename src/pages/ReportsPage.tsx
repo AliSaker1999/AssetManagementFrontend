@@ -9,6 +9,7 @@ import { depreciationsApi } from '../api/depreciations';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
+import { fmtDate } from '../utils/date';
 import type {
   Company, LocationType, LocationDetail, CategoryType, GroupType,
   Depreciation, InventoryListItem,
@@ -163,8 +164,10 @@ function SelectField({
 }
 
 function formatInventoryLabel(inv: InventoryListItem): string {
-  const start = String(inv.inventoryStartDate ?? '').replace(/,\s*$/, '').trim();
-  const end = String(inv.inventoryEndDate ?? '').replace(/,\s*$/, '').trim();
+  const start = fmtDate(String(inv.inventoryStartDate ?? '').replace(/,\s*$/, '').trim());
+  const end = String(inv.inventoryEndDate ?? '').replace(/,\s*$/, '').trim()
+    ? fmtDate(String(inv.inventoryEndDate).replace(/,\s*$/, '').trim())
+    : '';
 
   if (!end) return `${start} (active)`;
   if (start === end) return start;
@@ -587,7 +590,7 @@ export default function ReportsPage() {
                 >
                   {depreciations.map((d) => (
                     <option key={d.depID} value={d.depID}>
-                      {d.depreciationDate}
+                      {fmtDate(d.depreciationDate)}
                       {d.remark ? ` — ${d.remark}` : ''}
                     </option>
                   ))}

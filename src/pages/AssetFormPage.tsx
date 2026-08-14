@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { confirmEmployeeMatches } from '../utils/employeeMatches';
+import { companyPrmCurrency } from '../utils/currency';
 import { assetsApi } from '../api/assets';
 import { lookupsApi } from '../api/lookups';
 import type { Asset, Company, GroupType, CategoryType, LocationType, LocationDetail, Currency, Contact, Country, BrandType, OwnerType, HrCompanyProfile, HrSource, HrEmployee, Employee, StatusType } from '../types';
@@ -156,6 +157,10 @@ const visibleCompanies = isAdmin()
       setContactTypes(ctypes.data as ContactType[]);
       setStatuses(st.data as StatusType[]);
       if (!isEdit && ctxCompanyId != null) {
+        // Start the purchase currency on the preselected company's own currency rather
+        // than the 'USD' placeholder the form initialises with.
+        const ctxCurrency = companyPrmCurrency(companiesData, ctxCompanyId);
+        if (ctxCurrency) setForm((prev) => ({ ...prev, purchaseCurCode: ctxCurrency }));
         const ctxCountry = companiesData.find((co) => co.companyID === ctxCompanyId)?.countryID?.trim();
         if (ctxCountry) {
           lookupsApi.getAssetCode(false, ctxCountry).then((r) =>
@@ -423,6 +428,10 @@ const visibleCompanies = isAdmin()
       const newComp = r.data as Company;
       setCompanies((prev) => [...prev, newComp]);
       set('companyID', newComp.companyID);
+      // Same rule as picking an existing company: adopt its primary currency. Read off
+      // newComp rather than the companies list, which this render still hasn't seen.
+      const newCurrency = newComp.companyPrmCurCode?.trim();
+      if (newCurrency && !isEdit) set('purchaseCurCode', newCurrency);
       reset('groupID', 'locationID', 'locDetailID');
       setActiveModal(null);
       toast.success(`Company "${newComp.companyName}" created`);
@@ -912,6 +921,10 @@ const visibleCompanies = isAdmin()
                     set('empIDUsedBy', undefined);
                     reset('groupID', 'locationID', 'locDetailID');
                     if (!isEdit) {
+                      // Follow the new company's currency, the same way the asset code below
+                      // follows its country. Still a default — the currency field stays editable.
+                      const newCurrency = companyPrmCurrency(companies, newCompanyId);
+                      if (newCurrency) set('purchaseCurCode', newCurrency);
                       const newCountry = companies.find((co) => co.companyID === newCompanyId)?.countryID?.trim();
                       if (newCountry) {
                         lookupsApi.getAssetCode(false, newCountry)

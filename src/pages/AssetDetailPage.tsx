@@ -16,15 +16,34 @@ import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
+import DamagePicker, { emptyNewDamage, type NewDamageForm } from '../components/DamagePicker';
+import { companyPrmCurrency } from '../utils/currency';
+import { fmtDate, fmtDateTime } from '../utils/date';
 import type {
-  Asset, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
+  Asset, Company, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
   Maintenance, Warranty, Damage, Attachment, Contact, Currency, StatusType,
 } from '../types';
 
-type Tab = 'info' | 'depreciation' | 'inventory' | 'status' | 'maintenance' | 'warranty' | 'damage' | 'attachments' | 'remark';
+type Tab = 'info' | 'depreciation' | 'inventory' | 'status' |'damage' | 'maintenance' | 'warranty' |  'attachments' | 'remark';
 
-const TAB_KEYS: Tab[] = ['info', 'depreciation', 'inventory', 'status', 'maintenance', 'warranty', 'damage', 'attachments', 'remark'];
-type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
+const TAB_KEYS: Tab[] = ['info', 'depreciation', 'inventory', 'status', 'damage', 'maintenance', 'warranty',  'attachments', 'remark'];
+/**
+ * Spelled out rather than derived from Maintenance: the row carries fields the form has
+ * no business editing (returnedDate, and the damageDesc/damageDate/damageFixed columns
+ * joined in for display). damageID is '' until one is chosen, so the select can start empty.
+ */
+type MaintForm = {
+  damageID: number | '';
+  attID: number | null;
+  fromDate: string;
+  toDate: string;
+  supplierContactID: number;
+  cost: number;
+  curCode: string;
+  remark?: string;
+  workPerformed?: string;
+};
+
 type StatusChangeForm = {
   statusDate: string;
   statusDesc: string;
@@ -40,7 +59,25 @@ const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg'
 // Shared input style
 const inp = 'input-base';
 
+/**
+ * Every control in the detail-page header row (status dropdown, Remove Status,
+ * Print Barcode, Edit, Delete) carries this so they read as one toolbar.
+ * 38px is btn-secondary's natural height — text-sm (20px line) + py-2 + 1px border —
+ * so the taller buttons keep their current size and the smaller ones grow to meet them.
+ */
+const HEADER_CTRL = 'h-[38px]';
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+
 // ─── Icons ─────────────────────────────────────────────────────────────────
+
+function IconWrench() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a4 4 0 0 0 5 5l-9.4 9.4a2.1 2.1 0 0 1-3-3l9.4-9.4a4 4 0 0 0-5-5l3.1 3.1-2.1 2.1-3.1-3.1a4 4 0 0 0 5 5z"/>
+    </svg>
+  );
+}
 
 function IconEdit() {
   return (
@@ -289,13 +326,21 @@ export default function AssetDetailPage() {
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  // Only needed to resolve the asset company's primary currency, so a failure here must
+  // not break the page — the currency inputs just fall back to their previous default.
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
   const [changingStatus, setChangingStatus] = useState(false);
   const [openStatusMenu, setOpenStatusMenu] = useState(false);
   const [statusMaintenanceModalOpen, setStatusMaintenanceModalOpen] = useState(false);
-  const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ damageID: '', attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [statusMaintAttachmentFile, setStatusMaintAttachmentFile] = useState<File | null>(null);
   const [savingStatusMaintenance, setSavingStatusMaintenance] = useState(false);
+  // Damages this asset may be sent to maintenance for: open, and not already out for
+  // repair. Refetched every time the modal opens so it can't offer a stale option.
+  const [selectableDamages, setSelectableDamages] = useState<Damage[]>([]);
+  // null = choose an existing damage; set = the user is recording a new one inline.
+  const [newDamage, setNewDamage] = useState<NewDamageForm | null>(null);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusModalStatusId, setStatusModalStatusId] = useState<number | null>(null);
   const [statusChangeForm, setStatusChangeForm] = useState<StatusChangeForm>({
@@ -326,6 +371,15 @@ export default function AssetDetailPage() {
       .finally(() => setLoading(false));
   }, [assetId]);
 
+  // Separate from the load above, and deliberately not fatal: this only supplies the
+  // company's primary currency for the money inputs, so losing it must not stop the
+  // asset from rendering.
+  useEffect(() => {
+    lookupsApi.getCompanies()
+      .then((r) => setCompanies(r.data as Company[]))
+      .catch(() => setCompanies([]));
+  }, []);
+
   useEffect(() => {
     const onDocumentMouseDown = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -340,19 +394,38 @@ export default function AssetDetailPage() {
 
 
 
-  function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
+  /**
+   * Which currency a money field on this asset should start on: its company's primary
+   * currency. Falls back to the old behaviour — first row of the currency lookup, then
+   * 'USD' — when the companies lookup hasn't loaded or the company has no primary
+   * currency recorded. This is only the default; every form using it stays editable.
+   *
+   * Takes the currency list as an argument because callers often have a freshly fetched
+   * list that has not landed in state yet.
+   */
+  function defaultCurCode(ccy: Currency[] = currencies) {
+    return companyPrmCurrency(companies, asset?.companyID) || ccy[0]?.curCode || 'USD';
+  }
+
+  function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies, damageID: number | '' = ''): MaintForm {
     return {
+      damageID,
       attID: null,
       fromDate: new Date().toISOString().slice(0, 10),
       toDate: '',
       supplierContactID: cs[0]?.contactID ?? 0,
       cost: 0,
-      curCode: ccy[0]?.curCode ?? 'USD',
+      curCode: defaultCurCode(ccy),
       remark: '',
     };
   }
 
-  async function openUnderMaintenanceModal() {
+  /**
+   * The single entry point to the maintenance modal, used by both the status dropdown and
+   * the Damage tab's "Send to Maintenance" button. Pass a damage id to arrive with it
+   * already chosen.
+   */
+  async function openUnderMaintenanceModal(preselectDamageId?: number) {
     if (readOnly) return;
     if (asset?.statusID === 10) return;
 
@@ -369,7 +442,32 @@ export default function AssetDetailPage() {
         lookupsLoadedRef.current = true;
       }
 
-      setStatusMaintForm(makeDefaultMaintenanceForm(nextContacts, nextCurrencies));
+      // Always fresh: another user may have fixed or dispatched a damage since this page
+      // loaded, and the API rejects either, so the picker must not still be offering it.
+      const selectable = (await damagesApi.getSelectableByAsset(assetId)).data;
+      setSelectableDamages(selectable);
+
+      // A preselected damage that is no longer selectable is a genuine conflict — say so
+      // rather than silently opening the modal with an option the API will reject.
+      if (preselectDamageId != null && !selectable.some((d) => d.damageID === preselectDamageId)) {
+        toast.error('That damage is already fixed or already out for repair.');
+        void refreshDamages();
+        return;
+      }
+
+      // Nothing repairable on record yet, so start in "new damage" mode — the modal is
+      // still usable, it just captures the damage on the way through.
+      setNewDamage(
+        selectable.length === 0 && preselectDamageId == null ? emptyNewDamage() : null
+      );
+
+      // Preselected wins; otherwise the newest selectable damage, which is the one a user
+      // arriving from the status menu almost always means.
+      setStatusMaintForm(makeDefaultMaintenanceForm(
+        nextContacts,
+        nextCurrencies,
+        preselectDamageId ?? selectable[0]?.damageID ?? ''
+      ));
       setStatusMaintAttachmentFile(null);
       setStatusMaintenanceModalOpen(true);
     } catch (err) {
@@ -381,6 +479,26 @@ export default function AssetDetailPage() {
     setStatusMaintForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  /** Re-read the damage list so Fixed / out-for-repair badges and buttons stay truthful. */
+  async function refreshDamages() {
+    try {
+      const r = await damagesApi.getByAsset(assetId);
+      setDamages(r.data);
+    } catch {
+      /* The tab keeps showing what it had; the next open refetches. */
+    }
+  }
+
+  /** Status History is only fetched lazily, so a status change has to invalidate it. */
+  async function refreshStatusHistory() {
+    try {
+      const r = await assetsApi.getStatusHistory(assetId);
+      setStatusHistory(r.data as StatusHistoryItem[]);
+    } catch {
+      /* Non-critical: the tab refetches when opened. */
+    }
+  }
+
   function makeDefaultStatusChangeForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): StatusChangeForm {
     const today = new Date().toISOString().slice(0, 10);
     return {
@@ -388,7 +506,7 @@ export default function AssetDetailPage() {
       statusDesc: '',
       statusContactID: cs[0]?.contactID ?? '',
       statusSalePrice: '',
-      statusSaleCurCode: ccy[0]?.curCode ?? 'USD',
+      statusSaleCurCode: defaultCurCode(ccy),
     };
   }
 
@@ -442,9 +560,32 @@ export default function AssetDetailPage() {
       toast.error('From Date must be before or equal to To Date');
       return;
     }
+    if (newDamage) {
+      if (!newDamage.damageDesc.trim()) {
+        toast.error('Describe the damage being repaired');
+        return;
+      }
+    } else if (!statusMaintForm.damageID) {
+      toast.error('Select the damage being repaired');
+      return;
+    }
 
     setSavingStatusMaintenance(true);
     try {
+      // The damage has to exist before the maintenance can point at it. Created first and
+      // separately: if the maintenance then fails, the damage is still a real fault worth
+      // keeping on the asset, and the modal reopens with it selectable.
+      let damageID = statusMaintForm.damageID;
+      if (newDamage) {
+        const createdDamage = await damagesApi.create({
+          assetID: assetId,
+          damageDate: newDamage.damageDate,
+          damageDesc: newDamage.damageDesc.trim(),
+        });
+        damageID = createdDamage.data.damageID;
+        setDamages((prev) => [createdDamage.data, ...prev]);
+      }
+
       let attID = statusMaintForm.attID ?? null;
       if (statusMaintAttachmentFile) {
         const base64 = await toBase64(statusMaintAttachmentFile);
@@ -464,27 +605,23 @@ export default function AssetDetailPage() {
         attID = (upload.data as Attachment).attID;
       }
 
-      const createdMaintenance = await maintenancesApi.create({ assetID: assetId, ...statusMaintForm, attID });
-      setMaintenances((prev) => [...prev, createdMaintenance.data as Maintenance]);
-
-      const today = new Date().toISOString().slice(0, 10);
-      await assetsApi.updateStatus(assetId, {
-        assetStatusID: 8,
-        assetStatusDate: today,
-        statusID: 8,
-        statusDate: today,
-        statusContactID: null,
-        statusSalePrice: 0,
-        statusSaleCurCode: null,
-        statusDesc: null,
-      });
+      // POST /maintenances already moves the asset to Under Maintenance and writes the
+      // status-history row itself. This used to follow it with assetsApi.updateStatus(8),
+      // which logged the same change a second time — that is why Status History showed
+      // "Under Maintenance" twice per trip. The status is reflected locally instead.
+      const createdMaintenance = await maintenancesApi.create({ assetID: assetId, ...statusMaintForm, damageID, attID });
+      setMaintenances((prev) => [createdMaintenance.data as Maintenance, ...prev]);
 
       setAsset((a) => a
         ? { ...a, statusID: 8, statusName: statuses.find((s) => s.statusID === 8)?.status ?? 'Under Maintenance' }
         : a);
+      // The damage is now out for repair, so its row must lose its send button.
+      void refreshDamages();
+      void refreshStatusHistory();
       setTab('maintenance');
       setStatusMaintenanceModalOpen(false);
       setStatusMaintAttachmentFile(null);
+      setNewDamage(null);
       toast.success('Asset moved to Under Maintenance');
     } catch (err) {
       handleApiError(err, 'Failed to move asset to maintenance');
@@ -670,9 +807,10 @@ export default function AssetDetailPage() {
     { key: 'depreciation', label: 'Depreciation' },
     { key: 'inventory', label: 'Inventory' },
     { key: 'status', label: 'Status History' },
+    { key: 'damage', label: 'Damage' },
     { key: 'maintenance', label: 'Maintenance' },
     { key: 'warranty', label: 'Warranty' },
-    { key: 'damage', label: 'Damage' },
+    
     { key: 'attachments', label: 'Attachments' },
     { key: 'remark', label: 'Remark' },
   ];
@@ -718,13 +856,16 @@ export default function AssetDetailPage() {
               </h1>
               {asset.inServiceDate && (
                 <span className="text-[11px] text-ink-300 mt-1 block">
-                  In service: {new Date(asset.inServiceDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  In service: {fmtDate(asset.inServiceDate)}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          {/* items-end, not items-center: the "Status" label makes its column ~17px taller than
+              the bare buttons, so centring would sit the dropdown lower than the rest. Every
+              control is HEADER_CTRL tall, so aligning bottoms lines all five up exactly. */}
+          <div className="flex flex-wrap items-end gap-3 shrink-0">
             {/* Status dropdown */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">Status</span>
@@ -745,7 +886,8 @@ export default function AssetDetailPage() {
                         setOpenStatusMenu((prev) => !prev);
                       }}
                       className={clsx(
-                        'inline-flex items-center gap-2 min-w-[180px] rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
+                        HEADER_CTRL,
+                        'inline-flex items-center gap-2 min-w-[180px] rounded-lg border px-4 text-sm font-medium',
                         statusTone(asset.statusID),
                         'hover:shadow-sm transition-all cursor-pointer',
                         'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
@@ -810,7 +952,7 @@ export default function AssetDetailPage() {
                     type="button"
                     onClick={handleRemoveStatus}
                     disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12 || asset.statusID === 13}
-                    className="shrink-0 whitespace-nowrap text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={clsx(HEADER_CTRL, 'btn-danger shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed')}
                   >
                     Remove Status
                   </button>
@@ -818,14 +960,14 @@ export default function AssetDetailPage() {
               )}
             </div>
 
-            <div className="w-px h-8 bg-pearl-200" />
+            <div className={clsx(HEADER_CTRL, 'w-px bg-pearl-200')} />
 
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowBarcodeModal(true)}
                 disabled={!asset.barcodeNumber}
                 title={asset.barcodeNumber ? 'Print barcode label' : 'No barcode number assigned'}
-                className="btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                className={clsx(HEADER_CTRL, 'btn-secondary disabled:opacity-40 disabled:cursor-not-allowed')}
               >
                 <IconBarcode />
                 Print Barcode
@@ -834,7 +976,7 @@ export default function AssetDetailPage() {
 
             {!readOnly && (
               <>
-                <div className="w-px h-8 bg-pearl-200" />
+                <div className={clsx(HEADER_CTRL, 'w-px bg-pearl-200')} />
 
                 <div className="flex items-center gap-2">
                   {isUnderInventory ? (
@@ -842,7 +984,7 @@ export default function AssetDetailPage() {
                       type="button"
                       disabled
                       title="Edit is disabled while asset is under inventory"
-                      className="btn-secondary no-underline opacity-50 cursor-not-allowed"
+                      className={clsx(HEADER_CTRL, 'btn-secondary no-underline opacity-50 cursor-not-allowed')}
                     >
                       <IconEdit />
                       Edit
@@ -851,7 +993,7 @@ export default function AssetDetailPage() {
                     <Link
                       to={`/assets/${assetId}/edit`}
                       state={{ from: backToListUrl, ref: 'detail' }}
-                      className="btn-secondary no-underline"
+                      className={clsx(HEADER_CTRL, 'btn-secondary no-underline')}
                     >
                       <IconEdit />
                       Edit
@@ -861,7 +1003,7 @@ export default function AssetDetailPage() {
                     onClick={handleDelete}
                     disabled={isUnderInventory}
                     title={isUnderInventory ? 'Delete is disabled while asset is under inventory' : undefined}
-                    className={clsx('btn-danger', isUnderInventory && 'opacity-50 cursor-not-allowed')}
+                    className={clsx(HEADER_CTRL, 'btn-danger', isUnderInventory && 'opacity-50 cursor-not-allowed')}
                   >
                     <IconTrash />
                     Delete
@@ -902,8 +1044,20 @@ export default function AssetDetailPage() {
       <div className="px-4 sm:px-8 py-6">
         {tab === 'info' && <AssetInfo asset={asset} />}
         {tab === 'depreciation' && <DepreciationTab data={depHistory} />}
-        {tab === 'inventory' && <SimpleTable data={invHistory} columns={['inventoryID', 'isAvailable', 'location', 'relocated', 'createdDate']} />}
-        {tab === 'status' && <SimpleTable data={statusHistory} columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']} />}
+        {tab === 'inventory' && (
+          <SimpleTable
+            data={invHistory.map((r) => ({ ...r, createdDate: fmtDate(r.createdDate) }))}
+            columns={['inventoryID', 'isAvailable', 'location', 'relocated', 'createdDate']}
+          />
+        )}
+        {tab === 'status' && (
+          // StatusDate is a date-only column, so the Status Date cell shows CreatedByDateTime —
+          // the one field carrying both the day and the clock time of the change.
+          <SimpleTable
+            data={statusHistory.map((r) => ({ ...r, statusDate: fmtDateTime(r.createdByDateTime) }))}
+            columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']}
+          />
+        )}
         {tab === 'maintenance' && (
           <MaintenanceTab
             readOnly={readOnly}
@@ -914,13 +1068,23 @@ export default function AssetDetailPage() {
             contacts={contacts}
             currencies={currencies}
             onChange={setMaintenances}
+            onReturned={() => { void refreshDamages(); void refreshStatusHistory(); }}
           />
         )}
         {tab === 'warranty' && (
           <WarrantyTab readOnly={readOnly} assetId={assetId} items={warranties} onChange={setWarranties} />
         )}
         {tab === 'damage' && (
-          <DamageTab readOnly={readOnly} assetId={assetId} items={damages} onChange={setDamages} />
+          <DamageTab
+            readOnly={readOnly}
+            assetId={assetId}
+            items={damages}
+            onChange={setDamages}
+            // Already under maintenance (8) or locked by an inventory (10): the status
+            // cannot move, so offering the button would only produce a rejection.
+            canSendToMaintenance={asset?.statusID !== 8 && asset?.statusID !== 10}
+            onSendToMaintenance={(d) => void openUnderMaintenanceModal(d.damageID)}
+          />
         )}
         {tab === 'attachments' && (
           <AttachmentsTab readOnly={readOnly} assetId={assetId} items={attachments} onChange={setAttachments} />
@@ -1021,10 +1185,18 @@ export default function AssetDetailPage() {
         />
       )}
 
-      {/* Maintenance modal (unchanged) */}
+      {/* Send to maintenance. Always repairs a damage — picked from the asset's open
+          damages, or recorded inline when the fault isn't on file yet. */}
       {!readOnly && statusMaintenanceModalOpen && (
-        <Modal title="Add Maintenance" onClose={() => setStatusMaintenanceModalOpen(false)}>
+        <Modal title="Send to Maintenance" onClose={() => setStatusMaintenanceModalOpen(false)}>
           <form onSubmit={handleStatusMaintenanceSubmit}>
+            <DamagePicker
+              damages={selectableDamages}
+              damageID={statusMaintForm.damageID}
+              onSelect={(id) => setStatusMaintField('damageID', id)}
+              newDamage={newDamage}
+              onNewDamageChange={setNewDamage}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={statusMaintForm.fromDate} max={statusMaintForm.toDate || undefined} onChange={(e) => setStatusMaintField('fromDate', e.target.value)} required />
@@ -1132,11 +1304,11 @@ function AssetInfo({ asset }: { asset: Asset }) {
         <CardSectionTitle>Financial</CardSectionTitle>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
           <InfoField label="Purchase Price" value={`${asset.purchaseCurCode ?? ''} ${asset.purchasePrice ?? '—'}`} />
-          <InfoField label="Purchase Date" value={asset.purchaseDate} />
+          <InfoField label="Purchase Date" value={fmtDate(asset.purchaseDate)} />
           <InfoField label="Purchase Order No" value={asset.purchaseOrderNo} mono />
           <InfoField label="Invoice No" value={asset.invoiceNo} mono />
-          <InfoField label="Invoice Date" value={asset.invoiceDate} />
-          <InfoField label="Accounting Entry Date" value={asset.accountingEntryDate} />
+          <InfoField label="Invoice Date" value={fmtDate(asset.invoiceDate)} />
+          <InfoField label="Accounting Entry Date" value={fmtDate(asset.accountingEntryDate)} />
           <InfoField label="Accounting JV No" value={asset.accountingEntryJVNo} mono />
         </div>
       </div>
@@ -1173,7 +1345,7 @@ function DepreciationTab({ data }: { data: DepreciationHistoryItem[] }) {
             i < data.length - 1 && 'border-b border-pearl-200'
           )}
         >
-          <div className="text-[12px] text-ink-600">{row.depreciationDate}</div>
+          <div className="text-[12px] text-ink-600">{fmtDate(row.depreciationDate)}</div>
           <div className="num text-[12px] text-ink-600">{row.depreciationRate}%</div>
           <div className="num-cost text-[13px] font-semibold">
             {row.depreciationValue != null ? `(${Number(row.depreciationValue).toLocaleString(undefined, { minimumFractionDigits: 2 })})` : '—'}
@@ -1225,6 +1397,84 @@ function SimpleTable({ data, columns }: { data: object[]; columns: string[] }) {
     </div>
   );
 }
+// ─── Damage picker ───────────────────────────────────────────────────────────
+
+/**
+ * Small status label — damage open/fixed, maintenance out/returned. The leading dot
+ * carries the colour, so the state is readable at a glance down a column and doesn't
+ * depend on colour alone.
+ */
+function Pill({ tone, children }: { tone: 'green' | 'amber' | 'red' | 'grey'; children: React.ReactNode }) {
+  return (
+    <span className={clsx(
+      'inline-flex items-center gap-1.5 rounded-full border pl-1.5 pr-2.5 py-[3px] text-[10px] font-semibold uppercase tracking-[0.06em] whitespace-nowrap',
+      tone === 'green' && 'bg-success-bg text-success border-success-light',
+      tone === 'amber' && 'bg-warning-bg text-warning border-warning-light',
+      tone === 'red' && 'bg-danger-bg text-danger border-danger-light',
+      tone === 'grey' && 'bg-pearl-100 text-ink-400 border-pearl-200',
+    )}>
+      <span className={clsx(
+        'w-1.5 h-1.5 rounded-full shrink-0',
+        tone === 'green' && 'bg-success',
+        tone === 'amber' && 'bg-warning',
+        tone === 'red' && 'bg-danger',
+        tone === 'grey' && 'bg-ink-200',
+      )} />
+      {children}
+    </span>
+  );
+}
+
+/**
+ * The fixed / not-fixed decision on the return modal. A pair of large cards rather than a
+ * checkbox: this is the moment that closes a damage or sends it back out, and it deserves
+ * to be read before it is clicked.
+ */
+function FixedChoice({
+  selected, tone, title, detail, onClick,
+}: {
+  selected: boolean;
+  tone: 'green' | 'amber';
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={clsx(
+        'text-left rounded-xl border p-3.5 transition-all cursor-pointer',
+        'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
+        selected
+          ? tone === 'green'
+            ? 'border-success bg-success-bg shadow-card'
+            : 'border-warning bg-warning-bg shadow-card'
+          : 'border-pearl-200 bg-white hover:border-pearl-300 hover:bg-pearl-50'
+      )}
+    >
+      <span className="flex items-center gap-2">
+        <span className={clsx(
+          'inline-flex items-center justify-center w-4 h-4 rounded-full border-2 shrink-0',
+          selected
+            ? tone === 'green' ? 'border-success' : 'border-warning'
+            : 'border-ink-200'
+        )}>
+          {selected && <span className={clsx('block w-2 h-2 rounded-full', tone === 'green' ? 'bg-success' : 'bg-warning')} />}
+        </span>
+        <span className={clsx(
+          'text-[13px] font-semibold',
+          selected ? (tone === 'green' ? 'text-success' : 'text-warning') : 'text-ink-700'
+        )}>
+          {title}
+        </span>
+      </span>
+      <span className="block text-[11px] text-ink-400 mt-1.5 leading-snug">{detail}</span>
+    </button>
+  );
+}
+
 function ActionBtn({ onClick, danger, disabled, children }: { onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
     <button
@@ -1299,8 +1549,14 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
 
 // ─── Maintenance Tab ─────────────────────────────────────────────────────────
 
+/**
+ * This tab edits and returns maintenance records but cannot create one: a maintenance now
+ * requires a damage, and the damage picker lives on the parent's Send to Maintenance
+ * modal. The old (already commented-out) "Add Maintenance" button here would have been a
+ * second path that skipped that requirement.
+ */
 function MaintenanceTab({
-  readOnly, assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange,
+  readOnly, assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange, onReturned,
 }: {
   readOnly: boolean;
   assetId: number;
@@ -1310,15 +1566,21 @@ function MaintenanceTab({
   contacts: Contact[];
   currencies: Currency[];
   onChange: (v: Maintenance[]) => void;
+  /** A return settles the damage too, so the Damage tab has to be re-read. */
+  onReturned: () => void;
 }) {
   const { confirm, dialog: confirmDialog } = useConfirm();
-  const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Maintenance | null>(null);
-  const [form, setForm] = useState<MaintForm>({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [form, setForm] = useState<MaintForm>({ damageID: '', attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
-  const [returning, setReturning] = useState<number | null>(null);
+  // The maintenance being returned, plus what the supplier did and whether it worked.
+  // `fixed: null` forces an explicit choice — defaulting either way would quietly put a
+  // wrong answer into the damage record.
+  const [returnTarget, setReturnTarget] = useState<Maintenance | null>(null);
+  const [returnForm, setReturnForm] = useState<{ workPerformed: string; fixed: boolean | null }>({ workPerformed: '', fixed: null });
+  const [returning, setReturning] = useState(false);
 
   useEffect(() => {
     const linkedIds = new Set(
@@ -1345,33 +1607,45 @@ function MaintenanceTab({
       .catch(() => setAttachmentNames({}));
   }, [assetId, items]);
 
-  async function handleReturn(m: Maintenance) {
+  function openReturn(m: Maintenance) {
     if (readOnly) return;
-    const ok = await confirm(`Mark asset as returned from maintenance?`, { title: 'Return From Maintenance', confirmLabel: 'Return', danger: false });
-    if (!ok) return;
-    setReturning(m.maintID);
-    try {
-      await maintenancesApi.returnFromMaintenance(m.maintID);
-      onAssetStatusChange(0);
-      toast.success('Asset marked as returned from maintenance');
-    } catch (err) { handleApiError(err, 'Failed to update status'); }
-    finally { setReturning(null); }
+    setReturnTarget(m);
+    setReturnForm({ workPerformed: m.workPerformed ?? '', fixed: null });
   }
 
-  function openAdd() {
-    if (readOnly) return;
-    setForm({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: contacts[0]?.contactID ?? 0, cost: 0, curCode: currencies[0]?.curCode ?? 'USD', remark: '' });
-    setAttachmentFile(null);
-    setModal('add');
+  async function handleReturnSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (readOnly || !returnTarget || returnForm.fixed === null) return;
+
+    setReturning(true);
+    try {
+      const r = await maintenancesApi.returnFromMaintenance(returnTarget.maintID, {
+        workPerformed: returnForm.workPerformed.trim() || null,
+        fixed: returnForm.fixed,
+      });
+      // The endpoint returns the settled row, so the table updates in place — no refetch.
+      onChange(items.map((i) => (i.maintID === returnTarget.maintID ? r.data : i)));
+      onAssetStatusChange(0);
+      onReturned();
+      setReturnTarget(null);
+      toast.success(returnForm.fixed
+        ? 'Returned — damage marked fixed'
+        : 'Returned — damage still open');
+    } catch (err) { handleApiError(err, 'Failed to update status'); }
+    finally { setReturning(false); }
   }
+
   function openEdit(item: Maintenance) {
     if (readOnly) return;
     setEditing(item);
-    setForm({ attID: item.attID ?? null, fromDate: item.fromDate, toDate: item.toDate, supplierContactID: item.supplierContactID, cost: item.cost, curCode: item.curCode, remark: item.remark ?? '' });
+    setForm({
+      damageID: item.damageID, attID: item.attID ?? null, fromDate: item.fromDate, toDate: item.toDate,
+      supplierContactID: item.supplierContactID, cost: item.cost, curCode: item.curCode,
+      remark: item.remark ?? '', workPerformed: item.workPerformed ?? '',
+    });
     setAttachmentFile(null);
-    setModal('edit');
   }
-  function close() { setModal(null); setEditing(null); setAttachmentFile(null); }
+  function close() { setEditing(null); setAttachmentFile(null); }
   function setF<K extends keyof MaintForm>(k: K, v: MaintForm[K]) { setForm((p) => ({ ...p, [k]: v })); }
 
   async function handleSubmit(e: FormEvent) {
@@ -1402,11 +1676,7 @@ function MaintenanceTab({
         attID = (upload.data as Attachment).attID;
       }
 
-      if (modal === 'add') {
-        const r = await maintenancesApi.create({ assetID: assetId, ...form, attID });
-        onChange([...items, r.data as Maintenance]);
-        toast.success('Maintenance added');
-      } else if (editing) {
+      if (editing) {
         const r = await maintenancesApi.update(editing.maintID, {
           assetID: assetId, maintID: editing.maintID, ...form, attID,
           original_MaintID: editing.maintID, original_AssetID: editing.assetID,
@@ -1440,62 +1710,139 @@ function MaintenanceTab({
   }
 
   const contactName = (id: number) => contacts.find((c) => c.contactID === id)?.contactName ?? String(id);
-  const currentMaintID = items.length > 0 ? Math.max(...items.map((i) => i.maintID)) : null;
+  // Fixed tracks throughout, for the same reason as DAMAGE_COLS: each row is its own grid
+  // container, so an `auto` column would size per row and break vertical alignment.
+  const cols = 'grid-cols-[2fr_1fr_1fr_1.6fr_1fr_2fr_2fr_170px_265px]';
 
   return (
     <>
       {confirmDialog}
-      {/* {!readOnly && (
-        <div className="flex justify-end mb-4">
-          <button onClick={openAdd} className="btn-primary">
-            <IconPlus /> Add Maintenance
-          </button>
-        </div>
-      )} */}
 
-      {items.length === 0 ? <EmptyState message="No maintenance records." /> : (
+      {items.length === 0 ? (
+        <EmptyState message="No maintenance records. An asset reaches maintenance by being sent there from a damage." />
+      ) : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_190px_250px] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[1050px]">
-            {['From', 'To', 'Supplier', 'Cost', 'Currency', 'Remark', 'Attachment', ''].map((h) => (
-              <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
+          <div className={clsx('grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[1400px]', cols)}>
+            {['Damage', 'From', 'To', 'Supplier', 'Cost', 'Work Performed', 'Remark', 'Attachment', 'Actions'].map((h, i, arr) => (
+              <div key={i} className={clsx(
+                'text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300',
+                i === arr.length - 1 && 'text-right'
+              )}>{h}</div>
             ))}
           </div>
-          {items.map((m, i) => (
-            <div key={m.maintID} className={clsx(
-              'grid grid-cols-[1fr_1fr_2fr_1fr_1fr_2fr_190px_250px] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[1050px]',
-              i < items.length - 1 && 'border-b border-pearl-200'
-            )}>
-              <div className="text-[12px] text-ink-700">{m.fromDate}</div>
-              <div className="text-[12px] text-ink-700">{m.toDate}</div>
-              <div className="text-[12px] text-ink-700 truncate">{contactName(m.supplierContactID)}</div>
-              <div className="num-cost text-[12px] font-medium">{m.cost}</div>
-              <div className="text-[12px] font-code text-ink-600">{m.curCode}</div>
-              <div className="text-[12px] text-ink-400 truncate">{m.remark ?? '—'}</div>
-              <div>
-                {m.attID ? (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <ActionBtn onClick={() => downloadAttachmentById(m.attID!, `maintenance-${m.maintID}-attachment`)}>Download</ActionBtn>
-                    <ActionBtn onClick={() => previewAttachmentById(m.attID!)}>Preview</ActionBtn>
+          {items.map((m, i) => {
+            const open = m.returnedDate == null;
+            return (
+              <div key={m.maintID} className={clsx(
+                'grid gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[1400px]', cols,
+                i < items.length - 1 && 'border-b border-pearl-200'
+              )}>
+                <div className="min-w-0">
+                  <div className="text-[12px] text-ink-800 font-medium break-words">{m.damageDesc ?? '—'}</div>
+                  <div className="mt-1">
+                    {open
+                      ? <Pill tone="amber">Out for repair</Pill>
+                      : m.damageFixed
+                        ? <Pill tone="green">Fixed {fmtDate(m.returnedDate)}</Pill>
+                        : <Pill tone="red">Not fixed {fmtDate(m.returnedDate)}</Pill>}
                   </div>
-                ) : <span className="text-[12px] text-ink-300">—</span>}
+                </div>
+                <div className="text-[12px] text-ink-700">{fmtDate(m.fromDate)}</div>
+                <div className="text-[12px] text-ink-700">{fmtDate(m.toDate)}</div>
+                <div className="text-[12px] text-ink-700 truncate">{contactName(m.supplierContactID)}</div>
+                <div className="num-cost text-[12px] font-medium whitespace-nowrap">{m.cost} <span className="font-code text-ink-400">{m.curCode}</span></div>
+                <div className="text-[12px] text-ink-600 break-words">{m.workPerformed || <span className="text-ink-300">—</span>}</div>
+                <div className="text-[12px] text-ink-400 break-words">{m.remark || '—'}</div>
+                <div>
+                  {m.attID ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <ActionBtn onClick={() => downloadAttachmentById(m.attID!, `maintenance-${m.maintID}-attachment`)}>Download</ActionBtn>
+                      <ActionBtn onClick={() => previewAttachmentById(m.attID!)}>Preview</ActionBtn>
+                    </div>
+                  ) : <span className="text-[12px] text-ink-300">—</span>}
+                </div>
+                <div className="flex items-center justify-end gap-1.5">
+                  {/* Driven by this record's own ReturnedDate rather than "highest id wins",
+                      which returned the wrong row whenever an older maintenance was still
+                      open. Leads the group because it's the action a row usually wants. */}
+                  {!readOnly && open && assetStatusID === 8 && (
+                    <button
+                      type="button"
+                      onClick={() => openReturn(m)}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded border bg-success-bg text-success border-success-light hover:bg-success-light transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <IconWrench />
+                      Mark Returned
+                    </button>
+                  )}
+                  {!readOnly && <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>}
+                  {!readOnly && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {!readOnly && <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>}
-                {!readOnly && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
-                {!readOnly && assetStatusID === 8 && m.maintID === currentMaintID && (
-                  <ActionBtn onClick={() => handleReturn(m)} disabled={returning === m.maintID}>
-                    {returning === m.maintID ? '…' : 'Mark Returned'}
-                  </ActionBtn>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {!readOnly && modal && (
-        <Modal title={modal === 'add' ? 'Add Maintenance' : 'Edit Maintenance'} onClose={close}>
+      {!readOnly && returnTarget && (
+        <Modal title="Return From Maintenance" onClose={() => setReturnTarget(null)}>
+          <form onSubmit={handleReturnSubmit}>
+            <div className="rounded-lg border border-pearl-200 bg-pearl-50 px-4 py-3 mb-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-300 mb-1">Damage</div>
+              <div className="text-[13px] text-ink-800 font-medium">{returnTarget.damageDesc ?? '—'}</div>
+            </div>
+
+            <FormRow label="Work Performed">
+              <textarea
+                className={clsx(inp, 'min-h-[92px] resize-y')}
+                value={returnForm.workPerformed}
+                onChange={(e) => setReturnForm((p) => ({ ...p, workPerformed: e.target.value }))}
+                maxLength={500}
+                placeholder="What the supplier actually did…"
+              />
+            </FormRow>
+
+            <div className="mt-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400 mb-2">
+                Is the damage fixed? *
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <FixedChoice
+                  selected={returnForm.fixed === true}
+                  tone="green"
+                  title="Fixed"
+                  detail="Closes the damage. It won't be offered for maintenance again."
+                  onClick={() => setReturnForm((p) => ({ ...p, fixed: true }))}
+                />
+                <FixedChoice
+                  selected={returnForm.fixed === false}
+                  tone="amber"
+                  title="Not fixed"
+                  detail="Leaves the damage open so it can be sent out again."
+                  onClick={() => setReturnForm((p) => ({ ...p, fixed: false }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-5">
+              <button type="submit" disabled={returning || returnForm.fixed === null} className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+                {returning ? 'Saving…' : 'Confirm Return'}
+              </button>
+              <button type="button" onClick={() => setReturnTarget(null)} className="btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {!readOnly && editing && (
+        <Modal title="Edit Maintenance" onClose={close}>
           <form onSubmit={handleSubmit}>
+            {/* Read-only: re-pointing a maintenance at a different fault would rewrite
+                history. Fix the damage text on the Damage tab instead. */}
+            <div className="rounded-lg border border-pearl-200 bg-pearl-50 px-4 py-3 mb-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-300 mb-1">Damage</div>
+              <div className="text-[13px] text-ink-800 font-medium">{editing.damageDesc ?? '—'}</div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={form.fromDate} max={form.toDate || undefined} onChange={(e) => setF('fromDate', e.target.value)} required />
@@ -1523,6 +1870,15 @@ function MaintenanceTab({
             <FormRow label="Remark">
               <input className={inp} value={form.remark ?? ''} onChange={(e) => setF('remark', e.target.value)} maxLength={100} />
             </FormRow>
+            <FormRow label="Work Performed">
+              <textarea
+                className={clsx(inp, 'min-h-[80px] resize-y')}
+                value={form.workPerformed ?? ''}
+                onChange={(e) => setF('workPerformed', e.target.value)}
+                maxLength={500}
+                placeholder="Normally filled in when the asset is marked returned."
+              />
+            </FormRow>
             <FormRow label="Attachment">
               <input
                 className={inp}
@@ -1530,7 +1886,7 @@ function MaintenanceTab({
                 accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
               />
-              {modal === 'edit' && form.attID && !attachmentFile && (
+              {form.attID && !attachmentFile && (
                 <div className="mt-2 rounded-md border border-pearl-200 bg-pearl-50 px-3 py-2.5">
                   <div className="text-[11px] text-ink-600">
                     Current file: <span className="font-semibold">{attachmentNames[form.attID] ?? `Attachment #${form.attID}`}</span>
@@ -1697,8 +2053,8 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-800 font-medium truncate">{w.warrantyDesc}</div>
-              <div className="text-[12px] text-ink-600">{w.fromDate}</div>
-              <div className="text-[12px] text-ink-600">{w.toDate}</div>
+              <div className="text-[12px] text-ink-600">{fmtDate(w.fromDate)}</div>
+              <div className="text-[12px] text-ink-600">{fmtDate(w.toDate)}</div>
               <div className="text-[12px] text-ink-400 truncate">{w.remark ?? '—'}</div>
               <div>
                 {w.attID ? (
@@ -1778,7 +2134,23 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
 
 type DamageForm = { damageDate: string; damageDesc: string };
 
-function DamageTab({ readOnly, assetId, items, onChange }: { readOnly: boolean; assetId: number; items: Damage[]; onChange: (v: Damage[]) => void }) {
+/**
+ * Every row here is its own grid container, so the tracks only line up if they are all
+ * fixed. The last column used to be `auto`, which sized to its own row's buttons — a row
+ * with Send to Maintenance laid out differently from one without, leaving the Status
+ * pills and the header at three different x positions. Fixed width, contents right-aligned.
+ */
+const DAMAGE_COLS = 'grid-cols-[120px_minmax(180px,1fr)_150px_310px]';
+
+function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, onSendToMaintenance }: {
+  readOnly: boolean;
+  assetId: number;
+  items: Damage[];
+  onChange: (v: Damage[]) => void;
+  /** False while the asset is already under maintenance or locked by an inventory. */
+  canSendToMaintenance: boolean;
+  onSendToMaintenance: (damage: Damage) => void;
+}) {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Damage | null>(null);
@@ -1847,19 +2219,42 @@ function DamageTab({ readOnly, assetId, items, onChange }: { readOnly: boolean; 
 
       {items.length === 0 ? <EmptyState message="No damage records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className="grid grid-cols-[140px_1fr_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[560px]">
-            {['Date', 'Description', ''].map((h, i) => (
-              <div key={i} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
-            ))}
+          <div className={clsx(DAMAGE_COLS, 'grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[880px]')}>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Date</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Description</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Status</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300 text-right">Actions</div>
           </div>
           {items.map((d, i) => (
             <div key={d.damageID} className={clsx(
-              'grid grid-cols-[140px_1fr_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[560px]',
+              DAMAGE_COLS,
+              'grid gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[880px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
-              <div className="text-[12px] text-ink-600">{d.damageDate}</div>
+              <div className="text-[12px] text-ink-600 whitespace-nowrap">{fmtDate(d.damageDate)}</div>
               <div className="text-[12px] text-ink-800 font-medium break-words">{d.damageDesc}</div>
-              <div className="flex gap-1.5">
+              <div>
+                {d.fixed
+                  ? <Pill tone="green">Fixed</Pill>
+                  : d.underMaintenance
+                    ? <Pill tone="amber">Out for repair</Pill>
+                    : <Pill tone="red">Open</Pill>}
+              </div>
+              {/* Right-aligned against a fixed track, so Edit/Delete land on the same
+                  column whether or not the row also offers Send to Maintenance. */}
+              <div className="flex items-center justify-end gap-1.5">
+                {/* Offered only when the API would actually accept it: damage open, not
+                    already out for repair, and the asset free to change status. */}
+                {!readOnly && !d.fixed && !d.underMaintenance && canSendToMaintenance && (
+                  <button
+                    type="button"
+                    onClick={() => onSendToMaintenance(d)}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded border bg-warning-bg text-warning border-warning-light hover:bg-warning-light transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <IconWrench />
+                    Send to Maintenance
+                  </button>
+                )}
                 {!readOnly && <ActionBtn onClick={() => openEdit(d)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(d)}>Delete</ActionBtn>}
               </div>

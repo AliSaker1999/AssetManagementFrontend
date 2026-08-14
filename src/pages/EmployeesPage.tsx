@@ -10,6 +10,7 @@ import Select from '../components/ui/Select';
 import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
 import type { Company, Employee, PaginatedResponse } from '../types';
+import { fmtDate } from '../utils/date';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
@@ -387,7 +388,7 @@ export default function EmployeesPage() {
                         <td className="px-3.5 py-2.5 text-[13px]">
                           <StatusBadge status={emp.leaveDate ? 'inactive' : 'active'} />
                           {emp.leaveDate && (
-                            <div className="text-[11px] text-ink-300 mt-0.5">Left {emp.leaveDate}</div>
+                            <div className="text-[11px] text-ink-300 mt-0.5">Left {fmtDate(emp.leaveDate)}</div>
                           )}
                         </td>
                         {!readOnly && (

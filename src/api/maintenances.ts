@@ -1,4 +1,5 @@
 import client from './client';
+import type { Maintenance } from '../types';
 
 export const maintenancesApi = {
   getActiveCount: () => client.get<number>('/maintenances/active-count'),
@@ -6,5 +7,7 @@ export const maintenancesApi = {
   create: (data: object) => client.post('/maintenances', data),
   update: (id: number, data: object) => client.put(`/maintenances/${id}`, data),
   delete: (id: number, data: object) => client.delete(`/maintenances/${id}`, { data }),
-  returnFromMaintenance: (id: number) => client.post(`/maintenances/${id}/return`, {}),
+  /** Closes the maintenance, records the work, and settles its damage. Returns the settled row. */
+  returnFromMaintenance: (id: number, data: { workPerformed: string | null; fixed: boolean }) =>
+    client.post<Maintenance>(`/maintenances/${id}/return`, data),
 };

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { lookupsApi } from '../api/lookups';
 import type { EmployeePossibleMatches } from '../types';
+import { fmtDate } from './date';
 
 interface MatchPrompt {
   title: string;
@@ -46,7 +47,7 @@ export function buildEmployeeMatchPrompt(matches: EmployeePossibleMatches): Matc
           heading="Existing employee(s) already recorded:"
           names={internal.map(
             (m) =>
-              `${m.empFullName}${m.companyName ? ` (${m.companyName})` : ''}${m.leaveDate ? ` — left ${m.leaveDate}` : ''}`,
+              `${m.empFullName}${m.companyName ? ` (${m.companyName})` : ''}${m.leaveDate ? ` — left ${fmtDate(m.leaveDate)}` : ''}`,
           )}
         />
       )}

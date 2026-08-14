@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleApiError } from '../utils/errors';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
+import { fmtDate, todayIso } from '../utils/date';
 import type {
   Asset,
   Company,
@@ -25,16 +26,9 @@ const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string | null | undefined) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-GB');
-}
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+// fmtDate and todayIso now come from utils/date — the local copies parsed date-only
+// strings through `new Date`, which reads them as UTC midnight and rendered the previous
+// day for any user west of Greenwich.
 
 function diffDays(startIso: string | null | undefined, endIso: string | null | undefined) {
   if (!startIso || !endIso) return null;

@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import type { Company, Depreciation, DepreciationReportItem, PaginatedResponse } from '../types';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
+import { fmtDate } from '../utils/date';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
@@ -109,7 +110,7 @@ useEffect(() => {
     const sameDayRun = depreciations.find((d) => d.depreciationDate === runDate) ?? null;
 
     if (sameDayRun) {
-      const overwrite = await confirm(`A depreciation run already exists for ${runDate}. Overwrite it?`, {
+      const overwrite = await confirm(`A depreciation run already exists for ${fmtDate(runDate)}. Overwrite it?`, {
         title: 'Depreciation Already Exists',
         confirmLabel: 'Overwrite',
         danger: true,
@@ -124,7 +125,7 @@ useEffect(() => {
         return;
       }
     } else {
-      const ok = await confirm(`Run depreciation for ${company?.companyName ?? ''} on ${runDate}?`, {
+      const ok = await confirm(`Run depreciation for ${company?.companyName ?? ''} on ${fmtDate(runDate)}?`, {
         title: 'Run Depreciation',
         confirmLabel: 'Run',
         danger: false,
@@ -299,7 +300,7 @@ useEffect(() => {
                       selected === d.depID ? 'bg-[#e8f0fe] text-accent' : 'bg-transparent text-[#333] hover:bg-surface'
                     )}
                   >
-                    <strong>{d.depreciationDate}</strong>
+                    <strong>{fmtDate(d.depreciationDate)}</strong>
                     <br />
                     <span className="text-xs text-[#888]">{d.createdByFullName}</span>
                   </button>

@@ -9,7 +9,10 @@ import { maintenancesApi } from '../api/maintenances';
 import { attachmentsApi } from '../api/attachments';
 import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
-import type { AssetListItem, Attachment, Contact, Currency, Employee, LeftEmployeeAsset, Maintenance, PaginatedResponse, StatusType } from '../types';
+import { companyPrmCurrency } from '../utils/currency';
+import { damagesApi } from '../api/damages';
+import DamagePicker, { emptyNewDamage, type NewDamageForm } from '../components/DamagePicker';
+import type { AssetListItem, Attachment, Company, Contact, Currency, Damage, Employee, LeftEmployeeAsset, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
@@ -17,6 +20,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
 import TransferAssetModal from '../components/TransferAssetModal';
+import { fmtDate } from '../utils/date';
 
 
 interface StatusMenuProps {
@@ -62,8 +66,58 @@ const COLUMN_MIN_WIDTHS: Record<string, number> = {
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 const inp = 'input-base';
+
+/**
+ * The order of the status filter chips. The lookup returns statuses by StatusID, which is
+ * the order they happened to be created in — Donated and Destroyed landed ahead of the
+ * ones people filter by every day.
+ *
+ * This runs in the order you actually think about an asset: what's in use, what's sitting
+ * in stock, what hasn't arrived, what's being fixed — then how it left, from most
+ * deliberate (transferred, returned, decommissioned, sold, donated) to least (destroyed,
+ * lost).
+ *
+ * Ids missing from this list sort to the end by StatusID, so a status added to the
+ * database later still appears in the filter instead of silently vanishing.
+ */
+const STATUS_FILTER_ORDER: number[] = [
+  0,  // Active
+  13, // Active/Remote Work
+  12, // In Stock
+  14, // Unreceived Stock
+  8,  // Under Maintenance
+  2,  // Transferred
+  7,  // Return To Supplier
+  11, // Decommission
+  4,  // Sold
+  1,  // Donated
+  3,  // Destroyed
+  6,  // Lost
+];
+
+function byStatusFilterOrder(a: StatusType, b: StatusType): number {
+  const ia = STATUS_FILTER_ORDER.indexOf(a.statusID);
+  const ib = STATUS_FILTER_ORDER.indexOf(b.statusID);
+  if (ia === -1 && ib === -1) return a.statusID - b.statusID;
+  if (ia === -1) return 1;
+  if (ib === -1) return -1;
+  return ia - ib;
+}
 const metricShapeCls = 'rounded-[14px] border-[#d5ddef] border-t-0 shadow-[inset_0_3px_0_0_#1f2b7b,0_1px_2px_rgba(15,23,42,0.06)]';
-type MaintForm = Omit<Maintenance, 'maintID' | 'assetID'>;
+/**
+ * Spelled out rather than derived from Maintenance: the row carries fields this form has
+ * no business setting (returnedDate, and the damage columns joined in for display).
+ */
+type MaintForm = {
+  damageID: number | '';
+  attID: number | null;
+  fromDate: string;
+  toDate: string;
+  supplierContactID: number;
+  cost: number;
+  curCode: string;
+  remark?: string;
+};
 type StatusChangeForm = {
   statusDate: string;
   statusDesc: string;
@@ -566,7 +620,7 @@ function MarkAsLeftControl({
   return (
     <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
       <span className="text-[11px] font-semibold text-amber-700 shrink-0">
-        {initialLeaveDate ? `Left on ${initialLeaveDate}` : 'Not marked as left'}
+        {initialLeaveDate ? `Left on ${fmtDate(initialLeaveDate)}` : 'Not marked as left'}
       </span>
       <input
         type="date"
@@ -961,12 +1015,18 @@ export default function AssetsPage() {
   const [statuses, setStatuses] = useState<StatusType[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  // Held only for companyPrmCurrency() — see the currency default below.
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [changingStatus, setChangingStatus] = useState<Set<number>>(new Set());
   const [openStatusMenuAssetId, setOpenStatusMenuAssetId] = useState<number | null>(null);
   const [maintenanceModalAsset, setMaintenanceModalAsset] = useState<AssetListItem | null>(null);
-  const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ damageID: '', attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [maintenanceAttachmentFile, setMaintenanceAttachmentFile] = useState<File | null>(null);
   const [savingMaintenanceModal, setSavingMaintenanceModal] = useState(false);
+  // Damages the row's asset can be sent to maintenance for; refetched per modal open.
+  const [selectableDamages, setSelectableDamages] = useState<Damage[]>([]);
+  // null = choose an existing damage; set = recording a new one inline.
+  const [maintenanceNewDamage, setMaintenanceNewDamage] = useState<NewDamageForm | null>(null);
   const [statusModalAsset, setStatusModalAsset] = useState<AssetListItem | null>(null);
   const [removeStatusModalAsset, setRemoveStatusModalAsset] = useState<AssetListItem | null>(null);
   const [removeStatusForm, setRemoveStatusForm] = useState<{ statusDate: string; statusDesc: string }>({
@@ -1057,6 +1117,15 @@ export default function AssetsPage() {
       .catch(() => { /* non-critical */ });
   }, []);
 
+  // Companies, only for their primary currency — it seeds the currency on the sale and
+  // maintenance-cost modals below. Non-critical: without it those inputs fall back to
+  // the first row of the currency lookup, as they did before.
+  useEffect(() => {
+    lookupsApi.getCompanies()
+      .then((r) => setCompanies(r.data as Company[]))
+      .catch(() => { /* non-critical */ });
+  }, []);
+
   useEffect(() => {
     const next: Record<string, string> = {};
     if (search.trim()) next.q = search;
@@ -1066,14 +1135,28 @@ export default function AssetsPage() {
     setSearchParams(next, { replace: true });
   }, [search, pageNumber, pageSize, selectedStatusIds]); // ✅ all four
 
-  function makeDefaultMaintenanceForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): MaintForm {
+  /**
+   * Which currency a money field on this asset should start on: its company's primary
+   * currency, falling back to the first row of the currency lookup and then 'USD' when
+   * the companies lookup is unavailable or the company has none recorded. Only a
+   * default — the user can still change it on the form.
+   *
+   * Takes the currency list as an argument because callers often have a freshly fetched
+   * list that has not landed in state yet.
+   */
+  function defaultCurCode(companyId?: number, ccy: Currency[] = currencies) {
+    return companyPrmCurrency(companies, companyId) || ccy[0]?.curCode || 'USD';
+  }
+
+  function makeDefaultMaintenanceForm(companyId?: number, cs: Contact[] = contacts, ccy: Currency[] = currencies, damageID: number | '' = ''): MaintForm {
     return {
+      damageID,
       attID: null,
       fromDate: new Date().toISOString().slice(0, 10),
       toDate: '',
       supplierContactID: cs[0]?.contactID ?? 0,
       cost: 0,
-      curCode: ccy[0]?.curCode ?? 'USD',
+      curCode: defaultCurCode(companyId, ccy),
       remark: '',
     };
   }
@@ -1094,8 +1177,16 @@ export default function AssetsPage() {
         setCurrencies(nextCurrencies);
       }
 
+      // Always fresh — another user may have fixed or dispatched a damage since this list
+      // was loaded, and the API rejects both.
+      const selectable = (await damagesApi.getSelectableByAsset(asset.assetID)).data;
+      setSelectableDamages(selectable);
+      // Nothing repairable on record yet, so start in "new damage" mode rather than
+      // dead-ending on an empty select.
+      setMaintenanceNewDamage(selectable.length === 0 ? emptyNewDamage() : null);
+
       setMaintenanceModalAsset(asset);
-      setMaintenanceForm(makeDefaultMaintenanceForm(nextContacts, nextCurrencies));
+      setMaintenanceForm(makeDefaultMaintenanceForm(asset.companyID, nextContacts, nextCurrencies, selectable[0]?.damageID ?? ''));
       setMaintenanceAttachmentFile(null);
     } catch (err) {
       handleApiError(err, 'Failed to load maintenance lookups');
@@ -1106,14 +1197,14 @@ export default function AssetsPage() {
     setMaintenanceForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function makeDefaultStatusChangeForm(cs: Contact[] = contacts, ccy: Currency[] = currencies): StatusChangeForm {
+  function makeDefaultStatusChangeForm(companyId?: number, cs: Contact[] = contacts, ccy: Currency[] = currencies): StatusChangeForm {
     const today = new Date().toISOString().slice(0, 10);
     return {
       statusDate: today,
       statusDesc: '',
       statusContactID: cs[0]?.contactID ?? '',
       statusSalePrice: '',
-      statusSaleCurCode: ccy[0]?.curCode ?? 'USD',
+      statusSaleCurCode: defaultCurCode(companyId, ccy),
     };
   }
 
@@ -1139,7 +1230,7 @@ export default function AssetsPage() {
 
       setStatusModalAsset(asset);
       setStatusModalStatusId(nextStatusId);
-      setStatusChangeForm(makeDefaultStatusChangeForm(nextContacts, nextCurrencies));
+      setStatusChangeForm(makeDefaultStatusChangeForm(asset.companyID, nextContacts, nextCurrencies));
     } catch (err) {
       handleApiError(err, 'Failed to load status lookups');
     }
@@ -1154,10 +1245,31 @@ export default function AssetsPage() {
   async function handleUnderMaintenanceSubmit(e: FormEvent) {
     e.preventDefault();
     if (!maintenanceModalAsset || readOnly) return;
+    if (maintenanceNewDamage) {
+      if (!maintenanceNewDamage.damageDesc.trim()) {
+        toast.error('Describe the damage being repaired');
+        return;
+      }
+    } else if (!maintenanceForm.damageID) {
+      toast.error('Select the damage being repaired');
+      return;
+    }
 
     setSavingMaintenanceModal(true);
     try {
       const assetId = maintenanceModalAsset.assetID;
+
+      // The damage must exist before the maintenance can reference it.
+      let damageID = maintenanceForm.damageID;
+      if (maintenanceNewDamage) {
+        const createdDamage = await damagesApi.create({
+          assetID: assetId,
+          damageDate: maintenanceNewDamage.damageDate,
+          damageDesc: maintenanceNewDamage.damageDesc.trim(),
+        });
+        damageID = createdDamage.data.damageID;
+      }
+
       let attID = maintenanceForm.attID ?? null;
       if (maintenanceAttachmentFile) {
         const base64 = await toBase64(maintenanceAttachmentFile);
@@ -1177,19 +1289,10 @@ export default function AssetsPage() {
         attID = (upload.data as Attachment).attID;
       }
 
-      await maintenancesApi.create({ assetID: assetId, ...maintenanceForm, attID });
-
-      const today = new Date().toISOString().slice(0, 10);
-      await assetsApi.updateStatus(assetId, {
-        assetStatusID: 8,
-        assetStatusDate: today,
-        statusID: 8,
-        statusDate: today,
-        statusContactID: null,
-        statusSalePrice: 0,
-        statusSaleCurCode: null,
-        statusDesc: null,
-      });
+      // POST /maintenances moves the asset to Under Maintenance and writes the status
+      // history itself. The assetsApi.updateStatus(8) that used to follow logged the same
+      // change a second time, which is why Status History showed it twice per trip.
+      await maintenancesApi.create({ assetID: assetId, ...maintenanceForm, damageID, attID });
 
       const maintenanceName = statuses.find((s) => s.statusID === 8)?.status ?? 'Under Maintenance';
       setAssets((prev) =>
@@ -1203,6 +1306,7 @@ export default function AssetsPage() {
 
       setMaintenanceModalAsset(null);
       setMaintenanceAttachmentFile(null);
+      setMaintenanceNewDamage(null);
       toast.success('Asset moved to Under Maintenance');
     } catch (err) {
       handleApiError(err, 'Failed to move asset to maintenance');
@@ -1636,9 +1740,11 @@ useEffect(() => {
                   All
                 </button>
 
-                {/* Per-status chips */}
+                {/* Per-status chips. .filter() already returns a new array, so sorting it
+                    here does not mutate the statuses state. */}
                 {statuses
                   .filter((s) => ![5, 9, 10].includes(s.statusID))
+                  .sort(byStatusFilterOrder)
                   .map((s) => {
                     const isSelected = selectedStatusIds.has(s.statusID);
                     return (
@@ -2004,8 +2110,15 @@ useEffect(() => {
       )}
 
       {!readOnly && maintenanceModalAsset && (
-        <Modal title={`Add Maintenance · ${maintenanceModalAsset.assetCode}`} onClose={() => setMaintenanceModalAsset(null)}>
+        <Modal title={`Send to Maintenance · ${maintenanceModalAsset.assetCode}`} onClose={() => setMaintenanceModalAsset(null)}>
           <form onSubmit={handleUnderMaintenanceSubmit}>
+            <DamagePicker
+              damages={selectableDamages}
+              damageID={maintenanceForm.damageID}
+              onSelect={(id) => setMaintenanceField('damageID', id)}
+              newDamage={maintenanceNewDamage}
+              onNewDamageChange={setMaintenanceNewDamage}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={maintenanceForm.fromDate} onChange={(e) => setMaintenanceField('fromDate', e.target.value)} required />
