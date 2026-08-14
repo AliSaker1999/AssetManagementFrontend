@@ -18,7 +18,13 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    // A 401 from the login endpoint means "wrong credentials", not "session expired".
+    // Redirecting on it reloaded the page and wiped the error message the login form had
+    // just set, so the user saw a cleared form and no explanation — and kept guessing,
+    // which now walks them into an account lockout.
+    const isLoginRequest = (err.config?.url ?? '').includes('/auth/login');
+
+    if (err.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
