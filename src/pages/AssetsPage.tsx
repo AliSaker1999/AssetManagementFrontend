@@ -127,8 +127,13 @@ type StatusChangeForm = {
 };
 
 const STATUSES_WITH_MODAL = new Set([1,  3, 4, 7]);
-const BLOCKED_ATTACHMENT_EXTENSIONS = new Set(['csv', 'txt', 'gif', 'webp']);
-const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg';
+// Allowlist, mirroring AttachmentContentValidator on the server. The old four-item
+// blocklist let through .exe, .aspx, .html and .js. SVG is excluded: it is XML that can
+// carry script, and the server no longer stores or serves it.
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  'pdf', 'png', 'jpg', 'jpeg', 'bmp', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+]);
+const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.bmp';
 
 function IconSearch() {
   return (
@@ -1006,6 +1011,10 @@ export default function AssetsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [assets, setAssets] = useState<AssetListItem[]>([]);
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  // Search now runs in SQL, so every keystroke would otherwise be a request with a
+  // LIKE '%term%' scan behind it — typing "ABDALLAH" fired eight of them. `search` stays
+  // bound to the input so typing feels instant; `debouncedSearch` is what the query uses.
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('q') ?? '');
   const [loading, setLoading] = useState(true);
   const [pageNumber, setPageNumber] = useState<number>(() => Number(searchParams.get('page')) || 1);
   const [pageSize, setPageSize] = useState<number>(() => Number(searchParams.get('size')) || 10);
@@ -1128,6 +1137,12 @@ export default function AssetsPage() {
       .then((r) => setCompanies(r.data as Company[]))
       .catch(() => { /* non-critical */ });
   }, []);
+
+  // 350ms after the last keystroke, not on each one.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const next: Record<string, string> = {};
@@ -1416,26 +1431,31 @@ useEffect(() => {
           pageNumber,
           pageSize,
           companyFilter,
-          search.trim() || undefined,
+          debouncedSearch.trim() || undefined,
           selectedStatusIds.size > 0 ? Array.from(selectedStatusIds) : undefined,
+          controller.signal,
         );
         const data = response.data as PaginatedResponse<AssetListItem>;
         setAssets(data.data);
         setTotalPages(data.totalPages);
         setTotalCount(data.totalCount);
       } catch (error) {
-        if ((error as any).name !== 'AbortError') {
-          handleApiError(error, 'Failed to load assets');
-          setAssets([]);
-        }
+        // axios reports a cancelled request as CanceledError; a bare fetch abort is
+        // AbortError. Neither is a failure worth showing, and neither should clear the grid.
+        const name = (error as { name?: string })?.name;
+        if (name === 'CanceledError' || name === 'AbortError') return;
+        handleApiError(error, 'Failed to load assets');
+        setAssets([]);
       } finally {
-        setLoading(false);
+        // A `return` in the catch above still runs this block, so an aborted request would
+        // otherwise switch the spinner off while its replacement is still in flight.
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     loadData();
     return () => controller.abort();
-  }, [pageNumber, pageSize, search, activeCompanyId, selectedStatusIds, refreshKey]);
+  }, [pageNumber, pageSize, debouncedSearch, activeCompanyId, selectedStatusIds, refreshKey]);
 
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
@@ -2242,5 +2262,5 @@ function getNormalizedFileExtension(fileName: string): string {
 }
 
 function isBlockedAttachmentExtension(ext: string): boolean {
-  return BLOCKED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
+  return !ALLOWED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
 }

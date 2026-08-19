@@ -28,7 +28,6 @@ export default function CommandPalette({ open, onClose }: Props) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [assets, setAssets] = useState<AssetListItem[]>([]);
-  const [allAssets, setAllAssets] = useState<AssetListItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,35 +40,41 @@ export default function CommandPalette({ open, onClose }: Props) {
   onCloseRef.current = onClose;
   navigateRef.current = navigate;
 
-  // Load all assets once when palette opens
   useEffect(() => {
-    if (!open) { setQuery(''); setCursor(0); return; }
+    if (!open) { setQuery(''); setCursor(0); setAssets([]); return; }
     inputRef.current?.focus();
-    if (allAssets !== null) return;
-    setLoading(true);
-    assetsApi.getList()
-      .then((r) => setAllAssets(r.data as AssetListItem[]))
-      .catch(() => setAllAssets([]))
-      .finally(() => setLoading(false));
   }, [open]);
 
-  // Filter results
+  // Asset search.
+  //
+  // This used to download every asset the user can see the first time the palette was
+  // opened, then filter that array in the browser. AT.stpAssetsListPaged searches the same
+  // columns in SQL, so asking for one page of 8 replaces the whole-table transfer — and the
+  // results are no longer stale for assets added since the palette was first opened.
+  //
+  // Debounced because this fires per keystroke, and cancelled on each change so a slow
+  // earlier response cannot overwrite the results for what is now in the box.
   useEffect(() => {
-    if (!query.trim() || !allAssets) { setAssets([]); return; }
-    const q = query.toLowerCase();
-    setAssets(
-      allAssets
-        .filter(
-          (a) =>
-            a.assetCode.toLowerCase().includes(q) ||
-            a.assetDesc.toLowerCase().includes(q) ||
-            (a.barcodeNumber ?? '').toLowerCase().includes(q) ||
-            (a.category ?? '').toLowerCase().includes(q)
-        )
-        .slice(0, 8)
-    );
-    setCursor(0);
-  }, [query, allAssets]);
+    if (!open || !query.trim()) { setAssets([]); return; }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const r = await assetsApi.getListPaginated(1, 10, undefined, query.trim(), undefined, controller.signal);
+        setAssets(r.data.data.slice(0, 8));
+        setCursor(0);
+      } catch (error) {
+        const name = (error as { name?: string })?.name;
+        if (name === 'CanceledError' || name === 'AbortError') return;
+        setAssets([]);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, 250);
+
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [open, query]);
 
   const filteredNav = query
     ? NAV_SHORTCUTS.filter((n) => n.label.toLowerCase().includes(query.toLowerCase()))

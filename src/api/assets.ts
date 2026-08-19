@@ -28,12 +28,15 @@ export const assetsApi = {
     client.get<LeftEmployeeAsset[]>('/assets/left-employees', { params: companyId ? { companyId } : {} }),
   // search and statusIds are applied in SQL. Passing them means the page no longer
   // has to download every asset to filter locally. Omit them and behaviour is unchanged.
+  // `signal` lets the caller cancel an in-flight page request. Without it, a response for
+  // an older filter can arrive after a newer one and overwrite the grid with stale rows.
   getListPaginated: (
     pageNumber: number = 1,
     pageSize: number = 10,
     companyId?: number,
     search?: string,
     statusIds?: number[],
+    signal?: AbortSignal,
   ) =>
     client.get<PaginatedResponse<AssetListItem>>('/assets/paginated', {
       params: {
@@ -43,6 +46,7 @@ export const assetsApi = {
         ...(search && search.trim() ? { search: search.trim() } : {}),
         ...(statusIds && statusIds.length ? { statusIds: statusIds.join(',') } : {}),
       },
+      signal,
     }),
   // One row per status, for the status tiles — replaces counting a full asset download.
   getStatusCounts: (companyId?: number) =>

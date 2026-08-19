@@ -53,8 +53,13 @@ type StatusChangeForm = {
 };
 
 const STATUSES_WITH_MODAL = new Set([1, 3, 4, 7]); // 2 is now handled by TransferAssetModal
-const BLOCKED_ATTACHMENT_EXTENSIONS = new Set(['csv', 'txt', 'gif', 'webp']);
-const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.bmp,.svg';
+// Allowlist, mirroring AttachmentContentValidator on the server. The old four-item
+// blocklist let through .exe, .aspx, .html and .js. SVG is excluded: it is XML that can
+// carry script, and the server no longer stores or serves it.
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  'pdf', 'png', 'jpg', 'jpeg', 'bmp', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+]);
+const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.bmp';
 
 // Shared input style
 const inp = 'input-base';
@@ -2376,7 +2381,7 @@ function getMimeTypeFromExt(ext: string): string {
     jpg: 'image/jpeg',
     jpeg: 'image/jpeg',
     bmp: 'image/bmp',
-    svg: 'image/svg+xml',
+    // No svg+xml: an SVG rendered from a blob: URL runs in this origin.
     avif: 'image/avif',
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     xls: 'application/vnd.ms-excel',
@@ -2574,7 +2579,7 @@ function AttachmentsTab({ readOnly, assetId, items, onChange }: { readOnly: bool
 
 function AttachmentPreviewModal({ item, url, onClose }: { item: Attachment; url: string; onClose: () => void }) {
   const ext = (item.attFileExt ?? '').trim().toLowerCase().replace(/^\./, '');
-  const isImage = ['png', 'jpg', 'jpeg', 'bmp', 'svg', 'avif'].includes(ext);
+  const isImage = ['png', 'jpg', 'jpeg', 'bmp', 'avif'].includes(ext);
   const isPdf   = ext === 'pdf';
 
   return (
@@ -2600,7 +2605,7 @@ function getNormalizedFileExtension(fileName: string): string {
 }
 
 function isBlockedAttachmentExtension(ext: string): boolean {
-  return BLOCKED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
+  return !ALLOWED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
 }
 
 // ─── Remark Tab ───────────────────────────────────────────────────────────────
