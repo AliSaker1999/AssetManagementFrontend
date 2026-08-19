@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as signalR from '@microsoft/signalr';
 import type { AppNotification } from '../types';
 import { notificationsApi } from '../api/notifications';
@@ -16,7 +16,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
   // Load initial notifications
   useEffect(() => {
@@ -69,8 +69,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   }, []);
 
+  // This provider wraps the whole authenticated shell and re-renders on every notification
+  // that arrives over SignalR, so an unmemoised value object would push a re-render through
+  // every consumer each time — including ones that only read markRead.
+  const value = useMemo(
+    () => ({ notifications, unreadCount, markRead, markAllRead }),
+    [notifications, unreadCount, markRead, markAllRead],
+  );
+
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markRead, markAllRead }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import PageChunkFallback from './PageChunkFallback';
 import { useAuth } from '../contexts/AuthContext';
 import { NotificationProvider } from '../contexts/NotificationContext';
 import clsx from 'clsx';
@@ -467,7 +468,11 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
 
         {/* Main content */}
         <main className="flex-1 min-w-0 bg-pearl-50 min-h-[calc(100vh-44px)] overflow-x-hidden overflow-y-auto">
-          <Outlet />
+          {/* Inside Layout on purpose: the chrome stays on screen while a page
+              chunk downloads, rather than the whole app blanking. */}
+          <Suspense fallback={<PageChunkFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

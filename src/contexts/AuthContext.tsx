@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import client from '../api/client';
 import type { User, LoginResponse, UserPermission } from '../types';
 
@@ -76,8 +76,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuditor = useCallback(() => user?.roleId === 2, [user]);
   const isFullAccess = useCallback(() => user?.roleId === 3, [user]);
 
-  const allowedCountries = user?.permissions?.map(p => p.countryID) ?? [];
-  const allowedCompanies = user?.permissions?.map(p => p.companyID) ?? [];
+  // Memoised for identity, not for the cost of the map — a user has a handful of
+  // permissions. A fresh array on every render is a foot-gun: the moment any consumer puts
+  // one of these in a useEffect or useMemo dependency array it becomes an infinite loop,
+  // and nothing about the call site would look wrong.
+  const allowedCountries = useMemo(
+    () => user?.permissions?.map(p => p.countryID) ?? [],
+    [user],
+  );
+  const allowedCompanies = useMemo(
+    () => user?.permissions?.map(p => p.companyID) ?? [],
+    [user],
+  );
 
   useEffect(() => {
     const handlePermissionsRevoked = async () => {
@@ -106,13 +116,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // null = "All Companies" — no forced fallback to first company
   const resolvedActiveCompanyId = activeCompanyId;
 
-  return (
-    <AuthContext.Provider value={{
+  // A new object literal here gives every useAuth consumer a changed context value on each
+  // render of this provider, so all of them re-render even when nothing they read changed.
+  // In practice this provider only re-renders on login, logout and a company switch — page
+  // state lives in the pages themselves — so this is correctness and future-proofing rather
+  // than a hot-path win.
+  const value = useMemo(
+    () => ({
       user, login, logout, isAdmin, isAuditor, isFullAccess,
       allowedCountries, allowedCompanies,
       activeCompanyId: resolvedActiveCompanyId,
       setActiveCompanyId,
-    }}>
+    }),
+    [
+      user, login, logout, isAdmin, isAuditor, isFullAccess,
+      allowedCountries, allowedCompanies, resolvedActiveCompanyId, setActiveCompanyId,
+    ],
+  );
+
+  return (
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
@@ -5,18 +6,37 @@ import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
-import AssetsPage from './pages/AssetsPage';
-import AssetDetailPage from './pages/AssetDetailPage';
-import AssetFormPage from './pages/AssetFormPage';
-import InventoriesPage from './pages/InventoriesPage';
-import DepreciationsPage from './pages/DepreciationsPage';
-import ContactsPage from './pages/ContactsPage';
-import EmployeesPage from './pages/EmployeesPage';
-import SettingsPage from './pages/SettingsPage';
-import UsersPage from './pages/UsersPage';
-import CompaniesPage from './pages/CompaniesPage';
-import ReportsPage from './pages/ReportsPage';
 import useGlobalFormValidation from './hooks/useGlobalFormValidation';
+
+/*
+ * Route-level code splitting.
+ *
+ * Every page used to be a static import, so one bundle carried all of them — 794 KB, past
+ * Vite's own 500 KB warning. Someone opening the login screen downloaded the settings
+ * screen, the reports screen and the 2,000-line asset detail screen before they could type
+ * a password.
+ *
+ * Deliberately still eager:
+ *   LoginPage      the first thing an unauthenticated visitor sees; lazy-loading it would
+ *                  add a network round trip before the form appears.
+ *   Layout         needed the instant any protected route renders, so splitting it only
+ *                  moves the same bytes onto the critical path.
+ *   ProtectedRoute / ErrorBoundary / AuthProvider — small, and needed on every route.
+ *
+ * The Suspense boundary lives inside Layout, around its <Outlet />, so the sidebar and
+ * header stay on screen while a page chunk loads instead of the whole app blanking.
+ */
+const AssetsPage = lazy(() => import('./pages/AssetsPage'));
+const AssetDetailPage = lazy(() => import('./pages/AssetDetailPage'));
+const AssetFormPage = lazy(() => import('./pages/AssetFormPage'));
+const InventoriesPage = lazy(() => import('./pages/InventoriesPage'));
+const DepreciationsPage = lazy(() => import('./pages/DepreciationsPage'));
+const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const EmployeesPage = lazy(() => import('./pages/EmployeesPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const CompaniesPage = lazy(() => import('./pages/CompaniesPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 
 export default function App() {
   useGlobalFormValidation();
@@ -57,4 +77,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
