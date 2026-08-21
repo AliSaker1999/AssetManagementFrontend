@@ -1737,12 +1737,15 @@ function MaintenanceTab({
     const ok = await confirm('This maintenance record will be permanently removed.', { title: 'Delete Maintenance?' });
     if (!ok) return;
     try {
-      await maintenancesApi.delete(item.maintID, {
+      const r = await maintenancesApi.delete(item.maintID, {
         assetID: item.assetID, attID: item.attID ?? null, fromDate: item.fromDate, toDate: item.toDate,
         supplierContactID: item.supplierContactID, cost: item.cost,
         curCode: item.curCode, remark: item.remark ?? null,
       });
       onChange(items.filter((i) => i.maintID !== item.maintID));
+      // Null means this record wasn't the one holding the asset "Under Maintenance"
+      // (already returned, a sibling maintenance is still open, etc.) — see the API.
+      if (r.data.revertedStatusID != null) onAssetStatusChange(r.data.revertedStatusID);
       toast.success('Deleted');
     } catch (err) { handleApiError(err, 'Delete failed'); }
   }

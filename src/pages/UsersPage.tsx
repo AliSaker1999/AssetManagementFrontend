@@ -24,6 +24,8 @@ const btnPrimary = 'px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg tex
 const btnSmCls = 'px-2.5 py-1 bg-[#f3f4f6] text-[#374151] border-none rounded-md text-xs cursor-pointer hover:bg-[#e5e7eb]';
 const btnEditCls = 'bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]';
 const btnDangerCls = 'px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors';
+const btnWarnCls = 'px-2.5 py-1 bg-[#fef3c7] text-[#92400e] border border-[#fde68a] rounded-md text-xs cursor-pointer hover:bg-[#fde68a]';
+const lockedBadgeCls = 'ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#fef3c7] text-[#92400e] align-middle';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserListItem[]>([]);
@@ -174,6 +176,16 @@ export default function UsersPage() {
     }
   }
 
+  async function handleUnlock(id: number) {
+    try {
+      await usersApi.unlockUser(id);
+      setUsers(u => u.map(x => (x.userID === id ? { ...x, failedLoginCount: 0, lockoutUntil: null, isLockedOut: false } : x)));
+      toast.success('User unlocked');
+    } catch (err) {
+      handleApiError(err, 'Failed to unlock user');
+    }
+  }
+
   async function handleGrant() {
     if (!selectedUser || !grantCompanyID) return;
     const co = companies.find(c => c.companyID === Number(grantCompanyID));
@@ -248,11 +260,20 @@ export default function UsersPage() {
                 className={clsx('cursor-pointer', selectedUser?.userID === u.userID && showAccessModal ? 'bg-[#eef3fb]' : 'hover:bg-surface')}
                 onClick={() => openAccessModal(u)}
               >
-                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.fullName}</td>
+                <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">
+                  {u.fullName}
+                  {u.isLockedOut && <span className={lockedBadgeCls} title={`${u.failedLoginCount} failed attempt(s)`}>Locked</span>}
+                </td>
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.userName}</td>
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.emailAddress}</td>
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6]">{u.roleName}</td>
                 <td className="px-3 py-2.5 text-[13px] text-[#374151] border-b border-[#f3f4f6] whitespace-nowrap">
+                  {u.isLockedOut && (
+                    <>
+                      <button className={btnWarnCls} onClick={e => { e.stopPropagation(); handleUnlock(u.userID); }}>Unlock</button>
+                      {' '}
+                    </>
+                  )}
                   <button className={btnEditCls} onClick={e => { e.stopPropagation(); openEdit(u); }}>Edit</button>
                   {' '}
                   <button className={btnDangerCls} onClick={e => { e.stopPropagation(); handleDelete(u.userID); }}>Del</button>

@@ -14,6 +14,8 @@ export const usersApi = {
 
   deleteUser: (id: number) => client.delete(`/users/${id}`),
 
+  unlockUser: (id: number) => client.post(`/users/${id}/unlock`),
+
   getPermissions: (userId: number) => client.get(`/users/${userId}/permissions`),
 
   grantPermission: (userId: number, data: { countryID: string; companyID: number }) =>

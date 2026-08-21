@@ -493,6 +493,9 @@ export interface UserListItem {
   emailAddress: string;
   roleID: number;
   roleName: string;
+  failedLoginCount: number;
+  lockoutUntil: string | null;
+  isLockedOut: boolean;
 }
 
 export interface UserPermission {
