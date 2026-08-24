@@ -16,7 +16,6 @@ import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
-import DamagePicker, { emptyNewDamage, type NewDamageForm } from '../components/DamagePicker';
 import { companyPrmCurrency } from '../utils/currency';
 import { fmtDate, fmtDateTime } from '../utils/date';
 import type {
@@ -24,9 +23,9 @@ import type {
   Maintenance, Warranty, Damage, Attachment, Contact, Currency, StatusType,
 } from '../types';
 
-type Tab = 'info' | 'depreciation' | 'inventory' | 'status' |'damage' | 'maintenance' | 'warranty' |  'attachments' | 'remark';
+type Tab = 'info' | 'depreciation' | 'inventory' | 'status' |'damage' | 'warranty' |  'attachments' | 'remark';
 
-const TAB_KEYS: Tab[] = ['info', 'depreciation', 'inventory', 'status', 'damage', 'maintenance', 'warranty',  'attachments', 'remark'];
+const TAB_KEYS: Tab[] = ['info', 'depreciation', 'inventory', 'status', 'damage', 'warranty',  'attachments', 'remark'];
 /**
  * Spelled out rather than derived from Maintenance: the row carries fields the form has
  * no business editing (returnedDate, and the damageDesc/damageDate/damageFixed columns
@@ -341,11 +340,11 @@ export default function AssetDetailPage() {
   const [statusMaintForm, setStatusMaintForm] = useState<MaintForm>({ damageID: '', attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [statusMaintAttachmentFile, setStatusMaintAttachmentFile] = useState<File | null>(null);
   const [savingStatusMaintenance, setSavingStatusMaintenance] = useState(false);
-  // Damages this asset may be sent to maintenance for: open, and not already out for
-  // repair. Refetched every time the modal opens so it can't offer a stale option.
-  const [selectableDamages, setSelectableDamages] = useState<Damage[]>([]);
-  // null = choose an existing damage; set = the user is recording a new one inline.
-  const [newDamage, setNewDamage] = useState<NewDamageForm | null>(null);
+  // The damage the Send to Maintenance modal is repairing — always known up front now,
+  // since the modal is only ever opened from a specific row on the Damage tab. Shown as
+  // read-only info rather than a picker. Refetched every time the modal opens so a damage
+  // another user just fixed or dispatched can't be offered.
+  const [maintenanceDamage, setMaintenanceDamage] = useState<Damage | null>(null);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusModalStatusId, setStatusModalStatusId] = useState<number | null>(null);
   const [statusChangeForm, setStatusChangeForm] = useState<StatusChangeForm>({
@@ -426,13 +425,12 @@ export default function AssetDetailPage() {
   }
 
   /**
-   * The single entry point to the maintenance modal, used by both the status dropdown and
-   * the Damage tab's "Send to Maintenance" button. Pass a damage id to arrive with it
-   * already chosen.
+   * The single entry point to the Send to Maintenance modal — always reached from a
+   * specific damage's row on the Damage tab, so the damage is never in question.
    */
-  async function openUnderMaintenanceModal(preselectDamageId?: number) {
+  async function openUnderMaintenanceModal(damageId: number) {
     if (readOnly) return;
-    if (asset?.statusID === 10) return;
+    if (asset?.statusID === 8 || asset?.statusID === 10) return;
 
     try {
       let nextContacts = contacts;
@@ -447,32 +445,18 @@ export default function AssetDetailPage() {
         lookupsLoadedRef.current = true;
       }
 
-      // Always fresh: another user may have fixed or dispatched a damage since this page
-      // loaded, and the API rejects either, so the picker must not still be offering it.
+      // Always fresh: another user may have fixed or dispatched this damage since this
+      // page loaded, and the API rejects either.
       const selectable = (await damagesApi.getSelectableByAsset(assetId)).data;
-      setSelectableDamages(selectable);
-
-      // A preselected damage that is no longer selectable is a genuine conflict — say so
-      // rather than silently opening the modal with an option the API will reject.
-      if (preselectDamageId != null && !selectable.some((d) => d.damageID === preselectDamageId)) {
+      const target = selectable.find((d) => d.damageID === damageId);
+      if (!target) {
         toast.error('That damage is already fixed or already out for repair.');
         void refreshDamages();
         return;
       }
 
-      // Nothing repairable on record yet, so start in "new damage" mode — the modal is
-      // still usable, it just captures the damage on the way through.
-      setNewDamage(
-        selectable.length === 0 && preselectDamageId == null ? emptyNewDamage() : null
-      );
-
-      // Preselected wins; otherwise the newest selectable damage, which is the one a user
-      // arriving from the status menu almost always means.
-      setStatusMaintForm(makeDefaultMaintenanceForm(
-        nextContacts,
-        nextCurrencies,
-        preselectDamageId ?? selectable[0]?.damageID ?? ''
-      ));
+      setMaintenanceDamage(target);
+      setStatusMaintForm(makeDefaultMaintenanceForm(nextContacts, nextCurrencies, damageId));
       setStatusMaintAttachmentFile(null);
       setStatusMaintenanceModalOpen(true);
     } catch (err) {
@@ -565,32 +549,14 @@ export default function AssetDetailPage() {
       toast.error('From Date must be before or equal to To Date');
       return;
     }
-    if (newDamage) {
-      if (!newDamage.damageDesc.trim()) {
-        toast.error('Describe the damage being repaired');
-        return;
-      }
-    } else if (!statusMaintForm.damageID) {
+    if (!statusMaintForm.damageID) {
       toast.error('Select the damage being repaired');
       return;
     }
 
     setSavingStatusMaintenance(true);
     try {
-      // The damage has to exist before the maintenance can point at it. Created first and
-      // separately: if the maintenance then fails, the damage is still a real fault worth
-      // keeping on the asset, and the modal reopens with it selectable.
-      let damageID = statusMaintForm.damageID;
-      if (newDamage) {
-        const createdDamage = await damagesApi.create({
-          assetID: assetId,
-          damageDate: newDamage.damageDate,
-          damageDesc: newDamage.damageDesc.trim(),
-        });
-        damageID = createdDamage.data.damageID;
-        setDamages((prev) => [createdDamage.data, ...prev]);
-      }
-
+      const damageID = statusMaintForm.damageID;
       let attID = statusMaintForm.attID ?? null;
       if (statusMaintAttachmentFile) {
         const base64 = await toBase64(statusMaintAttachmentFile);
@@ -623,10 +589,9 @@ export default function AssetDetailPage() {
       // The damage is now out for repair, so its row must lose its send button.
       void refreshDamages();
       void refreshStatusHistory();
-      setTab('maintenance');
       setStatusMaintenanceModalOpen(false);
       setStatusMaintAttachmentFile(null);
-      setNewDamage(null);
+      setMaintenanceDamage(null);
       toast.success('Asset moved to Under Maintenance');
     } catch (err) {
       handleApiError(err, 'Failed to move asset to maintenance');
@@ -756,7 +721,15 @@ export default function AssetDetailPage() {
       assetsApi.getStatusHistory(assetId)
         .then((r) => setStatusHistory(r.data as StatusHistoryItem[]))
         .catch((err) => handleApiError(err, 'Failed to load status history'));
-    if (tab === 'maintenance') {
+    if (tab === 'warranty' && warranties.length === 0)
+      warrantiesApi.getByAsset(assetId).then((r) => setWarranties(r.data as Warranty[]));
+    if (tab === 'damage') {
+      if (damages.length === 0)
+        damagesApi.getByAsset(assetId)
+          .then((r) => setDamages(r.data))
+          .catch((err) => handleApiError(err, 'Failed to load damage records'));
+      // Every damage row's Maintenance button needs this, so it's loaded with the tab
+      // rather than lazily per row.
       if (maintenances.length === 0)
         maintenancesApi.getByAsset(assetId).then((r) => setMaintenances(r.data as Maintenance[]));
       if (!lookupsLoadedRef.current) {
@@ -768,12 +741,6 @@ export default function AssetDetailPage() {
           });
       }
     }
-    if (tab === 'warranty' && warranties.length === 0)
-      warrantiesApi.getByAsset(assetId).then((r) => setWarranties(r.data as Warranty[]));
-    if (tab === 'damage' && damages.length === 0)
-      damagesApi.getByAsset(assetId)
-        .then((r) => setDamages(r.data))
-        .catch((err) => handleApiError(err, 'Failed to load damage records'));
     if (tab === 'attachments' && attachments.length === 0)
       attachmentsApi.getGeneralByAsset(assetId).then((r) => setAttachments(r.data as Attachment[]));
   }, [tab, assetId]);
@@ -813,9 +780,7 @@ export default function AssetDetailPage() {
     { key: 'inventory', label: 'Inventory' },
     { key: 'status', label: 'Status History' },
     { key: 'damage', label: 'Damage' },
-    { key: 'maintenance', label: 'Maintenance' },
     { key: 'warranty', label: 'Warranty' },
-    
     { key: 'attachments', label: 'Attachments' },
     { key: 'remark', label: 'Remark' },
   ];
@@ -911,7 +876,9 @@ export default function AssetDetailPage() {
                     {openStatusMenu && (
                       <div className="absolute top-[calc(100%+6px)] left-0 z-30 min-w-[220px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1">
                         {statuses
-                          .filter((s) => ![5, 9, 10].includes(s.statusID))
+                          // 8 (Under Maintenance) is reachable only via a damage's "Send to
+                          // Maintenance" button now, not from this menu.
+                          .filter((s) => ![5, 8, 9, 10].includes(s.statusID))
                           .map((s) => (
                             <button
                               type="button"
@@ -922,10 +889,6 @@ export default function AssetDetailPage() {
                                   return;
                                 }
                                 setOpenStatusMenu(false);
-                                if (s.statusID === 8) {
-                                  void openUnderMaintenanceModal();
-                                  return;
-                                }
                                 if (s.statusID === 2) {
                                   openTransferModal();
                                   return;
@@ -1073,19 +1036,6 @@ export default function AssetDetailPage() {
             columns={['statusDate', 'statusName', 'statusDesc', 'contactName', 'statusSalePrice', 'statusSaleCurCode', 'createdByFullName']}
           />
         )}
-        {tab === 'maintenance' && (
-          <MaintenanceTab
-            readOnly={readOnly}
-            assetId={assetId}
-            assetStatusID={asset?.statusID ?? null}
-            onAssetStatusChange={(sid) => setAsset(a => a ? { ...a, statusID: sid, statusName: statuses.find((s) => s.statusID === sid)?.status ?? 'Active' } : a)}
-            items={maintenances}
-            contacts={contacts}
-            currencies={currencies}
-            onChange={setMaintenances}
-            onReturned={() => { void refreshDamages(); void refreshStatusHistory(); }}
-          />
-        )}
         {tab === 'warranty' && (
           <WarrantyTab readOnly={readOnly} assetId={assetId} items={warranties} onChange={setWarranties} />
         )}
@@ -1095,10 +1045,17 @@ export default function AssetDetailPage() {
             assetId={assetId}
             items={damages}
             onChange={setDamages}
+            assetStatusID={asset?.statusID ?? null}
             // Already under maintenance (8) or locked by an inventory (10): the status
             // cannot move, so offering the button would only produce a rejection.
             canSendToMaintenance={asset?.statusID !== 8 && asset?.statusID !== 10}
             onSendToMaintenance={(d) => void openUnderMaintenanceModal(d.damageID)}
+            maintenances={maintenances}
+            onMaintenancesChange={setMaintenances}
+            contacts={contacts}
+            currencies={currencies}
+            onAssetStatusChange={(sid) => setAsset(a => a ? { ...a, statusID: sid, statusName: statuses.find((s) => s.statusID === sid)?.status ?? 'Active' } : a)}
+            onMaintenanceReturned={() => { void refreshDamages(); void refreshStatusHistory(); }}
           />
         )}
         {tab === 'attachments' && (
@@ -1200,18 +1157,19 @@ export default function AssetDetailPage() {
         />
       )}
 
-      {/* Send to maintenance. Always repairs a damage — picked from the asset's open
-          damages, or recorded inline when the fault isn't on file yet. */}
+      {/* Send to maintenance. Always repairs the one damage whose row this was opened
+          from — chosen there, so it is shown here as info rather than a picker. */}
       {!readOnly && statusMaintenanceModalOpen && (
         <Modal title="Send to Maintenance" onClose={() => setStatusMaintenanceModalOpen(false)}>
           <form onSubmit={handleStatusMaintenanceSubmit}>
-            <DamagePicker
-              damages={selectableDamages}
-              damageID={statusMaintForm.damageID}
-              onSelect={(id) => setStatusMaintField('damageID', id)}
-              newDamage={newDamage}
-              onNewDamageChange={setNewDamage}
-            />
+            <div className="mb-4 rounded-xl border border-navy-100 bg-navy-50/40 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-navy-600 mb-2">
+                Damage being repaired
+              </div>
+              <div className="text-[13px] text-ink-800 font-medium">
+                {maintenanceDamage ? `${fmtDate(maintenanceDamage.damageDate)} — ${maintenanceDamage.damageDesc}` : '—'}
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormRow label="From Date *">
                 <input className={inp} type="date" value={statusMaintForm.fromDate} max={statusMaintForm.toDate || undefined} onChange={(e) => setStatusMaintField('fromDate', e.target.value)} required />
@@ -1534,11 +1492,11 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string; onClose: () => void; children: React.ReactNode; width?: string }) {
+function Modal({ title, onClose, children, width = 'max-w-lg', contentClassName }: { title: string; onClose: () => void; children: React.ReactNode; width?: string; contentClassName?: string }) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
-        <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
+      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200 flex flex-col`}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200 shrink-0">
           <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
           <button
             onClick={onClose}
@@ -1547,7 +1505,7 @@ function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string
             <IconClose />
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className={clsx('px-6 py-5', contentClassName)}>{children}</div>
       </div>
     </div>
   );
@@ -1562,21 +1520,25 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-// ─── Maintenance Tab ─────────────────────────────────────────────────────────
+// ─── Damage Maintenance Modal ────────────────────────────────────────────────
 
 /**
- * This tab edits and returns maintenance records but cannot create one: a maintenance now
- * requires a damage, and the damage picker lives on the parent's Send to Maintenance
- * modal. The old (already commented-out) "Add Maintenance" button here would have been a
- * second path that skipped that requirement.
+ * Maintenance history for one damage, opened from the Damage tab's "Maintenance" button.
+ * There is no standalone Maintenance tab any more — a maintenance is always reached
+ * through the damage it repairs — so this is the one place left to edit, return, or
+ * delete those records. It cannot create one: creation happens from the damage row's
+ * "Send to Maintenance" button, which is what guarantees a damage never picks up a
+ * second live maintenance record.
  */
-function MaintenanceTab({
-  readOnly, assetId, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange, onReturned,
+function DamageMaintenanceModal({
+  readOnly, assetId, damage, assetStatusID, onAssetStatusChange, items, contacts, currencies, onChange, onReturned, onClose,
 }: {
   readOnly: boolean;
   assetId: number;
+  damage: Damage;
   assetStatusID: number | null;
   onAssetStatusChange: (sid: number) => void;
+  /** Every maintenance record for the asset — filtered down to this damage below. */
   items: Maintenance[];
   contacts: Contact[];
   currencies: Currency[];
@@ -1586,10 +1548,13 @@ function MaintenanceTab({
    * correcting that result in Edit Maintenance — since the Damage tab has to be re-read.
    */
   onReturned: () => void;
+  onClose: () => void;
 }) {
+  const records = items.filter((m) => m.damageID === damage.damageID);
+
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [editing, setEditing] = useState<Maintenance | null>(null);
-  const [form, setForm] = useState<MaintForm>({ damageID: '', attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
+  const [form, setForm] = useState<MaintForm>({ damageID: damage.damageID, attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
@@ -1607,6 +1572,7 @@ function MaintenanceTab({
   useEffect(() => {
     const linkedIds = new Set(
       items
+        .filter((m) => m.damageID === damage.damageID)
         .map((x) => x.attID)
         .filter((id): id is number => typeof id === 'number' && id > 0)
     );
@@ -1627,7 +1593,7 @@ function MaintenanceTab({
         setAttachmentNames(map);
       })
       .catch(() => setAttachmentNames({}));
-  }, [assetId, items]);
+  }, [assetId, items, damage.damageID]);
 
   function openReturn(m: Maintenance) {
     if (readOnly) return;
@@ -1669,7 +1635,7 @@ function MaintenanceTab({
     setEditDamageFixed(item.returnedDate == null ? null : item.damageFixed ?? false);
     setAttachmentFile(null);
   }
-  function close() { setEditing(null); setAttachmentFile(null); setEditDamageFixed(null); }
+  function closeEdit() { setEditing(null); setAttachmentFile(null); setEditDamageFixed(null); }
   function setF<K extends keyof MaintForm>(k: K, v: MaintForm[K]) { setForm((p) => ({ ...p, [k]: v })); }
 
   async function handleSubmit(e: FormEvent) {
@@ -1727,7 +1693,7 @@ function MaintenanceTab({
           toast.success('Maintenance updated');
         }
       }
-      close();
+      closeEdit();
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSaving(false); }
   }
@@ -1759,40 +1725,54 @@ function MaintenanceTab({
   );
   // Fixed tracks throughout, for the same reason as DAMAGE_COLS: each row is its own grid
   // container, so an `auto` column would size per row and break vertical alignment.
-  const cols = 'grid-cols-[2fr_1fr_1fr_1.6fr_1fr_2fr_2fr_170px_265px]';
+  const cols = 'grid-cols-[130px_1fr_1fr_1.6fr_1fr_2fr_2fr_170px_265px]';
 
   return (
-    <>
+    <Modal
+      title="Maintenance History"
+      onClose={onClose}
+      width="max-w-7xl"
+      contentClassName="min-h-[65vh] max-h-[80vh] overflow-y-auto"
+    >
       {confirmDialog}
 
-      {items.length === 0 ? (
-        <EmptyState message="No maintenance records. An asset reaches maintenance by being sent there from a damage." />
+      <div className="rounded-lg border border-pearl-200 bg-pearl-50 px-4 py-3 mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-300 mb-1">Damage</div>
+          <div className="text-[13px] text-ink-800 font-medium break-words">{fmtDate(damage.damageDate)} — {damage.damageDesc}</div>
+        </div>
+        {damage.fixed
+          ? <Pill tone="green">Fixed</Pill>
+          : damage.underMaintenance
+            ? <Pill tone="amber">Out for repair</Pill>
+            : <Pill tone="red">Open</Pill>}
+      </div>
+
+      {records.length === 0 ? (
+        <EmptyState message="No maintenance records for this damage yet." />
       ) : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className={clsx('grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[1400px]', cols)}>
-            {['Damage', 'From', 'To', 'Supplier', 'Cost', 'Work Performed', 'Remark', 'Attachment', 'Actions'].map((h, i, arr) => (
+          <div className={clsx('grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[1250px]', cols)}>
+            {['Status', 'From', 'To', 'Supplier', 'Cost', 'Work Performed', 'Remark', 'Attachment', 'Actions'].map((h, i, arr) => (
               <div key={i} className={clsx(
                 'text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300',
                 i === arr.length - 1 && 'text-right'
               )}>{h}</div>
             ))}
           </div>
-          {items.map((m, i) => {
+          {records.map((m, i) => {
             const open = m.returnedDate == null;
             return (
               <div key={m.maintID} className={clsx(
-                'grid gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[1400px]', cols,
-                i < items.length - 1 && 'border-b border-pearl-200'
+                'grid gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[1250px]', cols,
+                i < records.length - 1 && 'border-b border-pearl-200'
               )}>
-                <div className="min-w-0">
-                  <div className="text-[12px] text-ink-800 font-medium break-words">{m.damageDesc ?? '—'}</div>
-                  <div className="mt-1">
-                    {open
-                      ? <Pill tone="amber">Out for repair</Pill>
-                      : m.damageFixed
-                        ? <Pill tone="green">Fixed {fmtDate(m.returnedDate)}</Pill>
-                        : <Pill tone="red">Not fixed {fmtDate(m.returnedDate)}</Pill>}
-                  </div>
+                <div>
+                  {open
+                    ? <Pill tone="amber">Out for repair</Pill>
+                    : m.damageFixed
+                      ? <Pill tone="green">Fixed {fmtDate(m.returnedDate)}</Pill>
+                      : <Pill tone="red">Not fixed {fmtDate(m.returnedDate)}</Pill>}
                 </div>
                 <div className="text-[12px] text-ink-700">{fmtDate(m.fromDate)}</div>
                 <div className="text-[12px] text-ink-700">{fmtDate(m.toDate)}</div>
@@ -1882,7 +1862,7 @@ function MaintenanceTab({
       )}
 
       {!readOnly && editing && (
-        <Modal title="Edit Maintenance" onClose={close}>
+        <Modal title="Edit Maintenance" onClose={closeEdit}>
           <form onSubmit={handleSubmit}>
             {/* Read-only: re-pointing a maintenance at a different fault would rewrite
                 history. Fix the damage text on the Damage tab instead. */}
@@ -1999,11 +1979,11 @@ function MaintenanceTab({
                 </div>
               )}
             </FormRow>
-            <ModalActions saving={saving} onCancel={close} />
+            <ModalActions saving={saving} onCancel={closeEdit} />
           </form>
         </Modal>
       )}
-    </>
+    </Modal>
   );
 }
 
@@ -2228,9 +2208,12 @@ type DamageForm = { damageDate: string; damageDesc: string };
  * with Send to Maintenance laid out differently from one without, leaving the Status
  * pills and the header at three different x positions. Fixed width, contents right-aligned.
  */
-const DAMAGE_COLS = 'grid-cols-[120px_minmax(180px,1fr)_150px_310px]';
+const DAMAGE_COLS = 'grid-cols-[120px_minmax(180px,1fr)_150px_420px]';
 
-function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, onSendToMaintenance }: {
+function DamageTab({
+  readOnly, assetId, items, onChange, canSendToMaintenance, onSendToMaintenance,
+  assetStatusID, maintenances, onMaintenancesChange, contacts, currencies, onAssetStatusChange, onMaintenanceReturned,
+}: {
   readOnly: boolean;
   assetId: number;
   items: Damage[];
@@ -2238,15 +2221,27 @@ function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, o
   /** False while the asset is already under maintenance or locked by an inventory. */
   canSendToMaintenance: boolean;
   onSendToMaintenance: (damage: Damage) => void;
+  assetStatusID: number | null;
+  /** Every maintenance record for the asset — the history modal filters to one damage. */
+  maintenances: Maintenance[];
+  onMaintenancesChange: (v: Maintenance[]) => void;
+  contacts: Contact[];
+  currencies: Currency[];
+  onAssetStatusChange: (sid: number) => void;
+  onMaintenanceReturned: () => void;
 }) {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [modal, setModal] = useState<'add' | 'edit' | null>(null);
   const [editing, setEditing] = useState<Damage | null>(null);
   const [form, setForm] = useState<DamageForm>({ damageDate: '', damageDesc: '' });
   const [saving, setSaving] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<Damage | null>(null);
+  // The asset is already out for repair for some damage — a new fault cannot be logged
+  // until it returns, mirroring the check the API makes on create.
+  const underRepair = assetStatusID === 8;
 
   function openAdd() {
-    if (readOnly) return;
+    if (readOnly || underRepair) return;
     setEditing(null);
     setForm({ damageDate: new Date().toISOString().slice(0, 10), damageDesc: '' });
     setModal('add');
@@ -2301,13 +2296,20 @@ function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, o
       {confirmDialog}
       {!readOnly && (
         <div className="flex justify-end mb-4">
-          <button onClick={openAdd} className="btn-primary"><IconPlus /> Add Damage</button>
+          <button
+            onClick={openAdd}
+            disabled={underRepair}
+            title={underRepair ? 'Cannot add a damage while the asset is under maintenance' : undefined}
+            className={clsx('btn-primary', underRepair && 'opacity-50 cursor-not-allowed')}
+          >
+            <IconPlus /> Add Damage
+          </button>
         </div>
       )}
 
       {items.length === 0 ? <EmptyState message="No damage records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className={clsx(DAMAGE_COLS, 'grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[880px]')}>
+          <div className={clsx(DAMAGE_COLS, 'grid gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[990px]')}>
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Date</div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Description</div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">Status</div>
@@ -2316,7 +2318,7 @@ function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, o
           {items.map((d, i) => (
             <div key={d.damageID} className={clsx(
               DAMAGE_COLS,
-              'grid gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[880px]',
+              'grid gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[990px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
               <div className="text-[12px] text-ink-600 whitespace-nowrap">{fmtDate(d.damageDate)}</div>
@@ -2343,6 +2345,7 @@ function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, o
                     Send to Maintenance
                   </button>
                 )}
+                <ActionBtn onClick={() => setHistoryTarget(d)}>Maintenance</ActionBtn>
                 {!readOnly && <ActionBtn onClick={() => openEdit(d)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(d)}>Delete</ActionBtn>}
               </div>
@@ -2370,6 +2373,22 @@ function DamageTab({ readOnly, assetId, items, onChange, canSendToMaintenance, o
             <ModalActions saving={saving} onCancel={close} />
           </form>
         </Modal>
+      )}
+
+      {historyTarget && (
+        <DamageMaintenanceModal
+          readOnly={readOnly}
+          assetId={assetId}
+          damage={historyTarget}
+          assetStatusID={assetStatusID}
+          onAssetStatusChange={onAssetStatusChange}
+          items={maintenances}
+          contacts={contacts}
+          currencies={currencies}
+          onChange={onMaintenancesChange}
+          onReturned={onMaintenanceReturned}
+          onClose={() => setHistoryTarget(null)}
+        />
       )}
     </>
   );

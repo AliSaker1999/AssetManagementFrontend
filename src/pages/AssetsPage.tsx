@@ -1,39 +1,18 @@
-import { createPortal } from 'react-dom';
-import { useCallback, useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type FormEvent , type ReactNode, type RefObject} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams  } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { assetsApi } from '../api/assets';
-import { maintenancesApi } from '../api/maintenances';
-import { attachmentsApi } from '../api/attachments';
-import { contactsApi } from '../api/contacts';
 import { lookupsApi } from '../api/lookups';
-import { companyPrmCurrency } from '../utils/currency';
-import { damagesApi } from '../api/damages';
-import DamagePicker, { emptyNewDamage, type NewDamageForm } from '../components/DamagePicker';
-import type { AssetListItem, AssetStatusCount, Attachment, Company, Contact, Currency, Damage, Employee, LeftEmployeeAsset, PaginatedResponse, StatusType } from '../types';
+import type { AssetListItem, AssetStatusCount, Employee, LeftEmployeeAsset, PaginatedResponse, StatusType } from '../types';
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
-import Select from '../components/ui/Select';
-import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
 import { useAuth } from '../contexts/AuthContext';
-import TransferAssetModal from '../components/TransferAssetModal';
 import { fmtDate } from '../utils/date';
 
 
-interface StatusMenuProps {
-  anchorRef: RefObject<HTMLElement | null>;
-  onClose: () => void;
-  children: ReactNode;
-}
-
-// Layout constants for the floating status menu.
-const APP_HEADER_HEIGHT = 44;   // fixed top bar (h-11) the menu must not slide under
-const MENU_GAP = 6;             // gap between the anchor button and the menu
-const MENU_MARGIN = 8;          // minimum breathing room against the viewport edges
-const MENU_MIN_HEIGHT = 180;    // below this the menu scrolls rather than flips
 const COLUMNS: { key: string; label: string }[] = [
   { key: 'code', label: 'Code' },
   { key: 'description', label: 'Description' },
@@ -45,13 +24,13 @@ const COLUMNS: { key: string; label: string }[] = [
 ];
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
-  code: 110,
-  description: 180,
-  category: 100,
-  location: 220,
-  employee: 220,
-  status: 280,
-  barcode: 40,
+  code: 230,
+  description: 230,
+  category: 230,
+  location: 230,
+  employee: 230,
+  status: 150,
+  barcode: 230,
 };
 
 const COLUMN_MIN_WIDTHS: Record<string, number> = {
@@ -60,12 +39,11 @@ const COLUMN_MIN_WIDTHS: Record<string, number> = {
   category: 70,
   location: 90,
   employee: 100,
-  status: 180, // needs room for the status button + Remove Status button
+  status: 180, // fits the read-only status pill
   barcode: 50,
 };
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
-const inp = 'input-base';
 
 /**
  * The order of the status filter chips. The lookup returns statuses by StatusID, which is
@@ -104,36 +82,6 @@ function byStatusFilterOrder(a: StatusType, b: StatusType): number {
   return ia - ib;
 }
 const metricShapeCls = 'rounded-[14px] border-[#d5ddef] border-t-0 shadow-[inset_0_3px_0_0_#1f2b7b,0_1px_2px_rgba(15,23,42,0.06)]';
-/**
- * Spelled out rather than derived from Maintenance: the row carries fields this form has
- * no business setting (returnedDate, and the damage columns joined in for display).
- */
-type MaintForm = {
-  damageID: number | '';
-  attID: number | null;
-  fromDate: string;
-  toDate: string;
-  supplierContactID: number;
-  cost: number;
-  curCode: string;
-  remark?: string;
-};
-type StatusChangeForm = {
-  statusDate: string;
-  statusDesc: string;
-  statusContactID: number | '';
-  statusSalePrice: number | '';
-  statusSaleCurCode: string;
-};
-
-const STATUSES_WITH_MODAL = new Set([1,  3, 4, 7]);
-// Allowlist, mirroring AttachmentContentValidator on the server. The old four-item
-// blocklist let through .exe, .aspx, .html and .js. SVG is excluded: it is XML that can
-// carry script, and the server no longer stores or serves it.
-const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
-  'pdf', 'png', 'jpg', 'jpeg', 'bmp', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-]);
-const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.bmp';
 
 function IconSearch() {
   return (
@@ -253,92 +201,6 @@ function ExportMenu({ busy, onExport }: { busy: boolean; onExport: (format: 'exc
   );
 }
 
-// Floating status menu. Declared at module scope so it keeps its identity across
-// parent re-renders — otherwise React remounts it and the measured position is lost.
-function StatusMenu({ anchorRef, onClose, children }: StatusMenuProps) {
-  const [style, setStyle] = useState<CSSProperties | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const updatePosition = useCallback(() => {
-    const anchor = anchorRef.current;
-    const menu = menuRef.current;
-    if (!anchor || !menu) return;
-
-    const rect = anchor.getBoundingClientRect();
-    const contentHeight = menu.scrollHeight;
-    const menuWidth = Math.max(menu.offsetWidth, 200);
-
-    const topBound = APP_HEADER_HEIGHT + MENU_MARGIN;
-    const bottomBound = window.innerHeight - MENU_MARGIN;
-
-    const spaceBelow = bottomBound - (rect.bottom + MENU_GAP);
-    const spaceAbove = (rect.top - MENU_GAP) - topBound;
-
-    // Flip up only when that genuinely gives more room.
-    const openUpward = contentHeight > spaceBelow && spaceAbove > spaceBelow;
-    const available = Math.max(MENU_MIN_HEIGHT, openUpward ? spaceAbove : spaceBelow);
-    const height = Math.min(contentHeight, available);
-
-    const top = openUpward
-      ? Math.max(topBound, rect.top - MENU_GAP - height)
-      : Math.min(rect.bottom + MENU_GAP, bottomBound - height);
-
-    const left = Math.min(
-      Math.max(MENU_MARGIN, rect.right - menuWidth),
-      Math.max(MENU_MARGIN, window.innerWidth - menuWidth - MENU_MARGIN)
-    );
-
-    setStyle({ position: 'fixed', top, left, maxHeight: height });
-  }, [anchorRef]);
-
-  useLayoutEffect(() => {
-    updatePosition();
-
-    const handle = () => updatePosition();
-    window.addEventListener('resize', handle);
-    window.addEventListener('scroll', handle, true);   // capture: also follows inner scrollers
-    return () => {
-      window.removeEventListener('resize', handle);
-      window.removeEventListener('scroll', handle, true);
-    };
-  }, [updatePosition]);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(target) &&
-        anchorRef.current &&
-        !anchorRef.current.contains(target)
-      ) {
-        onClose();
-      }
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose, anchorRef]);
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      style={style ?? { position: 'fixed', top: 0, left: 0, visibility: 'hidden' }}
-      // z-index sits above the fixed app header (z-50) but below modals (z-100+).
-      className="z-[60] min-w-[200px] overflow-y-auto overscroll-contain bg-white border border-pearl-200 rounded-xl shadow-xl p-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {children}
-    </div>,
-    document.body
-  );
-}
 
 function StatusIcon({ statusId }: { statusId?: number }) {
   if (statusId === 0) {
@@ -511,46 +373,6 @@ function TableSkeleton() {
   );
 }
 
-function Modal({ title, onClose, children, width = 'max-w-lg' }: { title: string; onClose: () => void; children: React.ReactNode; width?: string }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
-        <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
-          <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
-          <button
-            onClick={onClose}
-            className="text-ink-300 hover:text-ink-700 border-none bg-transparent cursor-pointer p-1.5 rounded-md hover:bg-pearl-100 transition-colors"
-          >
-            <IconClose />
-          </button>
-        </div>
-        <div className="px-6 py-5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5 mb-4">
-      <label className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-400">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => void }) {
-  return (
-    <div className="flex gap-2 pt-2">
-      <button type="submit" disabled={saving} className="btn-primary">
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-      <button type="button" onClick={onCancel} className="btn-secondary">
-        Cancel
-      </button>
-    </div>
-  );
-}
 
 // ─── Leave Process ──────────────────────────────────────────────────────────
 
@@ -1025,50 +847,27 @@ export default function AssetsPage() {
   // their placeholder for.
   const [statusCounts, setStatusCounts] = useState<AssetStatusCount[] | null>(null);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [currencies, setCurrencies] = useState<Currency[]>([]);
-  // Held only for companyPrmCurrency() — see the currency default below.
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [changingStatus, setChangingStatus] = useState<Set<number>>(new Set());
-  const [openStatusMenuAssetId, setOpenStatusMenuAssetId] = useState<number | null>(null);
-  const [maintenanceModalAsset, setMaintenanceModalAsset] = useState<AssetListItem | null>(null);
-  const [maintenanceForm, setMaintenanceForm] = useState<MaintForm>({ damageID: '', attID: null, fromDate: new Date().toISOString().slice(0, 10), toDate: '', supplierContactID: 0, cost: 0, curCode: 'USD', remark: '' });
-  const [maintenanceAttachmentFile, setMaintenanceAttachmentFile] = useState<File | null>(null);
-  const [savingMaintenanceModal, setSavingMaintenanceModal] = useState(false);
-  // Damages the row's asset can be sent to maintenance for; refetched per modal open.
-  const [selectableDamages, setSelectableDamages] = useState<Damage[]>([]);
-  // null = choose an existing damage; set = recording a new one inline.
-  const [maintenanceNewDamage, setMaintenanceNewDamage] = useState<NewDamageForm | null>(null);
-  const [statusModalAsset, setStatusModalAsset] = useState<AssetListItem | null>(null);
-  const [removeStatusModalAsset, setRemoveStatusModalAsset] = useState<AssetListItem | null>(null);
-  const [removeStatusForm, setRemoveStatusForm] = useState<{ statusDate: string; statusDesc: string }>({
-    statusDate: new Date().toISOString().slice(0, 10),
-    statusDesc: '',
-  });
-  const [statusModalStatusId, setStatusModalStatusId] = useState<number | null>(null);
-  const [statusChangeForm, setStatusChangeForm] = useState<StatusChangeForm>({
-    statusDate: new Date().toISOString().slice(0, 10),
-    statusDesc: '',
-    statusContactID: '',
-    statusSalePrice: '',
-    statusSaleCurCode: 'USD',
-  });
   const statusesLoadedRef = useRef(false);
   const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(() => {
     const raw = searchParams.get('status');
     return new Set(raw ? raw.split(',').map(Number).filter((n) => !Number.isNaN(n)) : []);
   });
-  const [transferModalOpen, setTransferModalOpen] = useState(false);
-  // Bumped when an action changes data the server resolves for us (e.g. a transfer's
-  // employee name). Nulling allAssetsCache alone refreshes nothing — no effect depends
-  // on it — so both load effects watch this instead.
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [transferAsset, setTransferAsset] = useState<{ assetID: number; companyID?: number | null; statusID?: number; locationID?: number | null; locDetailID?: number | null } | null>(null);
   const [leaveProcessOpen, setLeaveProcessOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
-  const gridTemplateColumns = COLUMNS.map((c) => `${columnWidths[c.key]}px`).join(' ');
+  // A column starts "fluid" — sized as minmax(min, weight fr) so the row always fills
+  // whatever width the screen actually has (a 24" monitor and a 1366px laptop need
+  // different pixel widths for the same table). DEFAULT_COLUMN_WIDTHS doubles as the fr
+  // weight, preserving the relative proportions the fixed px values used to give. Dragging
+  // a column's resize handle pins it to an explicit pixel width from then on — see
+  // handleColumnResizeStart — since a manual choice should stick instead of being
+  // reflowed away on the next resize.
+  const [customizedColumns, setCustomizedColumns] = useState<Set<string>>(new Set());
+  const gridTemplateColumns = COLUMNS.map((c) => customizedColumns.has(c.key)
+    ? `${columnWidths[c.key]}px`
+    : `minmax(${COLUMN_MIN_WIDTHS[c.key] ?? 60}px, ${DEFAULT_COLUMN_WIDTHS[c.key]}fr)`
+  ).join(' ');
 
   // Handed to the detail page so "Back to Assets" returns to this exact view
   // (search, page, size and status filter all live in the query string).
@@ -1094,12 +893,18 @@ export default function AssetsPage() {
   }
 
   function handleColumnResizeStart(key: string) {
-    return (e: React.MouseEvent) => {
+    return (e: React.MouseEvent<HTMLSpanElement>) => {
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
-      const startWidth = columnWidths[key];
+      // Read the column's actual rendered width rather than columnWidths[key]: an
+      // untouched column is sized by the fr weight, not that stored default, so starting
+      // from the stale number would snap the column to a different width the instant the
+      // drag begins.
+      const headerCell = e.currentTarget.parentElement as HTMLElement | null;
+      const startWidth = headerCell?.getBoundingClientRect().width ?? columnWidths[key];
       const minWidth = COLUMN_MIN_WIDTHS[key] ?? 60;
+      setCustomizedColumns((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
 
       const onMouseMove = (moveEvent: MouseEvent) => {
         const delta = moveEvent.clientX - startX;
@@ -1129,15 +934,6 @@ export default function AssetsPage() {
       .catch(() => { /* non-critical */ });
   }, []);
 
-  // Companies, only for their primary currency — it seeds the currency on the sale and
-  // maintenance-cost modals below. Non-critical: without it those inputs fall back to
-  // the first row of the currency lookup, as they did before.
-  useEffect(() => {
-    lookupsApi.getCompanies()
-      .then((r) => setCompanies(r.data as Company[]))
-      .catch(() => { /* non-critical */ });
-  }, []);
-
   // 350ms after the last keystroke, not on each one.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 350);
@@ -1152,208 +948,6 @@ export default function AssetsPage() {
     if (selectedStatusIds.size > 0) next.status = Array.from(selectedStatusIds).join(',');
     setSearchParams(next, { replace: true });
   }, [search, pageNumber, pageSize, selectedStatusIds]); // ✅ all four
-
-  /**
-   * Which currency a money field on this asset should start on: its company's primary
-   * currency, falling back to the first row of the currency lookup and then 'USD' when
-   * the companies lookup is unavailable or the company has none recorded. Only a
-   * default — the user can still change it on the form.
-   *
-   * Takes the currency list as an argument because callers often have a freshly fetched
-   * list that has not landed in state yet.
-   */
-  function defaultCurCode(companyId?: number, ccy: Currency[] = currencies) {
-    return companyPrmCurrency(companies, companyId) || ccy[0]?.curCode || 'USD';
-  }
-
-  function makeDefaultMaintenanceForm(companyId?: number, cs: Contact[] = contacts, ccy: Currency[] = currencies, damageID: number | '' = ''): MaintForm {
-    return {
-      damageID,
-      attID: null,
-      fromDate: new Date().toISOString().slice(0, 10),
-      toDate: '',
-      supplierContactID: cs[0]?.contactID ?? 0,
-      cost: 0,
-      curCode: defaultCurCode(companyId, ccy),
-      remark: '',
-    };
-  }
-
-  async function openUnderMaintenanceModal(asset: AssetListItem) {
-    if (readOnly) return;
-    if (asset.statusID === 10) return;
-
-    try {
-      let nextContacts = contacts;
-      let nextCurrencies = currencies;
-
-      if (nextContacts.length === 0 || nextCurrencies.length === 0) {
-        const [c, cur] = await Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()]);
-        nextContacts = c.data as Contact[];
-        nextCurrencies = cur.data as Currency[];
-        setContacts(nextContacts);
-        setCurrencies(nextCurrencies);
-      }
-
-      // Always fresh — another user may have fixed or dispatched a damage since this list
-      // was loaded, and the API rejects both.
-      const selectable = (await damagesApi.getSelectableByAsset(asset.assetID)).data;
-      setSelectableDamages(selectable);
-      // Nothing repairable on record yet, so start in "new damage" mode rather than
-      // dead-ending on an empty select.
-      setMaintenanceNewDamage(selectable.length === 0 ? emptyNewDamage() : null);
-
-      setMaintenanceModalAsset(asset);
-      setMaintenanceForm(makeDefaultMaintenanceForm(asset.companyID, nextContacts, nextCurrencies, selectable[0]?.damageID ?? ''));
-      setMaintenanceAttachmentFile(null);
-    } catch (err) {
-      handleApiError(err, 'Failed to load maintenance lookups');
-    }
-  }
-
-  function setMaintenanceField<K extends keyof MaintForm>(key: K, value: MaintForm[K]) {
-    setMaintenanceForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function makeDefaultStatusChangeForm(companyId?: number, cs: Contact[] = contacts, ccy: Currency[] = currencies): StatusChangeForm {
-    const today = new Date().toISOString().slice(0, 10);
-    return {
-      statusDate: today,
-      statusDesc: '',
-      statusContactID: cs[0]?.contactID ?? '',
-      statusSalePrice: '',
-      statusSaleCurCode: defaultCurCode(companyId, ccy),
-    };
-  }
-
-  function setStatusChangeField<K extends keyof StatusChangeForm>(key: K, value: StatusChangeForm[K]) {
-    setStatusChangeForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function openStatusChangeModal(asset: AssetListItem, nextStatusId: number) {
-    if (readOnly) return;
-
-    const needsLookups = nextStatusId === 1 || nextStatusId === 4;
-    try {
-      let nextContacts = contacts;
-      let nextCurrencies = currencies;
-
-      if (needsLookups && (nextContacts.length === 0 || nextCurrencies.length === 0)) {
-        const [c, cur] = await Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()]);
-        nextContacts = c.data as Contact[];
-        nextCurrencies = cur.data as Currency[];
-        setContacts(nextContacts);
-        setCurrencies(nextCurrencies);
-      }
-
-      setStatusModalAsset(asset);
-      setStatusModalStatusId(nextStatusId);
-      setStatusChangeForm(makeDefaultStatusChangeForm(asset.companyID, nextContacts, nextCurrencies));
-    } catch (err) {
-      handleApiError(err, 'Failed to load status lookups');
-    }
-  }
-
-  function openRemoveStatusModal(asset: AssetListItem) {
-    if (readOnly) return;
-    setRemoveStatusModalAsset(asset);
-    setRemoveStatusForm({ statusDate: new Date().toISOString().slice(0, 10), statusDesc: '' });
-  }
-
-  async function handleUnderMaintenanceSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!maintenanceModalAsset || readOnly) return;
-    if (maintenanceNewDamage) {
-      if (!maintenanceNewDamage.damageDesc.trim()) {
-        toast.error('Describe the damage being repaired');
-        return;
-      }
-    } else if (!maintenanceForm.damageID) {
-      toast.error('Select the damage being repaired');
-      return;
-    }
-
-    setSavingMaintenanceModal(true);
-    try {
-      const assetId = maintenanceModalAsset.assetID;
-
-      // The damage must exist before the maintenance can reference it.
-      let damageID = maintenanceForm.damageID;
-      if (maintenanceNewDamage) {
-        const createdDamage = await damagesApi.create({
-          assetID: assetId,
-          damageDate: maintenanceNewDamage.damageDate,
-          damageDesc: maintenanceNewDamage.damageDesc.trim(),
-        });
-        damageID = createdDamage.data.damageID;
-      }
-
-      let attID = maintenanceForm.attID ?? null;
-      if (maintenanceAttachmentFile) {
-        const base64 = await toBase64(maintenanceAttachmentFile);
-        const ext = getNormalizedFileExtension(maintenanceAttachmentFile.name);
-        if (isBlockedAttachmentExtension(ext)) {
-          toast.error('This file type is not allowed.');
-          return;
-        }
-        const upload = await attachmentsApi.create({
-          assetID: assetId,
-          attDesc: 'Maintenance Attachment',
-          attFileName: maintenanceAttachmentFile.name,
-          attFileExt: ext,
-          remark: null,
-          fileBase64: base64,
-        });
-        attID = (upload.data as Attachment).attID;
-      }
-
-      // POST /maintenances moves the asset to Under Maintenance and writes the status
-      // history itself. The assetsApi.updateStatus(8) that used to follow logged the same
-      // change a second time, which is why Status History showed it twice per trip.
-      await maintenancesApi.create({ assetID: assetId, ...maintenanceForm, damageID, attID });
-
-      const maintenanceName = statuses.find((s) => s.statusID === 8)?.status ?? 'Under Maintenance';
-      setAssets((prev) =>
-        prev.map((a) => a.assetID === assetId ? { ...a, statusID: 8, status: maintenanceName } : a)
-      );
-      if (allAssetsCache) {
-        setAllAssetsCache((prev) =>
-          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: 8, status: maintenanceName } : a) : prev
-        );
-      }
-      // The tiles are a SQL aggregate now, so they have to be re-read after a status
-      // change rather than recounted from the cache above. Silent: the change succeeded.
-      void loadStatusCounts(false);
-
-      setMaintenanceModalAsset(null);
-      setMaintenanceAttachmentFile(null);
-      setMaintenanceNewDamage(null);
-      toast.success('Asset moved to Under Maintenance');
-    } catch (err) {
-      handleApiError(err, 'Failed to move asset to maintenance');
-    } finally {
-      setSavingMaintenanceModal(false);
-    }
-  }
-
-  const openTransferModal = async (asset: AssetListItem) => {
-  if (readOnly) return;
-  try {
-    const fullAsset = await assetsApi.get(asset.assetID);
-    setTransferAsset({
-      assetID: fullAsset.data.assetID,
-      companyID: fullAsset.data.companyID,
-      statusID: fullAsset.data.statusID,
-      locationID: fullAsset.data.locationID,
-      locDetailID: fullAsset.data.locDetailID,
-    });
-    setTransferModalOpen(true);
-  } catch (err) {
-    handleApiError(err, 'Failed to load asset details');
-  }
-};
-
-
 
 const didMountRef = useRef(false);
 const prevSearchRef = useRef(search);
@@ -1403,7 +997,7 @@ useEffect(() => {
     // dropped here too or that modal would keep showing the previous company's assets.
     setAllAssetsCache(null);
     void loadStatusCounts();
-  }, [loadStatusCounts, refreshKey]);
+  }, [loadStatusCounts]);
 
   // Only the leave-process modal still needs every asset, so it is fetched when that
   // modal opens rather than on every visit to the page. The modal already renders a
@@ -1455,144 +1049,10 @@ useEffect(() => {
 
     loadData();
     return () => controller.abort();
-  }, [pageNumber, pageSize, debouncedSearch, activeCompanyId, selectedStatusIds, refreshKey]);
+  }, [pageNumber, pageSize, debouncedSearch, activeCompanyId, selectedStatusIds]);
 
   const handlePrevious = () => { if (pageNumber > 1) setPageNumber(pageNumber - 1); };
   const handleNext = () => { if (pageNumber < totalPages) setPageNumber(pageNumber + 1); };
-
-  async function handleStatusChange(assetId: number, newStatusId: number) {
-    if (readOnly) return;
-    const today = new Date().toISOString().slice(0, 10);
-    setChangingStatus((prev) => new Set(prev).add(assetId));
-    try {
-      const newCurrentStatusId = newStatusId;
-      const newStatusName = statuses.find((s) => s.statusID === newStatusId)?.status;
-
-      await assetsApi.updateStatus(assetId, {
-        assetStatusID: newStatusId,
-        assetStatusDate: today,
-        statusID: newStatusId,
-        statusDate: today,
-        statusContactID: null,
-        statusSalePrice: 0,
-        statusSaleCurCode: null,
-        statusDesc: null,
-      });
-
-      setAssets((prev) =>
-        prev.map((a) => a.assetID === assetId ? { ...a, statusID: newCurrentStatusId, status: newStatusName } : a)
-      );
-      if (allAssetsCache) {
-        setAllAssetsCache((prev) =>
-          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: newCurrentStatusId, status: newStatusName } : a) : prev
-        );
-      }
-      void loadStatusCounts(false);
-      toast.success('Status updated');
-    } catch (err) {
-      handleApiError(err, 'Failed to update status');
-    } finally {
-      setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
-    }
-  }
-
-  async function handleStatusModalSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (readOnly || !statusModalAsset || statusModalStatusId == null) return;
-
-    const assetId = statusModalAsset.assetID;
-    const salePrice = Number(statusChangeForm.statusSalePrice || 0);
-
-    if (!statusChangeForm.statusDate) {
-      toast.error('Status date is required');
-      return;
-    }
-    if (statusModalStatusId === 4 && salePrice < 0) {
-      toast.error('Sale price cannot be negative');
-      return;
-    }
-
-    setChangingStatus((prev) => new Set(prev).add(assetId));
-    try {
-      const newStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status;
-      const contactId = statusModalStatusId === 1 || statusModalStatusId === 4
-        ? (statusChangeForm.statusContactID === '' ? null : Number(statusChangeForm.statusContactID))
-        : null;
-
-      await assetsApi.updateStatus(assetId, {
-        assetStatusID: statusModalStatusId,
-        assetStatusDate: statusChangeForm.statusDate,
-        statusID: statusModalStatusId,
-        statusDate: statusChangeForm.statusDate,
-        statusContactID: contactId,
-        statusSalePrice: statusModalStatusId === 4 ? salePrice : 0,
-        statusSaleCurCode: statusModalStatusId === 4 ? statusChangeForm.statusSaleCurCode : null,
-        statusDesc: statusChangeForm.statusDesc.trim() || null,
-      });
-
-      setAssets((prev) =>
-        prev.map((a) => a.assetID === assetId ? { ...a, statusID: statusModalStatusId, status: newStatusName } : a)
-      );
-      if (allAssetsCache) {
-        setAllAssetsCache((prev) =>
-          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: statusModalStatusId, status: newStatusName } : a) : prev
-        );
-      }
-      void loadStatusCounts(false);
-
-      setStatusModalAsset(null);
-      setStatusModalStatusId(null);
-      toast.success('Status updated');
-    } catch (err) {
-      handleApiError(err, 'Failed to update status');
-    } finally {
-      setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
-    }
-  }
-  const activeStatusBtnRef = useRef<HTMLButtonElement>(null);
-
-  async function handleRemoveStatus(assetId: number, statusDate: string, statusDesc: string) {
-    if (readOnly) return;
-    setChangingStatus((prev) => new Set(prev).add(assetId));
-    try {
-      await assetsApi.removeStatus(assetId, {
-        statusID: 5,
-        statusDate: statusDate,
-        statusContactID: null,
-        statusSalePrice: 0,
-        statusSaleCurCode: null,
-        statusDesc: statusDesc.trim() || null,
-      });
-
-      const activeName = statuses.find((s) => s.statusID === 0)?.status ?? 'Active';
-      setAssets((prev) =>
-        prev.map((a) => a.assetID === assetId ? { ...a, statusID: 0, status: activeName } : a)
-      );
-      if (allAssetsCache) {
-        setAllAssetsCache((prev) =>
-          prev ? prev.map((a) => a.assetID === assetId ? { ...a, statusID: 0, status: activeName } : a) : prev
-        );
-      }
-      void loadStatusCounts(false);
-      setOpenStatusMenuAssetId(null);
-      setRemoveStatusModalAsset(null);
-      toast.success('Status removed');
-    } catch (err) {
-      handleApiError(err, 'Failed to remove status');
-    } finally {
-      setChangingStatus((prev) => { const s = new Set(prev); s.delete(assetId); return s; });
-    }
-  }
-
-  async function handleRemoveStatusSubmit(e: FormEvent) {
-  e.preventDefault();
-  if (!removeStatusModalAsset) return;
-  if (!removeStatusForm.statusDate) {
-    toast.error('Date is required');
-    return;
-  }
-  await handleRemoveStatus(removeStatusModalAsset.assetID, removeStatusForm.statusDate, removeStatusForm.statusDesc);
-}
 
   async function handleLeaveOut(
     employeeName: string,
@@ -1656,9 +1116,6 @@ useEffect(() => {
   const maintenanceCount = countForStatus(8);
   const instockCount = countForStatus(12);
   const activeCount = countForStatus(0);
-  const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
-  const isDonationStatus = statusModalStatusId === 1;
-  const isSoldStatus = statusModalStatusId === 4;
   const countsLoading = statusCounts === null;
 
   return (
@@ -1935,106 +1392,21 @@ useEffect(() => {
                     {a.employeeName ?? a.hrEmpIDUsedBy ?? a.empIDUsedBy?.toString() ?? '—'}
                   </div>
 
-                  {/* Status */}
-                  <div className="pr-3 min-w-0" onClick={(e) => e.stopPropagation()}>
-                    {a.statusID === 10 ? (
-                      <div className="flex items-center gap-1.5">
-                        <StatusBadge status={a.status ?? 'Under Inventory'} />
-                        <span className="text-[9px] font-bold text-amber-500 tracking-wide uppercase">Locked</span>
-                      </div>
-                    ) : readOnly ? (
-                      <StatusBadge status={a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')} />
-                    ) : (
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="relative flex-1 min-w-0" data-status-menu-root="true">
-                          
-                          <button
-                          
-                          ref={a.assetID === openStatusMenuAssetId ? activeStatusBtnRef : null}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (changingStatus.has(a.assetID)) return;
-                              setOpenStatusMenuAssetId((prev) => prev === a.assetID ? null : a.assetID);
-                              
-                            }}
-                            className={clsx(
-                              'flex items-center gap-2 w-full rounded-lg border px-2.5 py-1.5 text-[12px] font-medium',
-                              statusTone(a.statusID),
-                              'hover:shadow-sm transition-all cursor-pointer',
-                              'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
-                              changingStatus.has(a.assetID) && 'opacity-70 cursor-not-allowed'
-                            )}
-                          >
-                            <span className="inline-flex items-center justify-center w-4 h-4">
-                              {changingStatus.has(a.assetID)
-                                ? <span className="block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                                : <StatusIcon statusId={a.statusID} />}
-                            </span>
-                            <span className="truncate flex-1 min-w-0">{a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')}</span>
-                            <span className="ml-auto text-ink-300"><IconChevronDown /></span>
-                          </button>
-                          
-
-                          {openStatusMenuAssetId === a.assetID && (
-                            
-                            <StatusMenu anchorRef={activeStatusBtnRef} onClose={() => setOpenStatusMenuAssetId(null)}>
-                              {statuses
-                                .filter((s) => ![5, 9, 10].includes(s.statusID))
-                                .map((s) => (
-                                  <button
-                                    type="button"
-                                    key={s.statusID}
-                                    onClick={() => {
-                                      if (a.statusID === s.statusID) {
-                                        setOpenStatusMenuAssetId(null);
-                                        return;
-                                      }
-                                      setOpenStatusMenuAssetId(null);
-                                      if (s.statusID === 8) {
-                                        void openUnderMaintenanceModal(a);
-                                        return;
-                                      }
-                                      if (s.statusID === 2) {
-                                        void openTransferModal(a);
-                                        return;
-                                      }
-                                      if (STATUSES_WITH_MODAL.has(s.statusID)) {
-                                        void openStatusChangeModal(a, s.statusID);
-                                        return;
-                                      }
-                                      void handleStatusChange(a.assetID, s.statusID);
-                                    }}
-                                    className={clsx(
-                                      'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] transition-colors cursor-pointer',
-                                      a.statusID === s.statusID
-                                        ? 'bg-navy-50 text-navy-700'
-                                        : 'hover:bg-pearl-50 text-ink-700'
-                                    )}
-                                  >
-                                    <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusTone(s.statusID))}>
-                                      <StatusIcon statusId={s.statusID} />
-                                    </span>
-                                    <span>{s.status}</span>
-                                    {a.statusID === s.statusID && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-navy-500">Current</span>}
-                                  </button>
-                                ))}
-                            </StatusMenu>
-                          )}
-                          
-                          
-                        </div>
-                        
-
-                        <button
-                          type="button"
-                          onClick={() => openRemoveStatusModal(a)}
-                          disabled={changingStatus.has(a.assetID) || a.statusID === 0 || a.statusID === 12  || a.statusID === 13}
-                          className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded border border-danger-light text-danger bg-danger-bg hover:bg-danger-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Remove Status
-                        </button>
-                      </div>
+                  {/* Status — info only, not editable from this list. */}
+                  <div className="pr-3 min-w-0 flex items-center gap-1.5">
+                    <span
+                      className={clsx(
+                        'inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold min-w-0',
+                        statusTone(a.statusID)
+                      )}
+                    >
+                      <span className="inline-flex items-center justify-center w-3 h-3 shrink-0">
+                        <StatusIcon statusId={a.statusID} />
+                      </span>
+                      <span className="truncate">{a.status ?? (a.statusID != null ? `Status ${a.statusID}` : 'Active')}</span>
+                    </span>
+                    {a.statusID === 10 && (
+                      <span className="text-[9px] font-bold text-amber-500 tracking-wide uppercase shrink-0">Locked</span>
                     )}
                   </div>
 
@@ -2053,24 +1425,6 @@ useEffect(() => {
                   </div>
                 </div>
               ))}
-              {!readOnly && transferAsset && (
-                            <TransferAssetModal
-                              asset={transferAsset}
-                              open={transferModalOpen}
-                              onClose={() => {
-                                setTransferModalOpen(false);
-                                setTransferAsset(null);
-                              }}
-                              onTransferred={() => {
-                                // The employee name, company and location are all resolved
-                                // server-side, so refetch rather than patching the row.
-                                // Nulling the cache makes the filtered path re-read from
-                                // the server instead of reusing stale rows.
-                                setAllAssetsCache(null);
-                                setRefreshKey((k) => k + 1);
-                              }}
-                            />
-                          )}
             </div>
           )}
         </div>
@@ -2105,162 +1459,6 @@ useEffect(() => {
         />
       )}
 
-      {!readOnly && removeStatusModalAsset && (
-        <Modal title={`Remove Status · ${removeStatusModalAsset.assetCode}`} onClose={() => setRemoveStatusModalAsset(null)}>
-          <form onSubmit={handleRemoveStatusSubmit}>
-            <FormRow label="Date *">
-              <input
-                className={inp}
-                type="date"
-                value={removeStatusForm.statusDate}
-                onChange={(e) => setRemoveStatusForm((prev) => ({ ...prev, statusDate: e.target.value }))}
-                required
-              />
-            </FormRow>
-            <FormRow label="Description">
-              <input
-                className={inp}
-                value={removeStatusForm.statusDesc}
-                onChange={(e) => setRemoveStatusForm((prev) => ({ ...prev, statusDesc: e.target.value }))}
-                maxLength={50}
-              />
-            </FormRow>
-            <ModalActions
-              saving={changingStatus.has(removeStatusModalAsset.assetID)}
-              onCancel={() => setRemoveStatusModalAsset(null)}
-            />
-          </form>
-        </Modal>
-      )}
-
-      {!readOnly && maintenanceModalAsset && (
-        <Modal title={`Send to Maintenance · ${maintenanceModalAsset.assetCode}`} onClose={() => setMaintenanceModalAsset(null)}>
-          <form onSubmit={handleUnderMaintenanceSubmit}>
-            <DamagePicker
-              damages={selectableDamages}
-              damageID={maintenanceForm.damageID}
-              onSelect={(id) => setMaintenanceField('damageID', id)}
-              newDamage={maintenanceNewDamage}
-              onNewDamageChange={setMaintenanceNewDamage}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormRow label="From Date *">
-                <input className={inp} type="date" value={maintenanceForm.fromDate} onChange={(e) => setMaintenanceField('fromDate', e.target.value)} required />
-              </FormRow>
-              <FormRow label="To Date *">
-                <input className={inp} type="date" value={maintenanceForm.toDate} onChange={(e) => setMaintenanceField('toDate', e.target.value)} required />
-              </FormRow>
-            </div>
-            <FormRow label="Supplier *">
-              <Select value={maintenanceForm.supplierContactID} onChange={(e) => setMaintenanceField('supplierContactID', Number(e.target.value))} required>
-                <option value="">Select…</option>
-                {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
-              </Select>
-            </FormRow>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormRow label="Cost">
-                <input className={inp} type="number" step="0.01" value={maintenanceForm.cost} onChange={(e) => setMaintenanceField('cost', Number(e.target.value))} />
-              </FormRow>
-              <FormRow label="Currency *">
-                <Select value={maintenanceForm.curCode} onChange={(e) => setMaintenanceField('curCode', e.target.value)} required>
-                  {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
-                </Select>
-              </FormRow>
-            </div>
-            <FormRow label="Remark">
-              <input className={inp} value={maintenanceForm.remark ?? ''} onChange={(e) => setMaintenanceField('remark', e.target.value)} maxLength={100} />
-            </FormRow>
-            <FormRow label="Attachment">
-              <input
-                className={inp}
-                type="file"
-                accept={ATTACHMENT_ACCEPT}
-                onChange={(e) => setMaintenanceAttachmentFile(e.target.files?.[0] ?? null)}
-              />
-            </FormRow>
-            <ModalActions saving={savingMaintenanceModal} onCancel={() => setMaintenanceModalAsset(null)} />
-          </form>
-        </Modal>
-      )}
-
-      {!readOnly && statusModalAsset && statusModalStatusId != null && (
-        <Modal title={`${statusModalStatusName} · ${statusModalAsset.assetCode}`} onClose={() => { setStatusModalAsset(null); setStatusModalStatusId(null); }}>
-          <form onSubmit={handleStatusModalSubmit}>
-            <FormRow label="Date *">
-              <input
-                className={inp}
-                type="date"
-                value={statusChangeForm.statusDate}
-                onChange={(e) => setStatusChangeField('statusDate', e.target.value)}
-                required
-              />
-            </FormRow>
-
-            <FormRow label="Description">
-              <input
-                className={inp}
-                value={statusChangeForm.statusDesc}
-                onChange={(e) => setStatusChangeField('statusDesc', e.target.value)}
-                maxLength={50}
-              />
-            </FormRow>
-
-            {(isDonationStatus || isSoldStatus) && (
-              <FormRow label="Contact">
-                <Select
-                  value={statusChangeForm.statusContactID}
-                  onChange={(e) => setStatusChangeField('statusContactID', e.target.value === '' ? '' : Number(e.target.value))}
-                >
-                  <option value="">Select…</option>
-                  {contacts.map((c) => <option key={c.contactID} value={c.contactID}>{c.contactName}</option>)}
-                </Select>
-              </FormRow>
-            )}
-
-            {isSoldStatus && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormRow label="Price">
-                  <input
-                    className={inp}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={statusChangeForm.statusSalePrice}
-                    onChange={(e) => setStatusChangeField('statusSalePrice', e.target.value === '' ? '' : Number(e.target.value))}
-                  />
-                </FormRow>
-                <FormRow label="Currency">
-                  <Select value={statusChangeForm.statusSaleCurCode} onChange={(e) => setStatusChangeField('statusSaleCurCode', e.target.value)}>
-                    {currencies.map((c) => <option key={c.curCode} value={c.curCode}>{c.curCode}</option>)}
-                  </Select>
-                </FormRow>
-              </div>
-            )}
-
-            <ModalActions
-              saving={changingStatus.has(statusModalAsset.assetID)}
-              onCancel={() => { setStatusModalAsset(null); setStatusModalStatusId(null); }}
-            />
-          </form>
-        </Modal>
-      )}
     </div>
   );
-}
-
-function toBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function getNormalizedFileExtension(fileName: string): string {
-  return (fileName.split('.').pop() ?? '').trim().toLowerCase();
-}
-
-function isBlockedAttachmentExtension(ext: string): boolean {
-  return !ALLOWED_ATTACHMENT_EXTENSIONS.has((ext ?? '').trim().toLowerCase().replace(/^\./, ''));
 }

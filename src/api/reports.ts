@@ -55,6 +55,11 @@ export const reportsApi = {
       client.post('/reports/assets-not-depreciated', data, { responseType: 'arraybuffer' }) as any,
       'AssetsNotDepreciatedReport.pdf'
     ),
+  downloadStatusHistory: (data: object) =>
+    downloadBlob(
+      client.post('/reports/status-history', data, { responseType: 'arraybuffer' }) as any,
+      'StatusHistoryReport.pdf'
+    ),
 
   // ── Preview (returns JSON) ─────────────────────────────────────────────────
   previewAssetsList: (data: object & PreviewPagingRequest) =>
@@ -65,4 +70,6 @@ export const reportsApi = {
     client.post<ReportPreview>('/reports/depreciation/preview', data),
   previewAssetsNotDepreciated: (data: object & PreviewPagingRequest) =>
     client.post<ReportPreview>('/reports/assets-not-depreciated/preview', data),
+  previewStatusHistory: (data: object & PreviewPagingRequest) =>
+    client.post<ReportPreview>('/reports/status-history/preview', data),
 };

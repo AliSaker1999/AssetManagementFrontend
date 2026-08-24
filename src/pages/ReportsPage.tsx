@@ -17,7 +17,7 @@ import type {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ReportType = 'assets-list' | 'assets-list-inventory' | 'depreciation' | 'assets-not-depreciated';
+type ReportType = 'assets-list' | 'assets-list-inventory' | 'depreciation' | 'assets-not-depreciated' | 'status-history';
 type ListType = 'ALL' | 'NotAvailable' | 'Relocated';
 type Format = 'pdf' | 'excel';
 
@@ -26,6 +26,7 @@ const REPORT_TYPES: { key: ReportType; label: string }[] = [
   { key: 'assets-list-inventory',    label: 'Assets List Inventory' },
   { key: 'depreciation',             label: 'Depreciation' },
   { key: 'assets-not-depreciated',   label: 'Assets Not Depreciated' },
+  { key: 'status-history',           label: 'Status History' },
 ];
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
@@ -307,6 +308,17 @@ export default function ReportsPage() {
       return { ...base, inventoryID: inventoryId, listType, totalOnly };
     if (reportType === 'depreciation')
       return { format, depID: depId };
+    if (reportType === 'status-history')
+      return {
+        format,
+        locationID:       locationId   || -1,
+        companyID:        companyId    || -1,
+        categoryID:       categoryId   || -1,
+        groupID:          groupId      || -1,
+        locationDetailID: locDetailId  || -1,
+        pageNumber: previewPageNumber,
+        pageSize: previewPageSize,
+      };
     return { format, accountingExclusion };
   }
 
@@ -323,6 +335,7 @@ export default function ReportsPage() {
       if (reportType === 'assets-list')             res = await reportsApi.previewAssetsList(payload);
       else if (reportType === 'assets-list-inventory') res = await reportsApi.previewAssetsListInventory(payload);
       else if (reportType === 'depreciation')       res = await reportsApi.previewDepreciation(payload);
+      else if (reportType === 'status-history')     res = await reportsApi.previewStatusHistory(payload);
       else                                          res = await reportsApi.previewAssetsNotDepreciated(payload);
       setPreviewData(res.data);
       setPageNumber(previewPageNumber);
@@ -347,6 +360,7 @@ export default function ReportsPage() {
       if (reportType === 'assets-list')               await reportsApi.downloadAssetsList(payload);
       else if (reportType === 'assets-list-inventory') await reportsApi.downloadAssetsListInventory(payload);
       else if (reportType === 'depreciation')          await reportsApi.downloadDepreciation(payload);
+      else if (reportType === 'status-history')        await reportsApi.downloadStatusHistory(payload);
       else                                             await reportsApi.downloadAssetsNotDepreciated(payload);
       toast.success(`${format.toUpperCase()} downloaded`);
     } catch (err) {
@@ -366,6 +380,7 @@ export default function ReportsPage() {
   const isInventory      = reportType === 'assets-list-inventory';
   const isDepreciation   = reportType === 'depreciation';
   const isNotDepreciated = reportType === 'assets-not-depreciated';
+  const isStatusHistory  = reportType === 'status-history';
   const companyNotSelected = !companyId;
   const selectedCompanyCountryId = companies.find((c) => c.companyID === companyId)?.countryID?.trim() ?? '';
   const filtersDisabled  = isNotDepreciated || companyNotSelected;
@@ -567,7 +582,7 @@ export default function ReportsPage() {
                 </SelectField>
               </OptionRow>
 
-              <OptionRow label="List Type" disabled={isAssetsList || isDepreciation || isNotDepreciated || companyNotSelected}>
+              <OptionRow label="List Type" disabled={isAssetsList || isDepreciation || isNotDepreciated || isStatusHistory || companyNotSelected}>
                 <RadioGroup
                   name="listType"
                   options={[
@@ -577,7 +592,7 @@ export default function ReportsPage() {
                   ]}
                   value={listType}
                   onChange={(v) => setListType(v as ListType)}
-                  disabled={isAssetsList || isDepreciation || isNotDepreciated || companyNotSelected}
+                  disabled={isAssetsList || isDepreciation || isNotDepreciated || isStatusHistory || companyNotSelected}
                 />
               </OptionRow>
 
@@ -606,21 +621,21 @@ export default function ReportsPage() {
                 />
               </OptionRow>
 
-              <OptionRow label="Accounting Exclusion" disabled={isDepreciation || isNotDepreciated || companyNotSelected}>
+              <OptionRow label="Accounting Exclusion" disabled={isDepreciation || isNotDepreciated || isStatusHistory || companyNotSelected}>
                 <YesNo
                   name="accountingExclusion"
                   value={accountingExclusion}
                   onChange={setAccountingExclusion}
-                  disabled={isDepreciation || isNotDepreciated || companyNotSelected}
+                  disabled={isDepreciation || isNotDepreciated || isStatusHistory || companyNotSelected}
                 />
               </OptionRow>
 
-              <OptionRow label="Total Only" disabled={isDepreciation || isNotDepreciated || companyNotSelected}>
+              <OptionRow label="Total Only" disabled={isDepreciation || isNotDepreciated || isStatusHistory || companyNotSelected}>
                 <YesNo
                   name="totalOnly"
                   value={totalOnly}
                   onChange={setTotalOnly}
-                  disabled={isDepreciation || isNotDepreciated || companyNotSelected}
+                  disabled={isDepreciation || isNotDepreciated || isStatusHistory || companyNotSelected}
                 />
               </OptionRow>
             </div>

@@ -268,8 +268,10 @@ function NotificationSettingsSection() {
   const [loading, setLoading] = useState(true);
   const [warrantyVal, setWarrantyVal] = useState('');
   const [maintenanceVal, setMaintenanceVal] = useState('');
+  const [unreceivedStockVal, setUnreceivedStockVal] = useState('');
   const [savingWarranty, setSavingWarranty] = useState(false);
   const [savingMaintenance, setSavingMaintenance] = useState(false);
+  const [savingUnreceivedStock, setSavingUnreceivedStock] = useState(false);
 
   const warrantyOptions = [
     { label: '2 Week', value: '2 Week' },
@@ -287,6 +289,14 @@ function NotificationSettingsSection() {
     { label: 'Same Day', value: 'Same Day' },
   ];
 
+  const unreceivedStockOptions = [
+    { label: '2 Week', value: '2 Week' },
+    { label: '1 Week', value: '1 Week' },
+    { label: '3 Days', value: '3 Days' },
+    { label: '1 Day', value: '1 Day' },
+    { label: 'Same Day', value: 'Same Day' },
+  ];
+
   useEffect(() => { load(); }, []);
 
   async function load() {
@@ -296,6 +306,7 @@ function NotificationSettingsSection() {
       const s = r.data as Setting[];
       setWarrantyVal(s.find(x => x.setID === 4)?.setValue ?? '');
       setMaintenanceVal(s.find(x => x.setID === 5)?.setValue ?? '');
+      setUnreceivedStockVal(s.find(x => x.setID === 6)?.setValue ?? '');
     } finally {
       setLoading(false);
     }
@@ -327,6 +338,20 @@ function NotificationSettingsSection() {
       toast.success('Maintenance intervals saved');
     } catch (err) { handleApiError(err, 'Save failed'); }
     finally { setSavingMaintenance(false); }
+  }
+
+  async function saveUnreceivedStock(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (!unreceivedStockVal.trim()) {
+      toast.error('Select one unreceived stock interval');
+      return;
+    }
+    setSavingUnreceivedStock(true);
+    try {
+      await lookupsApi.updateAtSetting(6, unreceivedStockVal.trim());
+      toast.success('Unreceived stock interval saved');
+    } catch (err) { handleApiError(err, 'Save failed'); }
+    finally { setSavingUnreceivedStock(false); }
   }
 
   if (loading) return <div className={['text-sm py-6 text-gray-400'].join(' ')}>Loading...</div>;
@@ -365,7 +390,7 @@ function NotificationSettingsSection() {
           <p className={hintCls}>
             {'Select one option. Notifications start at the selected threshold and repeat every 24 hours until Return From Maintenance.'}
           </p>
-         
+
           <form onSubmit={saveMaintenance} className="flex flex-col gap-3">
             <RadioGroup
               name="maintenance"
@@ -376,6 +401,26 @@ function NotificationSettingsSection() {
             />
             <button type="submit" disabled={savingMaintenance || !maintenanceVal} className={btnCls}>
               {savingMaintenance ? 'Saving...' : 'Save'}
+            </button>
+          </form>
+        </div>
+
+        <div className={rowCls}>
+          <p className={titleCls}>Unreceived Stock Alert Interval</p>
+          <p className={hintCls}>
+            {'Select one option. A digest of every asset still in Unreceived Stock is emailed to each company’s asset controller at the selected interval.'}
+          </p>
+
+          <form onSubmit={saveUnreceivedStock} className="flex flex-col gap-3">
+            <RadioGroup
+              name="unreceived-stock"
+              options={unreceivedStockOptions}
+              value={unreceivedStockVal}
+              onChange={setUnreceivedStockVal}
+              disabled={savingUnreceivedStock}
+            />
+            <button type="submit" disabled={savingUnreceivedStock || !unreceivedStockVal} className={btnCls}>
+              {savingUnreceivedStock ? 'Saving...' : 'Save'}
             </button>
           </form>
         </div>
