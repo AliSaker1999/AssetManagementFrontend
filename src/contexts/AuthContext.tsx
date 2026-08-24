@@ -1,11 +1,18 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
-import client from '../api/client';
+import client, { refreshSession } from '../api/client';
+import { setAccessToken, SESSION_EXPIRED_EVENT } from '../api/authToken';
 import type { User, LoginResponse, UserPermission } from '../types';
 
 interface AuthContextValue {
   user: User | null;
+  /**
+   * True until the refresh cookie has been checked on first load. Consumers must wait rather
+   * than treating a null user as signed out — otherwise every page load flashes the login
+   * screen before the session is restored.
+   */
+  isBootstrapping: boolean;
   login: (userName: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAdmin: () => boolean;
   isAuditor: () => boolean;
   isFullAccess: () => boolean;
@@ -17,15 +24,6 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function loadUser(): User | null {
-  try {
-    const raw = localStorage.getItem('user');
-    return raw ? (JSON.parse(raw) as User) : null;
-  } catch {
-    return null;
-  }
-}
-
 function loadActiveCompany(): number | null {
   try {
     const raw = localStorage.getItem('activeCompanyId');
@@ -35,8 +33,37 @@ function loadActiveCompany(): number | null {
   }
 }
 
+function toUser(session: LoginResponse, permissions: UserPermission[]): User {
+  return {
+    userId: session.userId,
+    userName: session.userName,
+    fullName: session.fullName,
+    roleId: session.roleId,
+    permissions,
+  };
+}
+
+/**
+ * Permissions are a separate call and are allowed to fail: an empty list degrades to "no
+ * company access", which the API enforces anyway. Failing the whole sign-in over it would be
+ * worse than a partially populated menu.
+ */
+async function fetchPermissions(userId: number): Promise<UserPermission[]> {
+  try {
+    const { data } = await client.get<UserPermission[]>(`/users/${userId}/permissions`);
+    return data;
+  } catch {
+    return [];
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(loadUser);
+  // Nothing is read back from storage here any more. The profile used to be kept in
+  // localStorage, which meant roleId — what the sidebar and the admin routes branch on — was
+  // sitting in a place the user could edit, and a role change elsewhere was not picked up
+  // until the next sign-in. It now comes from the server on every load, alongside the token.
+  const [user, setUser] = useState<User | null>(null);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [activeCompanyId, setActiveCompanyIdState] = useState<number | null>(loadActiveCompany);
 
   const setActiveCompanyId = useCallback((id: number | null) => {
@@ -45,31 +72,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveCompanyIdState(id);
   }, []);
 
-  const login = useCallback(async (userName: string, password: string) => {
-    const { data } = await client.post<LoginResponse>('/auth/login', { userName, password });
-    localStorage.setItem('token', data.token);
-    const u: User = {
-      userId: data.userId,
-      userName: data.userName,
-      fullName: data.fullName,
-      roleId: data.roleId,
-    };
-    try {
-      const { data: perms } = await client.get<UserPermission[]>(`/users/${data.userId}/permissions`);
-      u.permissions = perms;
-    } catch {
-      u.permissions = [];
-    }
-    localStorage.setItem('user', JSON.stringify(u));
-    setUser(u);
+  // Restore the session from the refresh cookie. This is what makes a reload survivable now
+  // that the access token is only in memory: the cookie is HttpOnly, so this call is the only
+  // way to find out whether there is still a session, and it returns a fresh token and the
+  // current profile together.
+  //
+  // refreshSession() is single-flight, so StrictMode's second invocation in development joins
+  // the first call rather than replaying a token that has just been rotated.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const session = await refreshSession();
+      if (!session) {
+        if (!cancelled) setIsBootstrapping(false);
+        return;
+      }
+      const permissions = await fetchPermissions(session.userId);
+      if (cancelled) return;
+      setUser(toUser(session, permissions));
+      setIsBootstrapping(false);
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const login = useCallback(async (userName: string, password: string) => {
+    const { data } = await client.post<LoginResponse>('/auth/login', { userName, password });
+    setAccessToken(data.token);
+    const permissions = await fetchPermissions(data.userId);
+    setUser(toUser(data, permissions));
+  }, []);
+
+  const logout = useCallback(async () => {
+    // Tell the server first. Dropping the token locally used to be the whole of "signing out",
+    // which left the refresh token valid for its full 14 days — so anyone holding the cookie
+    // could carry on. Failure is swallowed deliberately: if the call cannot be made, ending
+    // the local session is still the right thing to do.
+    try {
+      await client.post('/auth/logout');
+    } catch {
+      /* ignored on purpose — see above */
+    }
+    setAccessToken(null);
     localStorage.removeItem('activeCompanyId');
     setUser(null);
     setActiveCompanyIdState(null);
+  }, []);
+
+  // Raised by the axios interceptor once a refresh has failed, i.e. the refresh token is gone
+  // too and there is nothing left to restore.
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setAccessToken(null);
+      setUser(null);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, []);
 
   const isAdmin = useCallback(() => user?.roleId === 1, [user]);
@@ -94,9 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user) return;
       try {
         const { data: perms } = await client.get<UserPermission[]>(`/users/${user.userId}/permissions`);
-        const updated = { ...user, permissions: perms };
-        localStorage.setItem('user', JSON.stringify(updated));
-        setUser(updated);
+        setUser({ ...user, permissions: perms });
         const allowedIds = perms.map(p => p.companyID);
         setActiveCompanyIdState(prev => {
           if (prev !== null && !allowedIds.includes(prev)) {
@@ -106,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return prev;
         });
       } catch {
-        logout();
+        void logout();
       }
     };
     window.addEventListener('permissions-revoked', handlePermissionsRevoked);
@@ -123,13 +180,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // than a hot-path win.
   const value = useMemo(
     () => ({
-      user, login, logout, isAdmin, isAuditor, isFullAccess,
+      user, isBootstrapping, login, logout, isAdmin, isAuditor, isFullAccess,
       allowedCountries, allowedCompanies,
       activeCompanyId: resolvedActiveCompanyId,
       setActiveCompanyId,
     }),
     [
-      user, login, logout, isAdmin, isAuditor, isFullAccess,
+      user, isBootstrapping, login, logout, isAdmin, isAuditor, isFullAccess,
       allowedCountries, allowedCompanies, resolvedActiveCompanyId, setActiveCompanyId,
     ],
   );
@@ -146,4 +203,3 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }
-

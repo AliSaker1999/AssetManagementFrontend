@@ -1,0 +1,1 @@
+import{b as e}from"./index-DQpbcbGd.js";const o={getList:()=>e.get("/contacts"),getListPaginated:(t=1,c=10)=>e.get("/contacts/paginated",{params:{pageNumber:t,pageSize:c}}),get:t=>e.get(`/contacts/${t}`),getLookup:()=>e.get("/contacts/lookup"),create:t=>e.post("/contacts",t),update:(t,c)=>e.put(`/contacts/${t}`,c),delete:t=>e.delete(`/contacts/${t}`)};export{o as c};

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import PageChunkFallback from '../components/PageChunkFallback';
 import { parseApiError } from '../utils/errors';
 import logoWhite from '../components/Gezairi - EN-V White.png';
 function IconDiamond() {
@@ -18,12 +19,18 @@ function IconDiamond() {
 }
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, isBootstrapping } = useAuth();
   const navigate = useNavigate();
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Someone arriving here with a refresh cookie still in place has a session; asking them to
+  // type a password again would be wrong, and the form would be replaced a moment later
+  // anyway once the bootstrap resolves.
+  if (isBootstrapping) return <PageChunkFallback />;
+  if (user) return <Navigate to="/" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

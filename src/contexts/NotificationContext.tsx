@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import * as signalR from '@microsoft/signalr';
 import type { AppNotification } from '../types';
 import { notificationsApi } from '../api/notifications';
+import { getAccessToken } from '../api/authToken';
 
 interface NotificationContextValue {
   notifications: AppNotification[];
@@ -20,17 +21,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // Load initial notifications
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!getAccessToken()) return;
 
     notificationsApi.getAll()
       .then(r => setNotifications(r.data as AppNotification[]))
       .catch(() => {});
 
-    // Build SignalR connection with token in query string (required for hub auth)
+    // Build SignalR connection with token in query string (required for hub auth).
+    // accessTokenFactory is called again on every connect and reconnect, so reading the
+    // in-memory token here — rather than capturing it once — means a reconnect after a
+    // rotation presents the current token instead of the expired one it started with.
     const connection = new signalR.HubConnectionBuilder()
       .withUrl('/hubs/notifications', {
-        accessTokenFactory: () => localStorage.getItem('token') ?? '',
+        accessTokenFactory: () => getAccessToken() ?? '',
       })
       .withAutomaticReconnect()
       .configureLogging(signalR.LogLevel.Warning)
