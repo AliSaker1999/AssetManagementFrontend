@@ -299,11 +299,11 @@ const activeCompany = activeCompanyId != null ? companies.find((c) => c.companyI
         <div className="flex-1 min-w-0 max-w-sm">
           <button
             onClick={() => setPaletteOpen(true)}
-            className="w-full flex items-center gap-2 bg-navy-700 border border-navy-600 rounded-md px-2 sm:px-3 py-1.5 text-navy-300 text-[13px] cursor-pointer hover:border-navy-400 hover:text-navy-200 transition-colors"
+            className="w-full flex items-center gap-2 bg-pearl-50 border border-pearl-200 rounded-md px-2 sm:px-3 py-1.5 text-ink-400 text-[13px] cursor-pointer shadow-card hover:border-gold-400 hover:shadow-card-md transition-all"
           >
-            <IconSearch />
+            <span className="text-ink-300 shrink-0"><IconSearch /></span>
             <span className="flex-1 text-left hidden sm:block truncate">Search assets, settings…</span>
-            <kbd className="text-[10px] text-navy-500 bg-navy-800 px-1.5 py-0.5 rounded font-mono shrink-0 hidden md:block">Ctrl K</kbd>
+            <kbd className="text-[10px] text-ink-400 bg-pearl-100 border border-pearl-200 px-1.5 py-0.5 rounded font-mono shrink-0 hidden md:block">Ctrl K</kbd>
           </button>
         </div>
 
