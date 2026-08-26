@@ -18,6 +18,7 @@ import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
 import { companyPrmCurrency } from '../utils/currency';
 import { fmtDate, fmtDateTime } from '../utils/date';
+import { addRecentAsset } from '../utils/recentAssets';
 import type {
   Asset, Company, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
   Maintenance, Warranty, Damage, Attachment, Contact, Currency, StatusType,
@@ -52,6 +53,30 @@ type StatusChangeForm = {
 };
 
 const STATUSES_WITH_MODAL = new Set([1, 3, 4, 7]); // 2 is now handled by TransferAssetModal
+
+/**
+ * Grouping/order for the status-change dropdown in the header. Statuses within a group are
+ * listed in this order; a thin divider is drawn between groups. Any status not listed here
+ * (and not already excluded from the menu) sorts after all groups, in raw statusID order.
+ */
+const STATUS_MENU_GROUPS: number[][] = [
+  [0, 13],    // Active, Active/Remote Work
+  [12, 14],   // In Stock, Unreceived Stock
+  [3, 11, 6], // Destroyed, Decomission, Lost
+  [4, 7, 1],  // Sold, Return To Supplier, Donated
+  [2],        // Transferred
+];
+const STATUS_MENU_ORDER: number[] = STATUS_MENU_GROUPS.flat();
+const STATUS_MENU_GROUP_END = new Set(STATUS_MENU_GROUPS.slice(0, -1).map((g) => g[g.length - 1]));
+
+function byStatusMenuOrder(a: StatusType, b: StatusType): number {
+  const ia = STATUS_MENU_ORDER.indexOf(a.statusID);
+  const ib = STATUS_MENU_ORDER.indexOf(b.statusID);
+  if (ia === -1 && ib === -1) return a.statusID - b.statusID;
+  if (ia === -1) return 1;
+  if (ib === -1) return -1;
+  return ia - ib;
+}
 // Allowlist, mirroring AttachmentContentValidator on the server. The old four-item
 // blocklist let through .exe, .aspx, .html and .js. SVG is excluded: it is XML that can
 // carry script, and the server no longer stores or serves it.
@@ -280,19 +305,16 @@ function statusTone(statusId?: number) {
   if (statusId === 0 || statusId === 13) 
     return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
-  if (statusId === 3 || statusId === 11) 
+  if (statusId === 3 || statusId === 11 || statusId === 6)
     return 'bg-rose-50 text-rose-700 border-rose-200';
 
-  if (statusId === 4 || statusId === 1 || statusId === 7) 
+  if (statusId === 4 || statusId === 1 || statusId === 7)
     return 'bg-amber-50 text-amber-700 border-amber-200';
 
-  if (statusId === 2) 
+  if (statusId === 2)
     return 'bg-sky-50 text-sky-700 border-sky-200';
 
-  if (statusId === 6) 
-    return 'bg-violet-50 text-violet-700 border-violet-200';
-
-  if (statusId === 12 || statusId === 14) 
+  if (statusId === 12 || statusId === 14)
     return 'bg-blue-50 text-blue-700 border-blue-200';
 
   return 'bg-pearl-50 text-ink-700 border-pearl-200';
@@ -368,8 +390,15 @@ export default function AssetDetailPage() {
       lookupsApi.getStatuses(),
     ])
       .then(([assetRes, statusRes]) => {
-        setAsset(assetRes.data as Asset);
+        const loadedAsset = assetRes.data as Asset;
+        setAsset(loadedAsset);
         setStatuses(statusRes.data as StatusType[]);
+        addRecentAsset({
+          assetID: loadedAsset.assetID,
+          assetDesc: loadedAsset.assetDesc,
+          assetCode: loadedAsset.assetCode,
+          category: loadedAsset.category,
+        });
       })
       .catch((err) => handleApiError(err, 'Failed to load asset'))
       .finally(() => setLoading(false));
@@ -879,39 +908,42 @@ export default function AssetDetailPage() {
                           // 8 (Under Maintenance) is reachable only via a damage's "Send to
                           // Maintenance" button now, not from this menu.
                           .filter((s) => ![5, 8, 9, 10].includes(s.statusID))
+                          .sort(byStatusMenuOrder)
                           .map((s) => (
-                            <button
-                              type="button"
-                              key={s.statusID}
-                              onClick={() => {
-                                if (asset.statusID === s.statusID) {
+                            <div key={s.statusID}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (asset.statusID === s.statusID) {
+                                    setOpenStatusMenu(false);
+                                    return;
+                                  }
                                   setOpenStatusMenu(false);
-                                  return;
-                                }
-                                setOpenStatusMenu(false);
-                                if (s.statusID === 2) {
-                                  openTransferModal();
-                                  return;
-                                }
-                                if (STATUSES_WITH_MODAL.has(s.statusID)) {
-                                  void openStatusChangeModal(s.statusID);
-                                  return;
-                                }
-                                void handleStatusChange(s.statusID);
-                              }}
-                              className={clsx(
-                                'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] transition-colors cursor-pointer',
-                                asset.statusID === s.statusID
-                                  ? 'bg-navy-50 text-navy-700'
-                                  : 'hover:bg-pearl-50 text-ink-700'
-                              )}
-                            >
-                              <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusTone(s.statusID))}>
-                                <StatusIcon statusId={s.statusID} />
-                              </span>
-                              <span>{s.status}</span>
-                              {asset.statusID === s.statusID && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-navy-500">Current</span>}
-                            </button>
+                                  if (s.statusID === 2) {
+                                    openTransferModal();
+                                    return;
+                                  }
+                                  if (STATUSES_WITH_MODAL.has(s.statusID)) {
+                                    void openStatusChangeModal(s.statusID);
+                                    return;
+                                  }
+                                  void handleStatusChange(s.statusID);
+                                }}
+                                className={clsx(
+                                  'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] transition-colors cursor-pointer',
+                                  asset.statusID === s.statusID
+                                    ? 'bg-navy-50 text-navy-700'
+                                    : 'hover:bg-pearl-50 text-ink-700'
+                                )}
+                              >
+                                <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusTone(s.statusID))}>
+                                  <StatusIcon statusId={s.statusID} />
+                                </span>
+                                <span>{s.status}</span>
+                                {asset.statusID === s.statusID && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-navy-500">Current</span>}
+                              </button>
+                              {STATUS_MENU_GROUP_END.has(s.statusID) && <div className="my-1 h-px bg-pearl-200" />}
+                            </div>
                           ))}
                       </div>
                     )}
@@ -1495,7 +1527,7 @@ function EmptyState({ message }: { message: string }) {
 function Modal({ title, onClose, children, width = 'max-w-lg', contentClassName }: { title: string; onClose: () => void; children: React.ReactNode; width?: string; contentClassName?: string }) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200 flex flex-col`}>
+      <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200 flex flex-col max-h-[90vh]`}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200 shrink-0">
           <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
           <button
@@ -1505,7 +1537,11 @@ function Modal({ title, onClose, children, width = 'max-w-lg', contentClassName 
             <IconClose />
           </button>
         </div>
-        <div className={clsx('px-6 py-5', contentClassName)}>{children}</div>
+        {/* min-h-0 overrides the flex item's default min-height:auto, which would
+            otherwise refuse to shrink below the content's natural height and defeat
+            max-h-[90vh] above — this is what makes tall forms scroll instead of running
+            off the screen. */}
+        <div className={clsx('px-6 py-5 overflow-y-auto min-h-0', contentClassName)}>{children}</div>
       </div>
     </div>
   );
@@ -1732,7 +1768,7 @@ function DamageMaintenanceModal({
       title="Maintenance History"
       onClose={onClose}
       width="max-w-7xl"
-      contentClassName="min-h-[65vh] max-h-[80vh] overflow-y-auto"
+      contentClassName="max-h-[80vh]"
     >
       {confirmDialog}
 

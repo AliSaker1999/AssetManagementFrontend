@@ -9,7 +9,7 @@ import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
 import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
-import type { Company, Employee, PaginatedResponse } from '../types';
+import type { Company, Country, Employee, PaginatedResponse } from '../types';
 import { fmtDate } from '../utils/date';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
@@ -86,7 +86,10 @@ export default function EmployeesPage() {
   const { isAdmin, isAuditor, allowedCompanies } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [countries, setCountries] = useState<Country[]>([]);
   const [search, setSearch] = useState('');
+  const [companyFilter, setCompanyFilter] = useState<number | ''>('');
+  const [countryFilter, setCountryFilter] = useState('');
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -107,24 +110,46 @@ export default function EmployeesPage() {
   const visibleCompanies = isAdmin()
     ? companies
     : companies.filter((c) => allowedCompanySet.has(c.companyID));
+  // The country filter only offers countries the user actually has a visible company in.
+  const visibleCountryIds = new Set(visibleCompanies.map((c) => c.countryID?.trim()).filter(Boolean));
+  const visibleCountries = countries.filter((c) => visibleCountryIds.has(c.countryID?.trim()));
+  const companyFilterOptions = countryFilter
+    ? visibleCompanies.filter((c) => c.countryID?.trim() === countryFilter)
+    : visibleCompanies;
 
   useEffect(() => {
     lookupsApi.getCompanies()
       .then((r) => setCompanies(r.data as Company[]))
       .catch((err) => handleApiError(err, 'Failed to load companies'));
+    lookupsApi.getCountries()
+      .then((r) => setCountries(r.data as Country[]))
+      .catch((err) => handleApiError(err, 'Failed to load countries'));
   }, []);
 
   useEffect(() => {
     setPageNumber(1);
     setAllEmployeesCache(null);
-  }, [search, pageSize]);
+  }, [search, pageSize, companyFilter, countryFilter]);
+
+  function handleCountryFilterChange(value: string) {
+    setCountryFilter(value);
+    // A company chosen under the old country may not exist under the new one.
+    setCompanyFilter((prev) => {
+      if (!prev || !value) return prev;
+      const comp = companies.find((c) => c.companyID === prev);
+      return comp && comp.countryID?.trim() === value ? prev : '';
+    });
+  }
 
   useEffect(() => {
     setLoading(true);
     const load = async () => {
       try {
+        const companyIdParam = companyFilter || undefined;
+        const countryIdParam = countryFilter || undefined;
+
         if (search.trim() === '') {
-          const r = await lookupsApi.getEmployeesPaginated(pageNumber, pageSize);
+          const r = await lookupsApi.getEmployeesPaginated(pageNumber, pageSize, companyIdParam, countryIdParam);
           const data = r.data as PaginatedResponse<Employee>;
           setEmployees(data.data);
           setTotalPages(data.totalPages);
@@ -133,9 +158,11 @@ export default function EmployeesPage() {
           return;
         }
 
+        // Company/country filters are applied in SQL here too, so the cache stays scoped
+        // to the current filter selection instead of the whole employee table.
         let allData = allEmployeesCache;
         if (!allData) {
-          const r = await lookupsApi.getEmployees();
+          const r = await lookupsApi.getEmployees(companyIdParam, countryIdParam);
           allData = r.data;
           setAllEmployeesCache(allData);
         }
@@ -158,7 +185,7 @@ export default function EmployeesPage() {
     };
 
     void load();
-  }, [pageNumber, pageSize, search, reloadKey]);
+  }, [pageNumber, pageSize, search, reloadKey, companyFilter, countryFilter]);
 
   async function reload() {
     setAllEmployeesCache(null);
@@ -285,6 +312,29 @@ export default function EmployeesPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-pearl-100 flex flex-wrap gap-3">
+            <Select
+              className="w-full max-w-[220px]"
+              value={countryFilter}
+              onChange={(e) => handleCountryFilterChange(e.target.value)}
+            >
+              <option value="">All Countries</option>
+              {visibleCountries.map((c) => (
+                <option key={c.countryID} value={c.countryID?.trim()}>{c.country}</option>
+              ))}
+            </Select>
+            <Select
+              className="w-full max-w-[220px]"
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value ? Number(e.target.value) : '')}
+            >
+              <option value="">All Companies</option>
+              {companyFilterOptions.map((c) => (
+                <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+              ))}
+            </Select>
           </div>
         </div>
 

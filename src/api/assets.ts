@@ -49,8 +49,9 @@ export const assetsApi = {
       signal,
     }),
   // One row per status, for the status tiles — replaces counting a full asset download.
-  getStatusCounts: (companyId?: number) =>
-    client.get<AssetStatusCount[]>('/assets/status-counts', { params: companyId ? { companyId } : {} }),
+  // `signal` lets the caller cancel an in-flight request, e.g. on unmount or logout.
+  getStatusCounts: (companyId?: number, signal?: AbortSignal) =>
+    client.get<AssetStatusCount[]>('/assets/status-counts', { params: companyId ? { companyId } : {}, signal }),
   get: (id: number) => client.get(`/assets/${id}`),
   getReport: (filter: AssetReportFilter) => client.post('/assets/report', filter),
   getNotDepreciated: () => client.get('/assets/not-depreciated'),

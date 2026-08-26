@@ -50,10 +50,12 @@ const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
  * the order they happened to be created in — Donated and Destroyed landed ahead of the
  * ones people filter by every day.
  *
- * This runs in the order you actually think about an asset: what's in use, what's sitting
- * in stock, what hasn't arrived, what's being fixed — then how it left, from most
- * deliberate (transferred, returned, decommissioned, sold, donated) to least (destroyed,
- * lost).
+ * Mirrors the grouping in the status-change dropdown on the asset detail page
+ * (STATUS_MENU_GROUPS in AssetDetailPage.tsx): what's in use, what's sitting in stock,
+ * then how it left — write-offs (destroyed, decommissioned, lost) before deliberate
+ * hand-offs (sold, returned, donated) before transferred. Under Maintenance (8) is not
+ * listed here — it's rendered separately, after a "|" divider, since it's a transient
+ * state rather than something people filter by day to day.
  *
  * Ids missing from this list sort to the end by StatusID, so a status added to the
  * database later still appears in the filter instead of silently vanishing.
@@ -63,14 +65,13 @@ const STATUS_FILTER_ORDER: number[] = [
   13, // Active/Remote Work
   12, // In Stock
   14, // Unreceived Stock
-  8,  // Under Maintenance
-  2,  // Transferred
-  7,  // Return To Supplier
-  11, // Decommission
-  4,  // Sold
-  1,  // Donated
   3,  // Destroyed
+  11, // Decommission
   6,  // Lost
+  4,  // Sold
+  7,  // Return To Supplier
+  1,  // Donated
+  2,  // Transferred
 ];
 
 function byStatusFilterOrder(a: StatusType, b: StatusType): number {
@@ -329,19 +330,16 @@ function statusTone(statusId?: number) {
   if (statusId === 0 || statusId === 13) 
     return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
-  if (statusId === 3 || statusId === 11) 
+  if (statusId === 3 || statusId === 11 || statusId === 6)
     return 'bg-rose-50 text-rose-700 border-rose-200';
 
-  if (statusId === 4 || statusId === 1 || statusId === 7) 
+  if (statusId === 4 || statusId === 1 || statusId === 7)
     return 'bg-amber-50 text-amber-700 border-amber-200';
 
-  if (statusId === 2) 
+  if (statusId === 2)
     return 'bg-sky-50 text-sky-700 border-sky-200';
 
-  if (statusId === 6) 
-    return 'bg-violet-50 text-violet-700 border-violet-200';
-
-  if (statusId === 12) 
+  if (statusId === 12)
     return 'bg-blue-50 text-blue-700 border-blue-200';
 
   return 'bg-pearl-50 text-ink-700 border-pearl-200';
@@ -349,10 +347,9 @@ function statusTone(statusId?: number) {
 
 function statusFilterSelectedClass(statusId?: number) {
   if (statusId === 0 || statusId === 13) return 'bg-emerald-500 text-white border-emerald-500 shadow-sm';
-  if (statusId === 3 || statusId === 11) return 'bg-rose-500 text-white border-rose-500 shadow-sm';
+  if (statusId === 3 || statusId === 11 || statusId === 6) return 'bg-rose-500 text-white border-rose-500 shadow-sm';
   if (statusId === 1 || statusId === 4 || statusId === 7) return 'bg-amber-500 text-white border-amber-500 shadow-sm';
   if (statusId === 2) return 'bg-sky-500 text-white border-sky-500 shadow-sm';
-  if (statusId === 6) return 'bg-violet-500 text-white border-violet-500 shadow-sm';
   if (statusId === 8 || statusId === 12 || statusId === 14) return 'bg-blue-500 text-white border-blue-500 shadow-sm';
   return 'bg-ink-600 text-white border-ink-600 shadow-sm';
 }
@@ -940,6 +937,16 @@ export default function AssetsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // `search` only reads the URL's `q` once, on mount (see useState above), so a `q` that
+  // shows up later — e.g. the command palette's "View all" link firing navigate() while
+  // this page is already mounted — is otherwise silently ignored. Re-syncing here is a
+  // no-op in the common case: the effect below writes `search` back to the same `q` it
+  // came from, so this just reads back what it already matches.
+  useEffect(() => {
+    const q = searchParams.get('q') ?? '';
+    setSearch((prev) => (prev === q ? prev : q));
+  }, [searchParams]);
+
   useEffect(() => {
     const next: Record<string, string> = {};
     if (search.trim()) next.q = search;
@@ -982,11 +989,16 @@ useEffect(() => {
   // The status tiles used to be counted in the browser from a download of every asset,
   // which is the request that times out on a slow link. /assets/status-counts returns
   // one row per status instead, so the tiles no longer depend on the full list.
-  const loadStatusCounts = useCallback(async (notifyOnError = true) => {
+  const loadStatusCounts = useCallback(async (notifyOnError = true, signal?: AbortSignal) => {
     try {
-      const r = await assetsApi.getStatusCounts(activeCompanyId ?? undefined);
+      const r = await assetsApi.getStatusCounts(activeCompanyId ?? undefined, signal);
       setStatusCounts(r.data);
     } catch (err) {
+      // A cancelled request (unmount, company switch, or navigating away e.g. on logout)
+      // is not a failure worth showing — and by the time it settles the toast would be
+      // the only thing still on screen, since react-hot-toast renders outside this page.
+      const name = (err as { name?: string })?.name;
+      if (name === 'CanceledError' || name === 'AbortError') return;
       if (notifyOnError) handleApiError(err, 'Failed to load asset counts');
     }
   }, [activeCompanyId]);
@@ -996,7 +1008,9 @@ useEffect(() => {
     // The full list is now only fetched for the leave-process modal, so it has to be
     // dropped here too or that modal would keep showing the previous company's assets.
     setAllAssetsCache(null);
-    void loadStatusCounts();
+    const controller = new AbortController();
+    void loadStatusCounts(true, controller.signal);
+    return () => controller.abort();
   }, [loadStatusCounts]);
 
   // Only the leave-process modal still needs every asset, so it is fetched when that
@@ -1222,11 +1236,11 @@ useEffect(() => {
                 </button>
 
                 {/* Per-status chips. .filter() already returns a new array, so sorting it
-                    here does not mutate the statuses state. */}
-                {statuses
-                  .filter((s) => ![5, 9, 10].includes(s.statusID))
-                  .sort(byStatusFilterOrder)
-                  .map((s) => {
+                    here does not mutate the statuses state. Under Maintenance (8) is a
+                    transient state rather than something people filter by day to day, so
+                    it renders after a "|" divider instead of inline with the rest. */}
+                {(() => {
+                  const statusChip = (s: StatusType) => {
                     const isSelected = selectedStatusIds.has(s.statusID);
                     return (
                       <button
@@ -1253,7 +1267,24 @@ useEffect(() => {
                         {s.status}
                       </button>
                     );
-                  })}
+                  };
+
+                  const visible = statuses.filter((s) => ![5, 9, 10].includes(s.statusID));
+                  const mainStatuses = visible.filter((s) => s.statusID !== 8).sort(byStatusFilterOrder);
+                  const maintenanceStatus = visible.find((s) => s.statusID === 8);
+
+                  return (
+                    <>
+                      {mainStatuses.map(statusChip)}
+                      {maintenanceStatus && (
+                        <>
+                          <span className="text-pearl-200 text-sm px-0.5 select-none" aria-hidden="true">|</span>
+                          {statusChip(maintenanceStatus)}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* Clear filters */}
                 {selectedStatusIds.size > 0 && (
