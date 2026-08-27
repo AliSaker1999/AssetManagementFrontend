@@ -6,7 +6,7 @@ import { lookupsApi } from '../api/lookups';
 import { handleApiError } from '../utils/errors';
 import type {
   Company,
-  HrCompanyProfile,
+  Employee,
   HrEmployee,
   LocationDetail,
   LocationType,
@@ -49,14 +49,16 @@ function Modal({
   onClose,
   children,
   width = 'max-w-lg',
+  zIndexClassName = 'z-50',
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   width?: string;
+  zIndexClassName?: string;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className={`fixed inset-0 bg-black/40 ${zIndexClassName} flex items-center justify-center p-4`}>
       <div className={`bg-white rounded-xl shadow-card-lg w-full ${width} border border-pearl-200`}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-pearl-200">
           <h3 className="text-[14px] font-semibold text-ink-800">{title}</h3>
@@ -189,6 +191,8 @@ export interface TransferAssetModalProps {
   onClose: () => void;
   /** Callback after a successful transfer; receives the new employee ID. */
   onTransferred: (newEmpID: string) => void;
+  /** Stacking order override for when this modal opens on top of another modal (e.g. Leave Process). Defaults to z-50. */
+  zIndexClassName?: string;
 }
 
 export default function TransferAssetModal({
@@ -196,18 +200,20 @@ export default function TransferAssetModal({
   open,
   onClose,
   onTransferred,
+  zIndexClassName,
 }: TransferAssetModalProps) {
   // ─── State ──────────────────────────────────────────────────────────────
   const [transferDate, setTransferDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
-  const [transferCompanyProfileID, setTransferCompanyProfileID] = useState<number | ''>('');
+  const [transferCompanyId, setTransferCompanyId] = useState<number | ''>('');
+  // Mutually exclusive, same as the asset form's Internal / HR "Used By" pair — picking
+  // one clears the other, and exactly one is required to submit.
+  const [transferEmpIDUsedBy, setTransferEmpIDUsedBy] = useState<number | ''>('');
   const [transferEmpID, setTransferEmpID] = useState<string>('');
-  // The asset's company names its HR source directly. This used to derive a countryID
-  // instead, which cannot work once a country has more than one HR database.
-  const [transferHrSourceId, setTransferHrSourceId] = useState<number | ''>('');
-  const [transferCompanies, setTransferCompanies] = useState<HrCompanyProfile[]>([]);
-  const [transferEmployees, setTransferEmployees] = useState<HrEmployee[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [internalEmployees, setInternalEmployees] = useState<Employee[]>([]);
+  const [hrEmployees, setHrEmployees] = useState<HrEmployee[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -215,7 +221,7 @@ export default function TransferAssetModal({
   // ─── Relocation (optional) ──────────────────────────────────────────────
   // Locations are country-scoped, so they are loaded for the asset's company country —
   // which is also the country of every company this asset can be transferred to, since
-  // the target list is scoped to the asset's own HR source.
+  // the target list is every company in that same country.
   const [assetCountryId, setAssetCountryId] = useState<string>('');
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [locDetails, setLocDetails] = useState<LocationDetail[]>([]);
@@ -236,11 +242,12 @@ export default function TransferAssetModal({
   useEffect(() => {
     if (open) {
       setTransferDate(new Date().toISOString().slice(0, 10));
-      setTransferCompanyProfileID('');
+      setTransferCompanyId('');
+      setTransferEmpIDUsedBy('');
       setTransferEmpID('');
-      setTransferHrSourceId('');
-      setTransferCompanies([]);
-      setTransferEmployees([]);
+      setCompanies([]);
+      setInternalEmployees([]);
+      setHrEmployees([]);
       setLocationID(asset?.locationID ?? '');
       setLocDetailID(asset?.locDetailID ?? '');
       setQuickAdd(null);
@@ -251,11 +258,12 @@ export default function TransferAssetModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Load transfer companies from the HR source the asset's company reads
+  // Load every company in the asset's own country — the receiving company does not have
+  // to share the asset's HR source (or have one at all), only its country.
   useEffect(() => {
     if (!open || !asset) {
-      setTransferCompanies([]);
-      setTransferHrSourceId('');
+      setCompanies([]);
+      setAssetCountryId('');
       return;
     }
 
@@ -270,19 +278,18 @@ export default function TransferAssetModal({
         const assetCompany = allCompanies.find(
           (c) => c.companyID === asset.companyID
         );
-        const hrSourceId = assetCompany?.hrSourceID;
-        if (!hrSourceId) {
-          throw new Error("This asset's company has no HR database configured, so it cannot be transferred to an HR employee.");
-        }
-
         const countryId = assetCompany?.countryID?.trim() ?? '';
-
-        const hrCompaniesRes = await lookupsApi.getHrCompanies(hrSourceId);
+        if (!countryId) {
+          throw new Error("This asset's company has no country configured, so it cannot be transferred.");
+        }
         if (!isMounted) return;
 
-        setTransferHrSourceId(hrSourceId);
-        setTransferCompanies(hrCompaniesRes.data as HrCompanyProfile[]);
         setAssetCountryId(countryId);
+        setCompanies(
+          allCompanies
+            .filter((c) => (c.countryID ?? '').trim() === countryId)
+            .sort((a, b) => a.companyName.localeCompare(b.companyName))
+        );
 
         // Locations are a separate concern: a failure here must not block the transfer.
         setLoadingLocations(true);
@@ -296,8 +303,7 @@ export default function TransferAssetModal({
         }
       } catch (err) {
         if (!isMounted) return;
-        setTransferHrSourceId('');
-        setTransferCompanies([]);
+        setCompanies([]);
         handleApiError(err, 'Failed to load transfer companies');
       } finally {
         if (isMounted) setLoadingCompanies(false);
@@ -309,38 +315,41 @@ export default function TransferAssetModal({
     };
   }, [open, asset]);
 
-  // Load employees when a company is selected
+  // Load both employee pools for the selected company — internal employees always (a
+  // plain lookup scoped to the company), HR employees only when the company actually has
+  // an HR source. Either can fail without blanking the other: an unreachable HR database
+  // must not hide the internal employees who are unaffected by it.
   useEffect(() => {
-    if (!open || !transferHrSourceId || !transferCompanyProfileID) {
-      setTransferEmployees([]);
+    if (!open || !transferCompanyId) {
+      setInternalEmployees([]);
+      setHrEmployees([]);
       return;
     }
 
+    const company = companies.find((c) => c.companyID === transferCompanyId);
     let isMounted = true;
     setLoadingEmployees(true);
 
-    lookupsApi
-      .getHrEmployeesByCompanyProfile(
-        Number(transferHrSourceId),
-        Number(transferCompanyProfileID)
-      )
-      .then((res) => {
-        if (!isMounted) return;
-        setTransferEmployees(res.data as HrEmployee[]);
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        setTransferEmployees([]);
-        handleApiError(err, 'Failed to load transfer employees');
-      })
-      .finally(() => {
-        if (isMounted) setLoadingEmployees(false);
-      });
+    Promise.all([
+      lookupsApi.getEmployees(Number(transferCompanyId)).catch((err) => {
+        if (isMounted) handleApiError(err, 'Failed to load internal employees');
+        return { data: [] as Employee[] };
+      }),
+      company?.hrSourceID
+        ? lookupsApi.getHrEmployees(Number(transferCompanyId)).catch(() => ({ data: [] as HrEmployee[] }))
+        : Promise.resolve({ data: [] as HrEmployee[] }),
+    ]).then(([internalRes, hrRes]) => {
+      if (!isMounted) return;
+      setInternalEmployees(internalRes.data as Employee[]);
+      setHrEmployees(hrRes.data as HrEmployee[]);
+    }).finally(() => {
+      if (isMounted) setLoadingEmployees(false);
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [open, transferHrSourceId, transferCompanyProfileID]);
+  }, [open, transferCompanyId, companies]);
 
   // Load location details whenever the selected location changes. The current selection
   // survives if it belongs to the new list, which is what preserves the asset's own
@@ -383,8 +392,10 @@ export default function TransferAssetModal({
   // ─── Handlers ───────────────────────────────────────────────────────────
 
   const handleCompanyChange = (value: string) => {
-    setTransferCompanyProfileID(value === '' ? '' : Number(value));
-    setTransferEmpID(''); // reset employee when company changes
+    setTransferCompanyId(value === '' ? '' : Number(value));
+    // Both employee picks reset when the company changes — the old lists no longer apply.
+    setTransferEmpIDUsedBy('');
+    setTransferEmpID('');
   };
 
   // Both create endpoints return an empty body, so the new row is found by refetching
@@ -486,16 +497,22 @@ export default function TransferAssetModal({
       toast.error('Transfer date is required');
       return;
     }
-    if (!transferHrSourceId) {
+    if (!assetCountryId) {
       toast.error('Transfer company lookups are not available for this asset.');
       return;
     }
-    if (!transferCompanyProfileID) {
+    if (!transferCompanyId) {
       toast.error('Select a transfer company');
       return;
     }
-    if (!transferEmpID.trim()) {
-      toast.error('Select a transfer employee');
+    const hasInternalEmployee = transferEmpIDUsedBy !== '';
+    const hasHrEmployee = transferEmpID.trim() !== '';
+    if (!hasInternalEmployee && !hasHrEmployee) {
+      toast.error('Select a transfer employee — either HR or internal');
+      return;
+    }
+    if (hasInternalEmployee && hasHrEmployee) {
+      toast.error('Select either an HR employee or an internal employee, not both');
       return;
     }
     if (locationID && !locDetailID) {
@@ -523,14 +540,15 @@ export default function TransferAssetModal({
         statusSalePrice: 0,
         statusSaleCurCode: null,
         statusDesc: null,
-        transferCompanyProfileID: transferCompanyProfileID,
-        transferEmpID: transferEmpID.trim(),
+        transferCompanyID: Number(transferCompanyId),
+        transferEmpID: hasHrEmployee ? transferEmpID.trim() : null,
+        transferEmpIDUsedBy: hasInternalEmployee ? Number(transferEmpIDUsedBy) : null,
         transferLocationID: relocating ? Number(locationID) : null,
         transferLocDetailID: relocating ? Number(locDetailID) : null,
       });
 
       toast.success('Asset transferred successfully');
-      onTransferred(transferEmpID.trim());
+      onTransferred(hasHrEmployee ? transferEmpID.trim() : String(transferEmpIDUsedBy));
       onClose();
     } catch (err) {
       handleApiError(err, 'Transfer failed');
@@ -550,13 +568,16 @@ export default function TransferAssetModal({
   // Disable the form if asset is under inventory (status 10) – optional
   const isUnderInventory = asset.statusID === 10;
 
-  // The list is scoped to companies registered against this asset's HR source, so it can
-  // legitimately be empty when none have been set up yet.
-  const noTransferCompanies = !loadingCompanies && transferCompanies.length === 0;
+  // The list is scoped to the asset's own country, so it can legitimately be empty only
+  // if that country itself has no companies set up yet.
+  const noTransferCompanies = !loadingCompanies && companies.length === 0;
+  const selectedCompany = companies.find((c) => c.companyID === transferCompanyId);
+  const hasInternalEmployee = transferEmpIDUsedBy !== '';
+  const hasHrEmployee = transferEmpID.trim() !== '';
 
   return (
     <>
-    <Modal title="Transfer Asset" onClose={onClose}>
+    <Modal title="Transfer Asset" onClose={onClose} zIndexClassName={zIndexClassName}>
       <form onSubmit={handleSubmit}>
         {isUnderInventory && (
           <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-700">
@@ -577,7 +598,7 @@ export default function TransferAssetModal({
 
         <FormRow label="Company *">
           <Select
-            value={transferCompanyProfileID}
+            value={transferCompanyId}
             onChange={(e) => handleCompanyChange(e.target.value)}
             disabled={loadingCompanies || noTransferCompanies || isUnderInventory}
             required
@@ -586,42 +607,78 @@ export default function TransferAssetModal({
               {loadingCompanies
                 ? 'Loading companies…'
                 : noTransferCompanies
-                  ? "No registered companies for this asset's HR database"
+                  ? "No companies found in this asset's country"
                   : 'Select company…'}
             </option>
-            {transferCompanies.map((company) => (
-              <option
-                key={company.companyProfileID}
-                value={company.companyProfileID}
-              >
-                {company.prmName} ({company.companyProfileID})
+            {companies.map((company) => (
+              <option key={company.companyID} value={company.companyID}>
+                {company.companyName} ({company.companyAbbreviation})
               </option>
             ))}
           </Select>
         </FormRow>
 
-        <FormRow label="Employee *">
+        <FormRow label={hasHrEmployee ? 'Used By (Internal Employee)' : 'Used By (Internal Employee) *'}>
           <Select
-            value={transferEmpID}
-            onChange={(e) => setTransferEmpID(e.target.value)}
-            disabled={
-              loadingEmployees || !transferCompanyProfileID || isUnderInventory
-            }
-            required
+            value={transferEmpIDUsedBy}
+            onChange={(e) => {
+              const value = e.target.value === '' ? '' : Number(e.target.value);
+              setTransferEmpIDUsedBy(value);
+              if (value !== '') setTransferEmpID('');
+            }}
+            disabled={loadingEmployees || !transferCompanyId || hasHrEmployee || isUnderInventory}
+            required={!hasHrEmployee}
           >
             <option value="">
               {loadingEmployees
                 ? 'Loading employees…'
-                : transferCompanyProfileID
-                ? 'Select employee…'
-                : 'Select company first'}
+                : !transferCompanyId
+                  ? 'Select company first'
+                  : internalEmployees.length
+                    ? 'Select employee…'
+                    : 'No internal employees for this company'}
             </option>
-            {transferEmployees.map((emp) => (
+            {internalEmployees.map((emp) => (
+              <option key={emp.empIDUsedBy} value={emp.empIDUsedBy}>
+                {emp.empFullName}
+              </option>
+            ))}
+          </Select>
+          {hasHrEmployee && (
+            <p className="text-[11px] text-ink-300 mt-1">Disabled — an HR employee is selected below. Clear it to use an internal employee.</p>
+          )}
+        </FormRow>
+
+        <FormRow label={hasInternalEmployee ? 'Used By (HR Employee)' : 'Used By (HR Employee) *'}>
+          <Select
+            value={transferEmpID}
+            onChange={(e) => {
+              setTransferEmpID(e.target.value);
+              if (e.target.value) setTransferEmpIDUsedBy('');
+            }}
+            disabled={loadingEmployees || !transferCompanyId || hasInternalEmployee || isUnderInventory}
+            required={!hasInternalEmployee}
+          >
+            <option value="">
+              {loadingEmployees
+                ? 'Loading employees…'
+                : !transferCompanyId
+                  ? 'Select company first'
+                  : !selectedCompany?.hrSourceID
+                    ? 'This company has no HR database configured'
+                    : hrEmployees.length
+                      ? 'Select employee…'
+                      : 'No HR employees found'}
+            </option>
+            {hrEmployees.map((emp) => (
               <option key={emp.empID} value={emp.empID}>
                 {formatHrEmployeeLabel(emp)}
               </option>
             ))}
           </Select>
+          {hasInternalEmployee && (
+            <p className="text-[11px] text-ink-300 mt-1">Disabled — an internal employee is selected above. Clear it to use an HR employee.</p>
+          )}
         </FormRow>
 
         <div className="mt-5 mb-4 pt-4 border-t border-pearl-200">

@@ -9,6 +9,7 @@ import type { AssetListItem, AssetStatusCount, Employee, LeftEmployeeAsset, Pagi
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import TablePagination from '../components/ui/TablePagination';
+import TransferAssetModal from '../components/TransferAssetModal';
 import { useAuth } from '../contexts/AuthContext';
 import { fmtDate } from '../utils/date';
 
@@ -490,11 +491,14 @@ function LeaveProcessModal({
   statuses,
   onClose,
   onLeaveOut,
+  onAssetTransferred,
 }: {
   allAssets: AssetListItem[] | null;
   statuses: StatusType[];
   onClose: () => void;
   onLeaveOut: (employeeName: string, eligibleAssets: AssetListItem[], selectedIds: Set<number>) => Promise<boolean>;
+  /** Called after a mid-flow transfer (see transferAsset below) so the parent can drop the asset from its cache. */
+  onAssetTransferred: (assetId: number) => void;
 }) {
   const [query, setQuery] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<LeaveEmployeeOption | null>(null);
@@ -502,6 +506,10 @@ function LeaveProcessModal({
   const [submitting, setSubmitting] = useState(false);
   const [leftEmployees, setLeftEmployees] = useState<LeftEmployeeAsset[] | null>(null);
   const [internalEmployees, setInternalEmployees] = useState<Employee[] | null>(null);
+  // An asset the user wants to redirect to someone else mid-leave-process — e.g. it was
+  // physically handed to a different employee and the system was never updated. Handled
+  // inline via TransferAssetModal so the leave flow doesn't have to be abandoned for it.
+  const [transferAsset, setTransferAsset] = useState<AssetListItem | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -615,6 +623,7 @@ function LeaveProcessModal({
   }
 
   return (
+    <>
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -770,9 +779,9 @@ function LeaveProcessModal({
                           .filter(Boolean)
                           .join(' - ');
                         return (
-                          <label
+                          <div
                             key={a.assetID}
-                            className="flex items-start gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors cursor-pointer"
+                            className="flex items-start gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors"
                           >
                             <LeaveCheckbox checked={checked} onClick={() => toggleAsset(a.assetID)} />
                             <div className="min-w-0 flex-1">
@@ -781,10 +790,21 @@ function LeaveProcessModal({
                                 {identity || '—'}
                               </p>
                             </div>
-                            <span className="text-[10px] font-semibold uppercase text-ink-300 shrink-0">
-                              {a.status ?? statuses.find((s) => s.statusID === a.statusID)?.status ?? `Status ${a.statusID}`}
-                            </span>
-                          </label>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-[10px] font-semibold uppercase text-ink-300">
+                                {a.status ?? statuses.find((s) => s.statusID === a.statusID)?.status ?? `Status ${a.statusID}`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setTransferAsset(a)}
+                                disabled={submitting}
+                                title="Already handed to someone else? Transfer it directly instead of leaving it out."
+                                className="text-[10px] font-semibold text-navy-600 hover:text-navy-700 disabled:opacity-50"
+                              >
+                                Transfer
+                              </button>
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -819,6 +839,31 @@ function LeaveProcessModal({
         </div>
       </div>
     </div>
+
+    {transferAsset && (
+      <TransferAssetModal
+        asset={{
+          assetID: transferAsset.assetID,
+          companyID: transferAsset.companyID,
+          statusID: transferAsset.statusID,
+        }}
+        open
+        onClose={() => setTransferAsset(null)}
+        onTransferred={() => {
+          const id = transferAsset.assetID;
+          setTransferAsset(null);
+          setSelectedAssetIds((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          onAssetTransferred(id);
+        }}
+        zIndexClassName="z-[110]"
+      />
+    )}
+    </>
   );
 }
 
@@ -1124,6 +1169,13 @@ useEffect(() => {
     }
   }
 
+  // A transfer inside the Leave Process modal moves the asset to a different employee
+  // (possibly a different company) via TransferAssetModal, which returns no body — so
+  // rather than guess the new owner, just drop the row. It'll come back with fresh data
+  // next time allAssetsCache reloads (company switch, or reopening after a while).
+  function handleAssetTransferredInLeaveProcess(assetId: number) {
+    setAllAssetsCache((prev) => prev ? prev.filter((a) => a.assetID !== assetId) : prev);
+  }
 
   const countForStatus = (statusId: number) =>
     (statusCounts ?? []).find((c) => c.statusID === statusId)?.assetCount ?? 0;
@@ -1487,6 +1539,7 @@ useEffect(() => {
           statuses={statuses}
           onClose={() => setLeaveProcessOpen(false)}
           onLeaveOut={handleLeaveOut}
+          onAssetTransferred={handleAssetTransferredInLeaveProcess}
         />
       )}
 
