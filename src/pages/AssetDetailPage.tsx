@@ -541,7 +541,7 @@ export default function AssetDetailPage() {
   async function openStatusChangeModal(nextStatusId: number) {
     if (readOnly) return;
     if (!asset) return;
-    if (asset.statusID === 10) return;
+    if (asset.statusID === 10 || asset.statusID === 8) return;
 
     const needsLookups = nextStatusId === 1 || nextStatusId === 4;
     try {
@@ -567,7 +567,7 @@ export default function AssetDetailPage() {
 
   // New: open transfer modal
   const openTransferModal = () => {
-    if (readOnly || !asset || asset.statusID === 10) return;
+    if (readOnly || !asset || asset.statusID === 10 || asset.statusID === 8) return;
     setTransferModalOpen(true);
   };
 
@@ -632,7 +632,7 @@ export default function AssetDetailPage() {
   async function handleStatusChange(newStatusId: number) {
     if (!asset) return;
     if (readOnly) return;
-    if (asset.statusID === 10) return;
+    if (asset.statusID === 10 || asset.statusID === 8) return;
     const today = new Date().toISOString().slice(0, 10);
     setChangingStatus(true);
     try {
@@ -660,7 +660,7 @@ export default function AssetDetailPage() {
     e.preventDefault();
     if (!asset) return;
     if (readOnly) return;
-    if (asset.statusID === 10) return;
+    if (asset.statusID === 10 || asset.statusID === 8) return;
     if (statusModalStatusId == null) return;
 
     const salePrice = Number(statusChangeForm.statusSalePrice || 0);
@@ -718,7 +718,7 @@ export default function AssetDetailPage() {
   async function handleRemoveStatus() {
     if (!asset) return;
     if (readOnly) return;
-    if (asset.statusID === 10) return;
+    if (asset.statusID === 10 || asset.statusID === 8) return;
     const today = new Date().toISOString().slice(0, 10);
     setChangingStatus(true);
     try {
@@ -814,6 +814,7 @@ export default function AssetDetailPage() {
     { key: 'remark', label: 'Remark' },
   ];
   const isUnderInventory = asset.statusID === 10;
+  const isUnderMaintenance = asset.statusID === 8;
   const statusModalStatusName = statuses.find((s) => s.statusID === statusModalStatusId)?.status ?? 'Status';
 
   return (
@@ -868,9 +869,9 @@ export default function AssetDetailPage() {
             {/* Status dropdown */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">Status</span>
-              {asset.statusID === 10 ? (
+              {isUnderInventory || isUnderMaintenance ? (
                 <div className="flex items-center gap-1.5">
-                  <StatusBadge status={asset.statusName ?? 'Under Inventory'} />
+                  <StatusBadge status={asset.statusName ?? (isUnderInventory ? 'Under Inventory' : 'Under Maintenance')} />
                   <span className="text-[10px] text-amber-600 font-medium">(locked)</span>
                 </div>
               ) : readOnly ? (
@@ -879,6 +880,7 @@ export default function AssetDetailPage() {
                 <div className="flex items-center gap-1.5">
                   <div className="relative inline-flex items-center" data-status-menu-root="true">
                     <button
+                      disabled={changingStatus}
                       type="button"
                       onClick={() => {
                         if (changingStatus) return;
@@ -951,7 +953,7 @@ export default function AssetDetailPage() {
                   <button
                     type="button"
                     onClick={handleRemoveStatus}
-                    disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12 || asset.statusID === 13}
+                    disabled={changingStatus || asset.statusID === 0 || asset.statusID === 12 || asset.statusID === 13 || asset.statusID === 8}
                     className={clsx(HEADER_CTRL, 'btn-danger shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed')}
                   >
                     Remove Status
@@ -1748,6 +1750,10 @@ function DamageMaintenanceModal({
       // Null means this record wasn't the one holding the asset "Under Maintenance"
       // (already returned, a sibling maintenance is still open, etc.) — see the API.
       if (r.data.revertedStatusID != null) onAssetStatusChange(r.data.revertedStatusID);
+      // Deleting can reopen the damage (if this was its only/last maintenance) or leave
+      // it under maintenance (a sibling record still open) — either way the damage's
+      // fixed/underMaintenance flags are stale until re-read, same as return/edit.
+      onReturned();
       toast.success('Deleted');
     } catch (err) { handleApiError(err, 'Delete failed'); }
   }
@@ -2271,7 +2277,11 @@ function DamageTab({
   const [editing, setEditing] = useState<Damage | null>(null);
   const [form, setForm] = useState<DamageForm>({ damageDate: '', damageDesc: '' });
   const [saving, setSaving] = useState(false);
-  const [historyTarget, setHistoryTarget] = useState<Damage | null>(null);
+  // Stored as an ID rather than the Damage object itself, so the modal always reflects
+  // the latest fixed/underMaintenance flags after a refresh (e.g. deleting a maintenance
+  // record) instead of a snapshot taken when the button was clicked.
+  const [historyTargetId, setHistoryTargetId] = useState<number | null>(null);
+  const historyTarget = historyTargetId != null ? items.find((d) => d.damageID === historyTargetId) ?? null : null;
   // The asset is already out for repair for some damage — a new fault cannot be logged
   // until it returns, mirroring the check the API makes on create.
   const underRepair = assetStatusID === 8;
@@ -2381,7 +2391,7 @@ function DamageTab({
                     Send to Maintenance
                   </button>
                 )}
-                <ActionBtn onClick={() => setHistoryTarget(d)}>Maintenance</ActionBtn>
+                <ActionBtn onClick={() => setHistoryTargetId(d.damageID)}>Maintenance</ActionBtn>
                 {!readOnly && <ActionBtn onClick={() => openEdit(d)}>Edit</ActionBtn>}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(d)}>Delete</ActionBtn>}
               </div>
@@ -2423,7 +2433,7 @@ function DamageTab({
           currencies={currencies}
           onChange={onMaintenancesChange}
           onReturned={onMaintenanceReturned}
-          onClose={() => setHistoryTarget(null)}
+          onClose={() => setHistoryTargetId(null)}
         />
       )}
     </>

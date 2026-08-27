@@ -8,6 +8,8 @@ interface Props {
   accent?: 'navy' | 'gold' | 'success' | 'warning' | 'danger' | 'none' | 'percent' ;
   icon?: ReactNode;
   className?: string;
+  /** Optional small decoration below the value/sub — e.g. a Sparkline. Unused by most callers. */
+  chart?: ReactNode;
 }
 
 const accentBar: Record<string, string> = {
@@ -20,7 +22,7 @@ const accentBar: Record<string, string> = {
   percent: 'border-t-percent',
 };
 
-export default function MetricCard({ label, value, sub, accent = 'none', icon, className }: Props) {
+export default function MetricCard({ label, value, sub, accent = 'none', icon, className, chart }: Props) {
   return (
     <div className={clsx(
       'bg-white rounded-xl border border-pearl-200 shadow-card p-4 flex flex-col gap-1 border-t-4',
@@ -33,6 +35,7 @@ export default function MetricCard({ label, value, sub, accent = 'none', icon, c
       </div>
       <div className="text-[26px] font-extrabold text-ink-800 leading-none num">{value}</div>
       {sub && <div className="text-[11px] text-ink-300 mt-0.5">{sub}</div>}
+      {chart && <div className="mt-1">{chart}</div>}
     </div>
   );
 }

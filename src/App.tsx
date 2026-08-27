@@ -26,6 +26,7 @@ import useGlobalFormValidation from './hooks/useGlobalFormValidation';
  * The Suspense boundary lives inside Layout, around its <Outlet />, so the sidebar and
  * header stay on screen while a page chunk loads instead of the whole app blanking.
  */
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AssetsPage = lazy(() => import('./pages/AssetsPage'));
 const AssetDetailPage = lazy(() => import('./pages/AssetDetailPage'));
 const AssetFormPage = lazy(() => import('./pages/AssetFormPage'));
@@ -56,7 +57,8 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/assets" replace />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
             <Route path="assets" element={<AssetsPage />} />
             <Route path="assets/new" element={<AssetFormPage />} />
             <Route path="assets/:id" element={<AssetDetailPage />} />

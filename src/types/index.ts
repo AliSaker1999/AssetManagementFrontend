@@ -33,6 +33,69 @@ export interface AssetStatusCount {
   assetCount: number;
 }
 
+// Dashboard
+export interface DashboardCompanyCount {
+  companyID: number;
+  companyAbbreviation: string;
+  companyName: string;
+  /** CompanyAbbreviation collides across countries — only CompanyName is globally unique. */
+  countryID: string;
+  assetCount: number;
+}
+
+export interface DashboardCountryCount {
+  countryID: string;
+  country: string;
+  assetCount: number;
+}
+
+export interface DashboardExpiringWarranty {
+  warntID: number;
+  assetID: number;
+  companyID: number;
+  companyAbbreviation: string;
+  assetCode: string;
+  assetDesc: string;
+  warrantyDesc: string;
+  toDate: string;
+  daysLeft: number;
+}
+
+export interface DashboardTrendPoint {
+  month: string;
+  depreciationValue: number;
+  netBookValue: number;
+}
+
+/** An open maintenance — ReturnedDate IS NULL is the open/closed signal, not toDate. */
+export interface DashboardOpenMaintenance {
+  maintID: number;
+  assetID: number;
+  companyID: number;
+  companyAbbreviation: string;
+  assetCode: string;
+  assetDesc: string;
+  damageDesc: string | null;
+  toDate: string;
+  daysLeft: number;
+}
+
+export interface DashboardAcquisitionTrendPoint {
+  month: string;
+  assetCount: number;
+}
+
+/** Combined payload from /dashboard/summary — one round trip for the whole page. */
+export interface DashboardSummary {
+  statusCounts: AssetStatusCount[];
+  companyCounts: DashboardCompanyCount[];
+  countryCounts: DashboardCountryCount[];
+  expiringWarranties: DashboardExpiringWarranty[];
+  depreciationTrend: DashboardTrendPoint[];
+  openMaintenances: DashboardOpenMaintenance[];
+  acquisitionTrend: DashboardAcquisitionTrendPoint[];
+}
+
 export interface AssetListItem {
   assetID: number;
   companyID: number;

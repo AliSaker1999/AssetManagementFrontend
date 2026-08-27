@@ -71,3 +71,12 @@ export function todayIso(): string {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Jan '26" from a "yyyy-MM-dd" month-start value, for the dashboard trend chart's x-axis. */
+export function fmtMonth(value: string): string {
+  const m = ISO.exec(value);
+  if (!m) return value;
+  return `${MONTHS[Number(m[2]) - 1]} '${m[1].slice(2)}`;
+}
