@@ -330,6 +330,15 @@ export interface InventoryDetail {
   remark?: string;
 }
 
+/** Result of resolving a scanned barcode against the active inventory's own snapshot. */
+export interface InventoryBarcodeMatch {
+  invDetailID: number;
+  assetID: number;
+  assetCode: string;
+  assetDesc: string | null;
+  isAvailable: boolean;
+}
+
 // Depreciations
 export interface Depreciation {
   depID: number;

@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Dev-only, self-signed HTTPS. getUserMedia (camera access, for barcode scanning) requires
+    // a secure context; a phone reached over the LAN is neither localhost nor HTTPS by default,
+    // so it's blocked outright without this. The browser will warn the cert isn't trusted —
+    // click through once per device. Never used for the production build.
+    basicSsl(),
+  ],
   build: {
     rollupOptions: {
       output: {
@@ -33,6 +41,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Off by default (Vite only binds localhost), so a phone on the same network couldn't
+    // reach the dev server at all regardless of HTTP vs HTTPS. Needed to test camera-based
+    // barcode scanning from an actual device rather than a desktop browser.
+    host: true,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

@@ -1,5 +1,5 @@
 import client from './client';
-import type { InventoryDetail, PaginatedResponse } from '../types';
+import type { InventoryBarcodeMatch, InventoryDetail, PaginatedResponse } from '../types';
 
 export const inventoriesApi = {
   getHistory:   (companyId: number) => client.get('/inventories/history',   { params: { companyId } }),
@@ -25,4 +25,8 @@ export const inventoriesApi = {
   relocate: (data: object) => client.put('/inventories/relocate', data),
   getStats: (inventoryId: number, companyId: number) =>
   client.get(`/inventories/${inventoryId}/stats`, { params: { companyId } }),
+  resolveBarcode: (inventoryId: number, companyId: number, barcodeNumber: string) =>
+    client.get<InventoryBarcodeMatch>(`/inventories/${inventoryId}/resolve-barcode`, {
+      params: { companyId, barcodeNumber },
+    }),
 };

@@ -18,7 +18,18 @@ async function downloadBlob(promise: Promise<{ data: ArrayBuffer; headers: Recor
 }
 
 export const assetsApi = {
-  getList: (companyId?: number) => client.get('/assets', { params: companyId ? { companyId } : {} }),
+  // No filters: every asset for the company (used by the Leave Process modal). With
+  // search/statusIds: the current filtered view, all matching rows in one response — same
+  // filters GetListPaginated/export already apply in SQL, just without pagination. Used by
+  // bulk barcode printing so the label count matches what's actually on screen.
+  getList: (companyId?: number, search?: string, statusIds?: number[]) =>
+    client.get<AssetListItem[]>('/assets', {
+      params: {
+        ...(companyId ? { companyId } : {}),
+        ...(search && search.trim() ? { search: search.trim() } : {}),
+        ...(statusIds && statusIds.length ? { statusIds: statusIds.join(',') } : {}),
+      },
+    }),
   export: (data: { format: 'excel' | 'pdf'; companyID?: number; search?: string; statusIDs: number[] }) =>
     downloadBlob(
       client.post('/assets/export', data, { responseType: 'arraybuffer' }) as never,

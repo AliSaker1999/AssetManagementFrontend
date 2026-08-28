@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { AxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { inventoriesApi } from '../api/inventories';
@@ -9,7 +10,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { handleApiError } from '../utils/errors';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
+import type { ScanResult } from '../components/BarcodeScannerModal';
 import { fmtDate, todayIso } from '../utils/date';
+
+// The zxing barcode-decoding library is large enough to push this page's chunk past Vite's
+// 500KB warning on its own — lazy-loaded so it only downloads when someone actually opens the
+// scanner, not on every visit to this page. Mirrors why App.tsx lazy-loads whole routes.
+const BarcodeScannerModal = lazy(() => import('../components/BarcodeScannerModal'));
 import type {
   Asset,
   Company,
@@ -1030,6 +1037,7 @@ export default function InventoriesPage() {
   const [detailTarget, setDetailTarget]         = useState<InventoryDetail | null>(null);
   const [pastInventories, setPastInventories]   = useState<InventoryListItem[]>([]);
   const [historyTarget, setHistoryTarget]       = useState<InventoryListItem | null>(null);
+  const [scannerOpen, setScannerOpen]           = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const today = todayIso();
@@ -1189,6 +1197,55 @@ async function handleRefresh() {
   }
 }
 
+  // ── barcode scanning ──────────────────────────────────────────────────────
+  // Resolves a scanned barcode against this inventory's own snapshot, then reuses the exact
+  // same mutation toggleAvailable already calls — scanning is just a faster way to trigger it.
+  async function handleBarcodeDetected(barcodeNumber: string): Promise<ScanResult> {
+    if (!session || companyId == null) {
+      return { kind: 'error', barcodeNumber, message: 'No active session.' };
+    }
+    try {
+      const res = await inventoriesApi.resolveBarcode(session.inventoryID, companyId, barcodeNumber);
+      const match = res.data;
+
+      if (match.isAvailable) {
+        return { kind: 'already-found', barcodeNumber, assetCode: match.assetCode, message: 'Already marked found' };
+      }
+
+      await inventoriesApi.setAvailable(match.invDetailID, true);
+      return { kind: 'found', barcodeNumber, assetCode: match.assetCode, message: 'Marked found' };
+    } catch (err) {
+      const status = (err as AxiosError).response?.status;
+      if (status === 404) {
+        return { kind: 'not-found', barcodeNumber, message: 'No matching asset in this inventory' };
+      }
+      if (status === 409) {
+        return { kind: 'ambiguous', barcodeNumber, message: 'Matches multiple assets — resolve manually' };
+      }
+      return { kind: 'error', barcodeNumber, message: 'Failed to resolve barcode' };
+    }
+  }
+
+  // Deliberately reloads once on close rather than trying to keep the paginated `details`
+  // table live-synced during scanning — the matched row is usually not on the loaded page,
+  // so an optimistic patch here would be fragile. Mirrors handleRefresh's own reload shape.
+  async function handleScannerClose() {
+    setScannerOpen(false);
+    if (!session) return;
+    setDetailsLoading(true);
+    try {
+      const [, statsRes] = await Promise.all([
+        loadDetails(session.inventoryID),
+        inventoriesApi.getStats(session.inventoryID, companyId ?? 0),
+      ]);
+      setSessionStats(statsRes.data as { total: number; found: number; relocated: number });
+    } catch (err) {
+      handleApiError(err, 'Failed to refresh inventory data');
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
   // ── mark all available ────────────────────────────────────────────────────
   async function handleMarkAllAvailable() {
   if (readOnly || !session) return;
@@ -1323,6 +1380,11 @@ const visibleCompanies = isAdmin()
       )}
       {historyTarget && (
         <PastInventoryDetailModal item={historyTarget} onClose={() => setHistoryTarget(null)} />
+      )}
+      {scannerOpen && (
+        <Suspense fallback={<div className="fixed inset-0 z-[120] bg-black flex items-center justify-center text-white text-[14px]">Loading scanner…</div>}>
+          <BarcodeScannerModal onClose={handleScannerClose} onDetected={handleBarcodeDetected} />
+        </Suspense>
       )}
 
       {/* ── page header ── */}
@@ -1490,6 +1552,17 @@ const visibleCompanies = isAdmin()
 
                 {!readOnly && (
                   <div className="flex items-center gap-2 ml-auto">
+                    <button
+                      onClick={() => setScannerOpen(true)}
+                      className="btn-secondary text-sm px-3 py-2 flex items-center gap-1.5"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+                        <line x1="7" y1="12" x2="17" y2="12" />
+                      </svg>
+                      Scan Barcode
+                    </button>
+
                     <button
                       onClick={handleRefresh}
                       disabled={actionLoading}

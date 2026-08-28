@@ -9,7 +9,7 @@ interface Props {
   onClose: () => void;
 }
 
-function BarcodeLabel({ barcodeNumber, assetCode, assetDesc }: Omit<Props, 'onClose'>) {
+export function BarcodeLabel({ barcodeNumber, assetCode, assetDesc }: Omit<Props, 'onClose'>) {
   return (
     <div className="barcode-label">
       <Barcode

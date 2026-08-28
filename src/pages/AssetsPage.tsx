@@ -10,6 +10,7 @@ import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import TablePagination from '../components/ui/TablePagination';
 import TransferAssetModal from '../components/TransferAssetModal';
+import BulkBarcodePrintModal from '../components/BulkBarcodePrintModal';
 import { useAuth } from '../contexts/AuthContext';
 import { fmtDate } from '../utils/date';
 
@@ -895,6 +896,7 @@ export default function AssetsPage() {
     return new Set(raw ? raw.split(',').map(Number).filter((n) => !Number.isNaN(n)) : []);
   });
   const [leaveProcessOpen, setLeaveProcessOpen] = useState(false);
+  const [bulkPrintOpen, setBulkPrintOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
@@ -1193,6 +1195,15 @@ useEffect(() => {
         actions={
           <div className="flex items-center gap-2">
             <ExportMenu busy={exporting} onExport={handleExport} />
+            <button
+              type="button"
+              onClick={() => setBulkPrintOpen(true)}
+              className="btn-secondary"
+              title="Print barcode labels for every asset in this view"
+            >
+              <IconBarcode />
+              Print Barcodes
+            </button>
             {!readOnly && (
               <>
                 <button
@@ -1540,6 +1551,15 @@ useEffect(() => {
           onClose={() => setLeaveProcessOpen(false)}
           onLeaveOut={handleLeaveOut}
           onAssetTransferred={handleAssetTransferredInLeaveProcess}
+        />
+      )}
+
+      {bulkPrintOpen && (
+        <BulkBarcodePrintModal
+          companyId={activeCompanyId ?? undefined}
+          search={search}
+          statusIds={Array.from(selectedStatusIds)}
+          onClose={() => setBulkPrintOpen(false)}
         />
       )}
 

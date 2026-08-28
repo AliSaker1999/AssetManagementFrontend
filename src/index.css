@@ -194,6 +194,13 @@
     margin: 0;
   }
 
+  /* Bulk printing repeats .barcode-label once per asset inside the same print target —
+     each one gets its own physical label/page, not stacked onto one. :not(:last-child)
+     avoids a trailing blank page and keeps the existing single-label print unaffected. */
+  #barcode-print-target .barcode-label:not(:last-child) {
+    break-after: page;
+  }
+
   #barcode-print-target .barcode-label {
     width: 3.5in;
     height: 1.5in;
