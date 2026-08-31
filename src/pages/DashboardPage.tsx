@@ -13,7 +13,7 @@ import Sparkline from '../components/ui/Sparkline';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { useCountUp } from '../hooks/useCountUp';
-import { fmtDate, fmtMonth } from '../utils/date';
+import { fmtDate } from '../utils/date';
 
 const WARRANTY_WINDOW_DAYS = 30;
 const TREND_MONTHS = 12;
@@ -261,23 +261,7 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Depreciation Trend" subtitle={`Last ${TREND_MONTHS} months`}>
-          <BarChart
-            variant="trend"
-            data={(summary?.depreciationTrend ?? []).map((p) => ({
-              label: fmtMonth(p.month),
-              value: p.depreciationValue,
-              secondaryValue: p.netBookValue,
-            }))}
-            valueLabel="Depreciation"
-            secondaryLabel="Net Book Value"
-            formatValue={(n) => n.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            emptyMessage={loading ? 'Loading…' : 'No depreciation runs in this period.'}
-          />
-          <p className="text-[11px] text-ink-300 mt-3">
-            Figures shown in native transaction currency, summed nominally across companies.
-          </p>
-        </SectionCard>
+
       </div>
     </div>
   );

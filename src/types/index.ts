@@ -308,6 +308,18 @@ export interface StatusHistoryItem {
   createdByDateTime: string;
 }
 
+/** One entry in the Asset Detail page's unified Activity timeline. */
+export interface AssetAuditEntry {
+  at: string;
+  entityType: 'Asset' | 'Status' | 'Depreciation' | 'Inventory' | 'Warranty' | 'Damage' | 'Maintenance';
+  action: 'Created' | 'Updated' | 'Deleted';
+  fieldName?: string;
+  oldValue?: string;
+  newValue?: string;
+  /** Absent only for Inventory entries — that source carries no user field at all. */
+  changedByFullName?: string;
+}
+
 // Inventory
 export interface InventoryDetail {
   invDetailID: number;

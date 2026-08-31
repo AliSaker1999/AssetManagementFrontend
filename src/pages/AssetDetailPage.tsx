@@ -14,19 +14,21 @@ import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
+import EmptyState from '../components/ui/EmptyState';
+import AuditTimeline from '../components/ui/AuditTimeline';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
 import { companyPrmCurrency } from '../utils/currency';
 import { fmtDate, fmtDateTime } from '../utils/date';
 import { addRecentAsset } from '../utils/recentAssets';
 import type {
-  Asset, Company, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem,
+  Asset, Company, DepreciationHistoryItem, InventoryHistoryItem, StatusHistoryItem, AssetAuditEntry,
   Maintenance, Warranty, Damage, Attachment, Contact, Currency, StatusType,
 } from '../types';
 
-type Tab = 'info' | 'depreciation' | 'inventory' | 'status' |'damage' | 'warranty' |  'attachments' | 'remark';
+type Tab = 'info' | 'activity' | 'depreciation' | 'inventory' | 'status' |'damage' | 'warranty' |  'attachments' | 'remark';
 
-const TAB_KEYS: Tab[] = ['info', 'depreciation', 'inventory', 'status', 'damage', 'warranty',  'attachments', 'remark'];
+const TAB_KEYS: Tab[] = ['info', 'activity', 'depreciation', 'inventory', 'status', 'damage', 'warranty',  'attachments', 'remark'];
 /**
  * Spelled out rather than derived from Maintenance: the row carries fields the form has
  * no business editing (returnedDate, and the damageDesc/damageDate/damageFixed columns
@@ -345,6 +347,7 @@ export default function AssetDetailPage() {
   const [depHistory, setDepHistory] = useState<DepreciationHistoryItem[]>([]);
   const [invHistory, setInvHistory] = useState<InventoryHistoryItem[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistoryItem[]>([]);
+  const [auditLog, setAuditLog] = useState<AssetAuditEntry[]>([]);
   const [maintenances, setMaintenances] = useState<Maintenance[]>([]);
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [damages, setDamages] = useState<Damage[]>([]);
@@ -742,6 +745,10 @@ export default function AssetDetailPage() {
   // Removed useEffect hooks for transfer companies/employees
 
   useEffect(() => {
+    if (tab === 'activity' && auditLog.length === 0)
+      assetsApi.getAuditLog(assetId)
+        .then((r) => setAuditLog(r.data as AssetAuditEntry[]))
+        .catch((err) => handleApiError(err, 'Failed to load activity'));
     if (tab === 'depreciation' && depHistory.length === 0)
       assetsApi.getDepreciationHistory(assetId).then((r) => setDepHistory(r.data as DepreciationHistoryItem[]));
     if (tab === 'inventory' && invHistory.length === 0)
@@ -805,6 +812,7 @@ export default function AssetDetailPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'info', label: 'Info' },
+    { key: 'activity', label: 'Activity' },
     { key: 'depreciation', label: 'Depreciation' },
     { key: 'inventory', label: 'Inventory' },
     { key: 'status', label: 'Status History' },
@@ -1045,6 +1053,7 @@ export default function AssetDetailPage() {
       {/* Tab content */}
       <div className="px-4 sm:px-8 py-6">
         {tab === 'info' && <AssetInfo asset={asset} />}
+        {tab === 'activity' && <AuditTimeline entries={auditLog} />}
         {tab === 'depreciation' && <DepreciationTab data={depHistory} />}
         {tab === 'inventory' && (
           <SimpleTable
@@ -1509,19 +1518,6 @@ function ModalActions({ saving, onCancel }: { saving: boolean; onCancel: () => v
       <button type="button" onClick={onCancel} className="btn-secondary">
         Cancel
       </button>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-10 h-10 rounded-full bg-pearl-100 flex items-center justify-center mb-3">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9585" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 7h18M3 12h18M3 17h18" />
-        </svg>
-      </div>
-      <p className="text-[13px] text-ink-400">{message}</p>
     </div>
   );
 }

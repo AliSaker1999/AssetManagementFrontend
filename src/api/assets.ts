@@ -1,5 +1,5 @@
 import client from './client';
-import type { AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, AssetStatusCount, LeftEmployeeAsset } from '../types';
+import type { AssetAuditEntry, AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, AssetStatusCount, LeftEmployeeAsset } from '../types';
 
 async function downloadBlob(promise: Promise<{ data: ArrayBuffer; headers: Record<string, string> }>, fallbackName: string) {
   const res = await promise;
@@ -74,5 +74,6 @@ export const assetsApi = {
   getDepreciationHistory: (id: number) => client.get(`/assets/${id}/depreciation-history`),
   getInventoryHistory: (id: number) => client.get(`/assets/${id}/inventory-history`),
   getStatusHistory: (id: number) => client.get(`/assets/${id}/status-history`),
+  getAuditLog: (id: number) => client.get<AssetAuditEntry[]>(`/assets/${id}/audit-log`),
   getCodes: () => client.get('/assets/codes'),
 };
