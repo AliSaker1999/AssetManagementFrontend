@@ -80,6 +80,28 @@ export interface DashboardAcquisitionTrendPoint {
   assetCount: number;
 }
 
+/** One company's most recent depreciation run and most recent inventory session (open or closed). */
+export interface DashboardCompanyOperations {
+  companyID: number;
+  companyAbbreviation: string;
+  companyName: string;
+  countryID: string;
+  lastDepreciationDate: string | null;
+  lastInventoryID: number | null;
+  lastInventoryStartDate: string | null;
+  lastInventoryEndDate: string | null;
+}
+
+/** One inventory session with no end date yet — still open for counting. */
+export interface DashboardOpenInventory {
+  inventoryID: number;
+  companyID: number;
+  companyAbbreviation: string;
+  companyName: string;
+  inventoryStartDate: string;
+  startCreatedByFullName: string;
+}
+
 /** Combined payload from /dashboard/summary — one round trip for the whole page. */
 export interface DashboardSummary {
   statusCounts: AssetStatusCount[];
@@ -91,6 +113,8 @@ export interface DashboardSummary {
   acquisitionTrend: DashboardAcquisitionTrendPoint[];
   /** Assets already in scope before this calendar month started — powers the Total Assets tile's month-over-month %. */
   assetCountStartOfMonth: number;
+  companyOperations: DashboardCompanyOperations[];
+  openInventories: DashboardOpenInventory[];
 }
 
 /** Response shape of GET /dashboard/attention-items — the full, paginated Needs Attention list. */

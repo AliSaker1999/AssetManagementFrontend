@@ -62,6 +62,27 @@ function IconAlertTriangle() {
   );
 }
 
+function IconClipboardList({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+      <path d="M9 12h6M9 16h6" />
+    </svg>
+  );
+}
+
+function IconCoins() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="9" cy="7" rx="6.5" ry="4" />
+      <path d="M2.5 7v6c0 2.2 2.9 4 6.5 4s6.5-1.8 6.5-4V7" />
+      <path d="M15.5 9.5c2.7.4 4.5 1.7 4.5 3.5 0 2.2-2.9 4-6.5 4-1.6 0-3-.3-4.2-.9" />
+      <path d="M2.5 10.5c0 2.2 2.9 4 6.5 4" />
+    </svg>
+  );
+}
+
 function ViewAllLink({ to, label = 'View all' }: { to: string; label?: string }) {
   return (
     <Link
@@ -128,6 +149,25 @@ export default function DashboardPage() {
   const countryCounts = summary?.countryCounts ?? [];
   const companyCounts = (summary?.companyCounts ?? [])
     .filter((c) => selectedCountryId == null || c.countryID === selectedCountryId);
+  const companyOperations = summary?.companyOperations ?? [];
+  const openInventories = summary?.openInventories ?? [];
+
+  // System-wide "last" figures: whichever company's run/session is the most recent one,
+  // out of the per-company snapshot the API already computed. ISO date strings ("yyyy-MM-dd")
+  // sort correctly with plain string comparison, so no Date parsing is needed here.
+  const lastDepreciation = companyOperations.reduce<typeof companyOperations[number] | null>((best, c) => {
+    if (!c.lastDepreciationDate) return best;
+    if (!best?.lastDepreciationDate || c.lastDepreciationDate > best.lastDepreciationDate) return c;
+    return best;
+  }, null);
+  const lastInventory = companyOperations.reduce<typeof companyOperations[number] | null>((best, c) => {
+    if (!c.lastInventoryStartDate) return best;
+    if (!best?.lastInventoryStartDate || c.lastInventoryStartDate > best.lastInventoryStartDate) return c;
+    return best;
+  }, null);
+  const lastInventoryIsOpen = lastInventory != null
+    && lastInventory.lastInventoryStartDate != null
+    && lastInventory.lastInventoryEndDate == null;
 
   const totalAssets = statusCounts.reduce((sum, c) => sum + c.assetCount, 0);
   const activeCount = statusCounts.find((c) => c.statusID === 0)?.assetCount ?? 0;
@@ -358,6 +398,109 @@ export default function DashboardPage() {
             )}
           </SectionCard>
         )}
+
+        {/* Depreciation & Inventory */}
+        <SectionCard
+          title="Depreciation & Inventory"
+          subtitle="System-wide last run, and any inventory sessions still open"
+          className="md:col-span-2 xl:col-span-3"
+          actions={<ViewAllLink to="/dashboard/operations" label="View all companies" />}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Last Depreciation (system-wide) */}
+            <button
+              type="button"
+              disabled={lastDepreciation == null}
+              onClick={() => { if (lastDepreciation) { setActiveCompanyId(lastDepreciation.companyID); navigate('/depreciations'); } }}
+              className={clsx(
+                'rounded-2xl border border-pearl-100 p-4 flex items-center gap-4 text-left transition-colors',
+                lastDepreciation ? 'hover:bg-pearl-50 cursor-pointer' : 'cursor-default'
+              )}
+            >
+              <div className="w-12 h-12 shrink-0 rounded-2xl bg-gold-500 text-white flex items-center justify-center shadow-sm">
+                <IconCoins />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold tracking-wider text-ink-400 uppercase">Last Depreciation</div>
+                <div className="num text-xl font-extrabold text-ink-900 leading-tight">
+                  {loading ? '—' : lastDepreciation ? fmtDate(lastDepreciation.lastDepreciationDate) : 'Never'}
+                </div>
+                <div className="text-[11px] font-medium text-ink-400 mt-0.5 truncate">
+                  {loading ? undefined : lastDepreciation
+                    ? `${lastDepreciation.companyAbbreviation} · ${lastDepreciation.companyName}`
+                    : 'No depreciation runs yet'}
+                </div>
+              </div>
+            </button>
+
+            {/* Last Inventory (system-wide) */}
+            <button
+              type="button"
+              disabled={lastInventory == null}
+              onClick={() => { if (lastInventory) { setActiveCompanyId(lastInventory.companyID); navigate('/inventories'); } }}
+              className={clsx(
+                'rounded-2xl border border-pearl-100 p-4 flex items-center gap-4 text-left transition-colors',
+                lastInventory ? 'hover:bg-pearl-50 cursor-pointer' : 'cursor-default'
+              )}
+            >
+              <div className="w-12 h-12 shrink-0 rounded-2xl bg-navy-600 text-white flex items-center justify-center shadow-sm">
+                <IconClipboardList size={20} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold tracking-wider text-ink-400 uppercase">Last Inventory</div>
+                <div className="flex items-center gap-2">
+                  <div className="num text-xl font-extrabold text-ink-900 leading-tight">
+                    {loading ? '—' : lastInventory ? fmtDate(lastInventory.lastInventoryStartDate) : 'Never'}
+                  </div>
+                  {lastInventoryIsOpen && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-success-bg text-success border border-success/20 whitespace-nowrap">
+                      Open
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] font-medium text-ink-400 mt-0.5 truncate">
+                  {loading ? undefined : lastInventory
+                    ? `${lastInventory.companyAbbreviation} · ${lastInventory.companyName}`
+                    : 'No inventory sessions yet'}
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* Open inventory sessions */}
+          <div className="mt-5 pt-4 border-t border-pearl-100">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-ink-400 uppercase mb-2.5">
+              <IconClipboardList size={14} />
+              Open Inventories{openInventories.length > 0 && ` (${openInventories.length})`}
+            </div>
+            {loading ? (
+              <div className="text-center text-[13px] text-ink-300 py-6">Loading…</div>
+            ) : openInventories.length === 0 ? (
+              <div className="text-center text-[13px] text-ink-300 py-6">No open inventory sessions.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {openInventories.map((inv) => (
+                  <button
+                    key={inv.inventoryID}
+                    type="button"
+                    onClick={() => { setActiveCompanyId(inv.companyID); navigate('/inventories'); }}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-success/20 bg-success-bg/60 hover:bg-success-bg transition-colors text-left"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[12px] font-bold text-ink-800 truncate">
+                        {inv.companyAbbreviation} · {inv.companyName}
+                      </div>
+                      <div className="text-[11px] text-ink-400 truncate mt-0.5">
+                        Started {fmtDate(inv.inventoryStartDate)} by {inv.startCreatedByFullName}
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold text-success shrink-0">Continue →</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </SectionCard>
       </div>
     </div>
   );
