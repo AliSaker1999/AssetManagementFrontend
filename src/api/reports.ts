@@ -1,4 +1,5 @@
 import client from './client';
+import { downloadBlob } from '../utils/downloadBlob';
 
 export interface ReportPreview {
   title: string;
@@ -11,26 +12,6 @@ export interface ReportPreview {
 export interface PreviewPagingRequest {
   pageNumber?: number;
   pageSize?: number;
-}
-
-async function downloadBlob(
-  promise: Promise<{ data: ArrayBuffer; headers: Record<string, string> }>,
-  fallbackName: string
-) {
-  const res = await promise;
-  const contentDisposition = res.headers?.['content-disposition'] as string | undefined;
-  let fileName = fallbackName;
-  if (contentDisposition) {
-    const m = contentDisposition.match(/filename="?([^";]+)"?/i);
-    if (m?.[1]) fileName = m[1].trim();
-  }
-  const blob = new Blob([res.data]);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 export const reportsApi = {
@@ -59,6 +40,21 @@ export const reportsApi = {
     downloadBlob(
       client.post('/reports/status-history', data, { responseType: 'arraybuffer' }) as any,
       'StatusHistoryReport.pdf'
+    ),
+  downloadCompaniesBreakdown: (data: object) =>
+    downloadBlob(
+      client.post('/reports/companies-breakdown', data, { responseType: 'arraybuffer' }) as any,
+      'AssetsByCompany.pdf'
+    ),
+  downloadCountriesBreakdown: (data: object) =>
+    downloadBlob(
+      client.post('/reports/countries-breakdown', data, { responseType: 'arraybuffer' }) as any,
+      'AssetsByCountry.pdf'
+    ),
+  downloadAttentionItems: (data: object) =>
+    downloadBlob(
+      client.post('/reports/attention-items', data, { responseType: 'arraybuffer' }) as any,
+      'NeedsAttention.pdf'
     ),
 
   // ── Preview (returns JSON) ─────────────────────────────────────────────────

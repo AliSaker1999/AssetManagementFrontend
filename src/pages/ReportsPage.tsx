@@ -284,6 +284,7 @@ export default function ReportsPage() {
   }, [companyId]);
 
   const canDownload = (): boolean => {
+    if (reportType === 'status-history') return true;
     if (!companyId) return false;
     if (reportType === 'depreciation') return depId > 0;
     if (reportType === 'assets-list-inventory') return inventoryId > 0;
@@ -383,7 +384,7 @@ export default function ReportsPage() {
   const isStatusHistory  = reportType === 'status-history';
   const companyNotSelected = !companyId;
   const selectedCompanyCountryId = companies.find((c) => c.companyID === companyId)?.countryID?.trim() ?? '';
-  const filtersDisabled  = isNotDepreciated || companyNotSelected;
+  const filtersDisabled  = isNotDepreciated || (companyNotSelected && !isStatusHistory);
   const busy             = downloading || previewing;
   const pd               = previewData; // local const for TS narrowing
 
@@ -501,7 +502,7 @@ export default function ReportsPage() {
                 <SelectField
                   value={companyId}
                   onChange={(v) => setCompanyId(Number(v))}
-                  placeholder="Select company…"
+                  placeholder={isStatusHistory ? 'All companies' : 'Select company…'}
                 >
                   {visibleCompanies.map((c) => (
                     <option key={c.companyID} value={c.companyID}>

@@ -1200,29 +1200,29 @@ async function handleRefresh() {
   // ── barcode scanning ──────────────────────────────────────────────────────
   // Resolves a scanned barcode against this inventory's own snapshot, then reuses the exact
   // same mutation toggleAvailable already calls — scanning is just a faster way to trigger it.
-  async function handleBarcodeDetected(barcodeNumber: string): Promise<ScanResult> {
+  async function handleBarcodeDetected(scannedCode: string): Promise<ScanResult> {
     if (!session || companyId == null) {
-      return { kind: 'error', barcodeNumber, message: 'No active session.' };
+      return { kind: 'error', scannedCode, message: 'No active session.' };
     }
     try {
-      const res = await inventoriesApi.resolveBarcode(session.inventoryID, companyId, barcodeNumber);
+      const res = await inventoriesApi.resolveBarcode(session.inventoryID, companyId, scannedCode);
       const match = res.data;
 
       if (match.isAvailable) {
-        return { kind: 'already-found', barcodeNumber, assetCode: match.assetCode, message: 'Already marked found' };
+        return { kind: 'already-found', scannedCode, assetCode: match.assetCode, message: 'Already marked found' };
       }
 
       await inventoriesApi.setAvailable(match.invDetailID, true);
-      return { kind: 'found', barcodeNumber, assetCode: match.assetCode, message: 'Marked found' };
+      return { kind: 'found', scannedCode, assetCode: match.assetCode, message: 'Marked found' };
     } catch (err) {
       const status = (err as AxiosError).response?.status;
       if (status === 404) {
-        return { kind: 'not-found', barcodeNumber, message: 'No matching asset in this inventory' };
+        return { kind: 'not-found', scannedCode, message: 'No matching asset in this inventory' };
       }
       if (status === 409) {
-        return { kind: 'ambiguous', barcodeNumber, message: 'Matches multiple assets — resolve manually' };
+        return { kind: 'ambiguous', scannedCode, message: 'Matches multiple assets — resolve manually' };
       }
-      return { kind: 'error', barcodeNumber, message: 'Failed to resolve barcode' };
+      return { kind: 'error', scannedCode, message: 'Failed to resolve barcode' };
     }
   }
 

@@ -27,6 +27,9 @@ import useGlobalFormValidation from './hooks/useGlobalFormValidation';
  * header stay on screen while a page chunk loads instead of the whole app blanking.
  */
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AssetsByCompanyPage = lazy(() => import('./pages/AssetsByCompanyPage'));
+const AssetsByCountryPage = lazy(() => import('./pages/AssetsByCountryPage'));
+const NeedsAttentionPage = lazy(() => import('./pages/NeedsAttentionPage'));
 const AssetsPage = lazy(() => import('./pages/AssetsPage'));
 const AssetDetailPage = lazy(() => import('./pages/AssetDetailPage'));
 const AssetFormPage = lazy(() => import('./pages/AssetFormPage'));
@@ -59,6 +62,9 @@ export default function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="dashboard/companies" element={<AssetsByCompanyPage />} />
+            <Route path="dashboard/countries" element={<AssetsByCountryPage />} />
+            <Route path="dashboard/attention" element={<NeedsAttentionPage />} />
             <Route path="assets" element={<AssetsPage />} />
             <Route path="assets/new" element={<AssetFormPage />} />
             <Route path="assets/:id" element={<AssetDetailPage />} />

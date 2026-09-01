@@ -7,7 +7,7 @@ export type ScanResultKind = 'found' | 'already-found' | 'not-found' | 'ambiguou
 
 export interface ScanResult {
   kind: ScanResultKind;
-  barcodeNumber: string;
+  scannedCode: string;
   assetCode?: string;
   message: string;
 }
@@ -15,7 +15,7 @@ export interface ScanResult {
 interface BarcodeScannerModalProps {
   onClose: () => void;
   /** Resolve + mutate + toast all live in the caller — this component only needs the outcome back. */
-  onDetected: (barcodeNumber: string) => Promise<ScanResult>;
+  onDetected: (scannedCode: string) => Promise<ScanResult>;
 }
 
 const DEDUPE_WINDOW_MS = 2500;
@@ -89,7 +89,7 @@ export default function BarcodeScannerModal({ onClose, onDetected }: BarcodeScan
       const result = await onDetectedRef.current(text);
       setFeed((prev) => [result, ...prev].slice(0, MAX_FEED_ITEMS));
     } catch {
-      const errorResult: ScanResult = { kind: 'error', barcodeNumber: text, message: 'Unexpected error' };
+      const errorResult: ScanResult = { kind: 'error', scannedCode: text, message: 'Unexpected error' };
       setFeed((prev) => [errorResult, ...prev].slice(0, MAX_FEED_ITEMS));
     } finally {
       busyRef.current = false;
@@ -287,7 +287,7 @@ export default function BarcodeScannerModal({ onClose, onDetected }: BarcodeScan
                 <span className={clsx('w-2 h-2 rounded-full shrink-0', kindDotClass[r.kind])} />
                 <div className="min-w-0">
                   <div className="text-[13px] font-semibold text-white font-code truncate">
-                    {r.assetCode ?? r.barcodeNumber}
+                    {r.assetCode ?? r.scannedCode}
                   </div>
                   <div className="text-[12px] text-navy-300 truncate">{r.message}</div>
                 </div>

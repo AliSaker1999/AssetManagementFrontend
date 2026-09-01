@@ -1,21 +1,6 @@
 import client from './client';
 import type { AssetAuditEntry, AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, AssetStatusCount, LeftEmployeeAsset } from '../types';
-
-async function downloadBlob(promise: Promise<{ data: ArrayBuffer; headers: Record<string, string> }>, fallbackName: string) {
-  const res = await promise;
-  const contentDisposition = res.headers?.['content-disposition'] as string | undefined;
-  let fileName = fallbackName;
-  if (contentDisposition) {
-    const m = contentDisposition.match(/filename="?([^";]+)"?/i);
-    if (m?.[1]) fileName = m[1].trim();
-  }
-  const url = URL.createObjectURL(new Blob([res.data]));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { downloadBlob } from '../utils/downloadBlob';
 
 export const assetsApi = {
   // No filters: every asset for the company (used by the Leave Process modal). With

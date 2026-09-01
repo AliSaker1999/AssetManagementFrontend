@@ -6,6 +6,8 @@ export interface RankedDatum extends ChartDatum {
   badge?: string;
   /** Muted second line below the label — e.g. the full company name. */
   sublabel?: string;
+  /** Highlights the row to reflect an active filter driven by this datum. */
+  selected?: boolean;
 }
 
 interface RankedBarsProps {
@@ -51,7 +53,8 @@ export default function RankedBars({
             onClick={onItemClick ? () => onItemClick(d, i) : undefined}
             className={clsx(
               'flex items-center gap-3 rounded-lg px-2 py-1.5 -mx-2 transition-colors',
-              onItemClick && 'cursor-pointer hover:bg-pearl-50'
+              onItemClick && 'cursor-pointer hover:bg-pearl-50',
+              d.selected && 'bg-gold-50 ring-1 ring-gold-400'
             )}
           >
             <div

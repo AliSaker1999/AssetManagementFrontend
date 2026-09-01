@@ -9,7 +9,10 @@ import type { AssetListItem, AssetStatusCount, Employee, LeftEmployeeAsset, Pagi
 import MetricCard from '../components/ui/MetricCard';
 import PageHeader from '../components/ui/PageHeader';
 import TablePagination from '../components/ui/TablePagination';
+import { StatusIcon, statusToneClass, statusFilterSelectedClass } from '../components/ui/StatusIcon';
+import ExportMenu from '../components/ui/ExportMenu';
 import TransferAssetModal from '../components/TransferAssetModal';
+import BarcodePrintModal from '../components/BarcodePrintModal';
 import BulkBarcodePrintModal from '../components/BulkBarcodePrintModal';
 import { useAuth } from '../contexts/AuthContext';
 import { fmtDate } from '../utils/date';
@@ -84,8 +87,6 @@ function byStatusFilterOrder(a: StatusType, b: StatusType): number {
   if (ib === -1) return -1;
   return ia - ib;
 }
-const metricShapeCls = 'rounded-[14px] border-[#d5ddef] border-t-0 shadow-[inset_0_3px_0_0_#1f2b7b,0_1px_2px_rgba(15,23,42,0.06)]';
-
 function IconSearch() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -109,14 +110,6 @@ function IconBarcode() {
   );
 }
 
-function IconChevronDown() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 12 15 18 9"/>
-    </svg>
-  );
-}
-
 function IconClose() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -125,235 +118,43 @@ function IconClose() {
   );
 }
 
-function IconDownload() {
+// ─── Metric card icons (mirrors DashboardPage's stat cards) ────────────────
+
+function IconMetricBox() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z" />
+      <polyline points="3.3 7 12 12 20.7 7" />
+      <line x1="12" y1="22" x2="12" y2="12" />
     </svg>
   );
 }
 
-function IconSheet() {
+function IconMetricTrendUp() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 17 9 11 13 15 21 6" />
+      <polyline points="14 6 21 6 21 13" />
     </svg>
   );
 }
 
-function IconFileText() {
+function IconMetricWrench() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-      <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a4 4 0 0 0-5.6 4.9l-6.6 6.6a2 2 0 1 0 2.8 2.8l6.6-6.6a4 4 0 0 0 4.9-5.6l-2.8 2.8-2.1-2.1z" />
     </svg>
   );
 }
 
-// Export menu — downloads whatever the table is currently showing.
-function ExportMenu({ busy, onExport }: { busy: boolean; onExport: (format: 'excel' | 'pdf') => void }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleOutside(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [open]);
-
+function IconMetricPackage() {
   return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => setOpen((o) => !o)}
-        className="btn-secondary disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        <IconDownload />
-        {busy ? 'Exporting…' : 'Export'}
-        <IconChevronDown />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-[190px] bg-white border border-pearl-200 rounded-xl shadow-xl p-1">
-          <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-300">
-            Current view
-          </div>
-          <button
-            type="button"
-            onClick={() => { setOpen(false); onExport('excel'); }}
-            className="w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] text-ink-700 hover:bg-pearl-50 transition-colors cursor-pointer bg-transparent border-none"
-          >
-            <IconSheet />
-            Excel (.xlsx)
-          </button>
-          <button
-            type="button"
-            onClick={() => { setOpen(false); onExport('pdf'); }}
-            className="w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] text-ink-700 hover:bg-pearl-50 transition-colors cursor-pointer bg-transparent border-none"
-          >
-            <IconFileText />
-            PDF (.pdf)
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-function StatusIcon({ statusId }: { statusId?: number }) {
-  if (statusId === 0) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12"/>
-      </svg>
-    );
-  }
-  if (statusId === 1) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
-    );
-  }
-  if (statusId === 2) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M7 7h10"/>
-        <path d="M13 3l4 4-4 4"/>
-        <path d="M17 17H7"/>
-        <path d="M11 21l-4-4 4-4"/>
-      </svg>
-    );
-  }
-  if (statusId === 3) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M18 6 6 18"/>
-        <path d="m6 6 12 12"/>
-      </svg>
-    );
-  }
-  if (statusId === 4) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="8"/>
-        <path d="M10 9h3a2 2 0 1 1 0 4h-2a2 2 0 1 0 0 4h3"/>
-      </svg>
-    );
-  }
-  if (statusId === 6) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="7"/>
-        <path d="m21 21-4.35-4.35"/>
-        <path d="M7 7l8 8"/>
-      </svg>
-    );
-  }
-  if (statusId === 7) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10 4 4 10l6 6"/>
-        <path d="M20 20V8a4 4 0 0 0-4-4H4"/>
-      </svg>
-    );
-  }
-  if (statusId === 11) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 8a2 2 0 0 1-2 2H5a2 2 0 0 1 0-4h14a2 2 0 0 1 2 2Z"/>
-        <path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8Z"/>
-      </svg>
-    );
-  }
-  if (statusId === 12) {
-    return (
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z"/>
-        <polyline points="3.3 7 12 12 20.7 7"/>
-        <line x1="12" y1="22" x2="12" y2="12"/>
-      </svg>
-    );
-  }
-
-  if (statusId === 14) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="4" y="7" width="16" height="10" rx="2" />
-        <line x1="4" y1="12" x2="20" y2="12" />
-        <line x1="12" y1="7" x2="12" y2="17" />
-      </svg>
-    );
-  }
-
-  if (statusId === 13) {
-    return (
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M3 10.5L12 3l9 7.5"/>
-        <path d="M5 9v11h14V9"/>
-        <path d="M9 20v-6h6v6"/>
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="12" cy="12" r="4"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="5" rx="1" />
+      <path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" />
+      <line x1="10" y1="13" x2="14" y2="13" />
     </svg>
   );
-}
-
-function statusTone(statusId?: number) {
-  if (statusId === 0 || statusId === 13) 
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-  if (statusId === 3 || statusId === 11 || statusId === 6)
-    return 'bg-rose-50 text-rose-700 border-rose-200';
-
-  if (statusId === 4 || statusId === 1 || statusId === 7)
-    return 'bg-amber-50 text-amber-700 border-amber-200';
-
-  if (statusId === 2)
-    return 'bg-sky-50 text-sky-700 border-sky-200';
-
-  if (statusId === 12)
-    return 'bg-blue-50 text-blue-700 border-blue-200';
-
-  return 'bg-pearl-50 text-ink-700 border-pearl-200';
-}
-
-function statusFilterSelectedClass(statusId?: number) {
-  if (statusId === 0 || statusId === 13) return 'bg-emerald-500 text-white border-emerald-500 shadow-sm';
-  if (statusId === 3 || statusId === 11 || statusId === 6) return 'bg-rose-500 text-white border-rose-500 shadow-sm';
-  if (statusId === 1 || statusId === 4 || statusId === 7) return 'bg-amber-500 text-white border-amber-500 shadow-sm';
-  if (statusId === 2) return 'bg-sky-500 text-white border-sky-500 shadow-sm';
-  if (statusId === 8 || statusId === 12 || statusId === 14) return 'bg-blue-500 text-white border-blue-500 shadow-sm';
-  return 'bg-ink-600 text-white border-ink-600 shadow-sm';
 }
 
 function TableSkeleton() {
@@ -897,6 +698,7 @@ export default function AssetsPage() {
   });
   const [leaveProcessOpen, setLeaveProcessOpen] = useState(false);
   const [bulkPrintOpen, setBulkPrintOpen] = useState(false);
+  const [printAsset, setPrintAsset] = useState<AssetListItem | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
@@ -1231,28 +1033,28 @@ useEffect(() => {
           value={loading ? '—' : totalCount.toLocaleString()}
           sub="in this view"
           accent="navy"
-          className={metricShapeCls}
+          icon={<IconMetricBox />}
         />
-          <MetricCard
-        label="Active"
-        value={countsLoading ? '—' : activeCount.toLocaleString()}
-        sub="active status only"
-        accent={activeCount > 0 ? 'success' : 'none'}
-        className={metricShapeCls}
-      />
-      <MetricCard
-        label="In Maintenance"
-        value={countsLoading ? '—' : maintenanceCount.toLocaleString()}
-        sub="currently"
-        accent={maintenanceCount > 0 ? 'warning' : 'none'}
-        className={metricShapeCls}
-      />
+        <MetricCard
+          label="Active"
+          value={countsLoading ? '—' : activeCount.toLocaleString()}
+          sub="active status only"
+          accent={activeCount > 0 ? 'success' : 'none'}
+          icon={<IconMetricTrendUp />}
+        />
+        <MetricCard
+          label="In Maintenance"
+          value={countsLoading ? '—' : maintenanceCount.toLocaleString()}
+          sub="currently"
+          accent={maintenanceCount > 0 ? 'warning' : 'none'}
+          icon={<IconMetricWrench />}
+        />
         <MetricCard
           label="In Stock"
           value={countsLoading ? '—' : instockCount.toLocaleString()}
           sub="available for use"
           accent={instockCount > 0 ? 'percent' : 'none'}
-          className={metricShapeCls}
+          icon={<IconMetricPackage />}
         />
       </div>
 
@@ -1491,7 +1293,7 @@ useEffect(() => {
                     <span
                       className={clsx(
                         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold min-w-0',
-                        statusTone(a.statusID)
+                        statusToneClass(a.statusID)
                       )}
                     >
                       <span className="inline-flex items-center justify-center w-3 h-3 shrink-0">
@@ -1506,16 +1308,14 @@ useEffect(() => {
 
                   {/* Barcode action */}
                   <div className="flex items-center justify-center">
-                    {a.barcodeNumber && (
-                      <Link
-                        to={`/assets/${a.assetID}?print=1`}
-                        title="Print barcode"
-                        className="text-ink-300 hover:text-navy-600 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <IconBarcode />
-                      </Link>
-                    )}
+                    <button
+                      type="button"
+                      title="Print barcode"
+                      className="text-ink-300 hover:text-navy-600 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); setPrintAsset(a); }}
+                    >
+                      <IconBarcode />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1560,6 +1360,14 @@ useEffect(() => {
           search={search}
           statusIds={Array.from(selectedStatusIds)}
           onClose={() => setBulkPrintOpen(false)}
+        />
+      )}
+
+      {printAsset && (
+        <BarcodePrintModal
+          assetCode={printAsset.assetCode}
+          assetDesc={printAsset.assetDesc}
+          onClose={() => setPrintAsset(null)}
         />
       )}
 

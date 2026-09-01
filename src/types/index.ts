@@ -49,35 +49,30 @@ export interface DashboardCountryCount {
   assetCount: number;
 }
 
-export interface DashboardExpiringWarranty {
-  warntID: number;
+/**
+ * One open warranty or maintenance issue — the two are unioned server-side so the dashboard's
+ * preview list and the full Needs Attention page always agree on what counts as "needing
+ * attention". `entityType` + `entityID` together are the real key (WarntID/MaintID are
+ * independent identities, so entityID alone isn't unique across the union).
+ */
+export interface AttentionItem {
+  entityType: 'Warranty' | 'Maintenance';
+  entityID: number;
   assetID: number;
   companyID: number;
   companyAbbreviation: string;
   assetCode: string;
   assetDesc: string;
-  warrantyDesc: string;
+  description: string | null;
   toDate: string;
   daysLeft: number;
+  category: 'Overdue' | 'DueSoon' | 'DueLater';
 }
 
 export interface DashboardTrendPoint {
   month: string;
   depreciationValue: number;
   netBookValue: number;
-}
-
-/** An open maintenance — ReturnedDate IS NULL is the open/closed signal, not toDate. */
-export interface DashboardOpenMaintenance {
-  maintID: number;
-  assetID: number;
-  companyID: number;
-  companyAbbreviation: string;
-  assetCode: string;
-  assetDesc: string;
-  damageDesc: string | null;
-  toDate: string;
-  daysLeft: number;
 }
 
 export interface DashboardAcquisitionTrendPoint {
@@ -90,10 +85,23 @@ export interface DashboardSummary {
   statusCounts: AssetStatusCount[];
   companyCounts: DashboardCompanyCount[];
   countryCounts: DashboardCountryCount[];
-  expiringWarranties: DashboardExpiringWarranty[];
+  attentionPreview: AttentionItem[];
+  totalAttentionCount: number;
   depreciationTrend: DashboardTrendPoint[];
-  openMaintenances: DashboardOpenMaintenance[];
   acquisitionTrend: DashboardAcquisitionTrendPoint[];
+  /** Assets already in scope before this calendar month started — powers the Total Assets tile's month-over-month %. */
+  assetCountStartOfMonth: number;
+}
+
+/** Response shape of GET /dashboard/attention-items — the full, paginated Needs Attention list. */
+export interface AttentionItemsPage {
+  items: AttentionItem[];
+  totalCount: number;
+  overdueCount: number;
+  dueSoonCount: number;
+  dueLaterCount: number;
+  pageNumber: number;
+  pageSize: number;
 }
 
 export interface AssetListItem {

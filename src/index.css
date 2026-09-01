@@ -87,6 +87,16 @@
     background-color: var(--gold-400);
   }
 
+  /* Hides the scrollbar chrome on a fixed-height, overflow-y:auto container — the content still
+     scrolls (mouse wheel, touch, keyboard), it just doesn't show a track/thumb. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Primary button */
   .btn-primary {
     @apply inline-flex items-center gap-2 px-4 py-2 bg-navy-600 text-white text-sm font-semibold
@@ -220,19 +230,13 @@
     height: auto;
   }
 
-  #barcode-print-target .label-barcode-num {
+  #barcode-print-target .label-asset-code {
     font-family: 'Fira Code', monospace;
     font-size: 9pt;
     letter-spacing: 0.12em;
     color: #1f1b16;
-    margin-top: 3pt;
-  }
-
-  #barcode-print-target .label-asset-code {
-    font-family: 'Fira Code', monospace;
-    font-size: 7pt;
-    color: #1f2b7b;
     font-weight: 600;
+    margin-top: 3pt;
   }
 
   #barcode-print-target .label-asset-desc {

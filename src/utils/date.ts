@@ -72,7 +72,7 @@ export function todayIso(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** "Jan '26" from a "yyyy-MM-dd" month-start value, for the dashboard trend chart's x-axis. */
+
+
 

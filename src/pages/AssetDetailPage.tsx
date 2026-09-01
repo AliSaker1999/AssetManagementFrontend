@@ -14,6 +14,7 @@ import { lookupsApi } from '../api/lookups';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../hooks/useConfirm';
 import StatusBadge from '../components/ui/StatusBadge';
+import { StatusIcon, statusToneClass } from '../components/ui/StatusIcon';
 import EmptyState from '../components/ui/EmptyState';
 import AuditTimeline from '../components/ui/AuditTimeline';
 import BarcodePrintModal from '../components/BarcodePrintModal';
@@ -172,155 +173,6 @@ function IconChevronDown() {
   );
 }
 
-function StatusIcon({ statusId }: { statusId?: number }) {
-  if (statusId === 0) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12"/>
-      </svg>
-    );
-  }
-  if (statusId === 1) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
-    );
-  }
-  if (statusId === 2) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M7 7h10"/>
-        <path d="M13 3l4 4-4 4"/>
-        <path d="M17 17H7"/>
-        <path d="M11 21l-4-4 4-4"/>
-      </svg>
-    );
-  }
-  if (statusId === 3) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M18 6 6 18"/>
-        <path d="m6 6 12 12"/>
-      </svg>
-    );
-  }
-  if (statusId === 4) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="8"/>
-        <path d="M10 9h3a2 2 0 1 1 0 4h-2a2 2 0 1 0 0 4h3"/>
-      </svg>
-    );
-  }
-  if (statusId === 6) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="7"/>
-        <path d="m21 21-4.35-4.35"/>
-        <path d="M7 7l8 8"/>
-      </svg>
-    );
-  }
-  if (statusId === 7) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10 4 4 10l6 6"/>
-        <path d="M20 20V8a4 4 0 0 0-4-4H4"/>
-      </svg>
-    );
-  }
-  if (statusId === 8) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 12h16"/>
-        <path d="M12 4v16"/>
-      </svg>
-    );
-  }
-  if (statusId === 11) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 8a2 2 0 0 1-2 2H5a2 2 0 0 1 0-4h14a2 2 0 0 1 2 2Z"/>
-        <path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8Z"/>
-      </svg>
-    );
-  }
-    if (statusId === 12) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8z"/>
-      <polyline points="3.3 7 12 12 20.7 7"/>
-      <line x1="12" y1="22" x2="12" y2="12"/>
-    </svg>
-  );
-}
-
-if (statusId === 14) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 7h16v10H4z" />
-      <path d="M12 7v10" />
-      <path d="M4 12h16" />
-    </svg>
-  );
-}
-
-if (statusId === 13) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 10.5L12 3l9 7.5"/>
-      <path d="M5 9v11h14V9"/>
-      <path d="M9 20v-6h6v6"/>
-    </svg>
-  );
-}
-
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="12" cy="12" r="4"/>
-    </svg>
-  );
-}
-
-function statusTone(statusId?: number) {
-  if (statusId === 0 || statusId === 13) 
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-  if (statusId === 3 || statusId === 11 || statusId === 6)
-    return 'bg-rose-50 text-rose-700 border-rose-200';
-
-  if (statusId === 4 || statusId === 1 || statusId === 7)
-    return 'bg-amber-50 text-amber-700 border-amber-200';
-
-  if (statusId === 2)
-    return 'bg-sky-50 text-sky-700 border-sky-200';
-
-  if (statusId === 12 || statusId === 14)
-    return 'bg-blue-50 text-blue-700 border-blue-200';
-
-  return 'bg-pearl-50 text-ink-700 border-pearl-200';
-}
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
@@ -782,7 +634,7 @@ export default function AssetDetailPage() {
   }, [tab, assetId]);
 
   useEffect(() => {
-    if (asset && searchParams.get('print') === '1' && asset.barcodeNumber) {
+    if (asset && searchParams.get('print') === '1') {
       setShowBarcodeModal(true);
     }
   }, [asset, searchParams]);
@@ -829,9 +681,8 @@ export default function AssetDetailPage() {
     <div>
       {confirmDialog}
 
-      {showBarcodeModal && asset?.barcodeNumber && (
+      {showBarcodeModal && asset && (
         <BarcodePrintModal
-          barcodeNumber={asset.barcodeNumber}
           assetCode={asset.assetCode}
           assetDesc={asset.assetDesc}
           onClose={() => setShowBarcodeModal(false)}
@@ -897,7 +748,7 @@ export default function AssetDetailPage() {
                       className={clsx(
                         HEADER_CTRL,
                         'inline-flex items-center gap-2 min-w-[180px] rounded-lg border px-4 text-sm font-medium',
-                        statusTone(asset.statusID),
+                        statusToneClass(asset.statusID),
                         'hover:shadow-sm transition-all cursor-pointer',
                         'focus:outline-none focus:ring-2 focus:ring-navy-500/20',
                         changingStatus && 'opacity-70 cursor-not-allowed'
@@ -946,7 +797,7 @@ export default function AssetDetailPage() {
                                     : 'hover:bg-pearl-50 text-ink-700'
                                 )}
                               >
-                                <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusTone(s.statusID))}>
+                                <span className={clsx('inline-flex items-center justify-center w-5 h-5 rounded-md border', statusToneClass(s.statusID))}>
                                   <StatusIcon statusId={s.statusID} />
                                 </span>
                                 <span>{s.status}</span>
@@ -975,9 +826,8 @@ export default function AssetDetailPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowBarcodeModal(true)}
-                disabled={!asset.barcodeNumber}
-                title={asset.barcodeNumber ? 'Print barcode label' : 'No barcode number assigned'}
-                className={clsx(HEADER_CTRL, 'btn-secondary disabled:opacity-40 disabled:cursor-not-allowed')}
+                title="Print barcode label"
+                className={clsx(HEADER_CTRL, 'btn-secondary')}
               >
                 <IconBarcode />
                 Print Barcode
@@ -1841,7 +1691,7 @@ function DamageMaintenanceModal({
                     </button>
                   )}
                   {!readOnly && <ActionBtn onClick={() => openEdit(m)}>Edit</ActionBtn>}
-                  {!readOnly && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
+                  {!readOnly && open && <ActionBtn danger onClick={() => handleDelete(m)}>Delete</ActionBtn>}
                 </div>
               </div>
             );

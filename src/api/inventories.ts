@@ -25,8 +25,8 @@ export const inventoriesApi = {
   relocate: (data: object) => client.put('/inventories/relocate', data),
   getStats: (inventoryId: number, companyId: number) =>
   client.get(`/inventories/${inventoryId}/stats`, { params: { companyId } }),
-  resolveBarcode: (inventoryId: number, companyId: number, barcodeNumber: string) =>
+  resolveBarcode: (inventoryId: number, companyId: number, assetCode: string) =>
     client.get<InventoryBarcodeMatch>(`/inventories/${inventoryId}/resolve-barcode`, {
-      params: { companyId, barcodeNumber },
+      params: { companyId, assetCode },
     }),
 };

@@ -40,8 +40,7 @@ export default function BulkBarcodePrintModal({ companyId, search, statusIds, on
   }, []);
 
   const loading = assets === null;
-  const printable = (assets ?? []).filter((a) => !!a.barcodeNumber);
-  const skipped = (assets?.length ?? 0) - printable.length;
+  const printable = assets ?? [];
   const needsConfirmation = printable.length > LARGE_PRINT_THRESHOLD && !confirmedLarge;
 
   return (
@@ -49,7 +48,7 @@ export default function BulkBarcodePrintModal({ companyId, search, statusIds, on
       {!loading && printable.length > 0 && createPortal(
         <div id="barcode-print-target">
           {printable.map((a) => (
-            <BarcodeLabel key={a.assetID} barcodeNumber={a.barcodeNumber!} assetCode={a.assetCode} assetDesc={a.assetDesc} />
+            <BarcodeLabel key={a.assetID} assetCode={a.assetCode} assetDesc={a.assetDesc} />
           ))}
         </div>,
         document.body
@@ -62,9 +61,6 @@ export default function BulkBarcodePrintModal({ companyId, search, statusIds, on
           <>
             <p className="text-[13px] text-ink-600 mb-4">
               <span className="font-semibold">{printable.length}</span> label{printable.length === 1 ? '' : 's'} ready to print
-              {skipped > 0 && (
-                <> · <span className="text-ink-400">{skipped} skipped — no barcode assigned</span></>
-              )}
             </p>
             {needsConfirmation && (
               <div className="bg-warning-bg border border-warning/20 text-warning text-[13px] rounded-lg px-3 py-2.5 mb-4">
