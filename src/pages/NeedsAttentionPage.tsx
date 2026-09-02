@@ -10,31 +10,45 @@ import PageHeader from '../components/ui/PageHeader';
 import ExportMenu from '../components/ui/ExportMenu';
 import TablePagination from '../components/ui/TablePagination';
 import { kindPillClass, categoryPillClass, categoryLabel } from '../components/ui/AttentionPills';
+import StopTrackingWarrantyModal from '../components/StopTrackingWarrantyModal';
 import { useAuth } from '../contexts/AuthContext';
 import { fmtDate } from '../utils/date';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
 export default function NeedsAttentionPage() {
-  const { activeCompanyId } = useAuth();
+  const { activeCompanyId, isAuditor } = useAuth();
   const [page, setPage] = useState<AttentionItemsPage | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [category, setCategory] = useState<AttentionItem['category'] | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [stopTracking, setStopTracking] = useState<AttentionItem | null>(null);
+  // Bumped after a warranty stops being tracked, to refetch rather than splice: the row
+  // leaves the set entirely and the category tiles are counted server-side, so a local
+  // filter would leave the tiles and the pagination totals disagreeing with the table.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     setPage(null);
     dashboardApi.getAttentionItems(pageNumber, pageSize, activeCompanyId ?? undefined, undefined, category ?? undefined, controller.signal)
-      .then((r) => setPage(r.data))
+      .then((r) => {
+        setPage(r.data);
+        // Stopping tracking on the last row of the last page (or narrowing by category)
+        // can leave us past the end. Step back rather than showing an empty table under
+        // a "page 3 of 2" footer. Terminates: pageNumber only ever decreases here.
+        if (r.data.items.length === 0 && r.data.totalCount > 0 && pageNumber > 1) {
+          setPageNumber((p) => Math.max(1, p - 1));
+        }
+      })
       .catch((err) => {
         const name = (err as { name?: string })?.name;
         if (name === 'CanceledError' || name === 'AbortError') return;
         handleApiError(err, 'Failed to load Needs Attention list');
       });
     return () => controller.abort();
-  }, [activeCompanyId, pageNumber, pageSize, category]);
+  }, [activeCompanyId, pageNumber, pageSize, category, refreshKey]);
 
   const loading = page === null;
   const totalCount = page?.totalCount ?? 0;
@@ -93,13 +107,14 @@ export default function NeedsAttentionPage() {
                   <th className="text-left px-4 py-2.5">Detail</th>
                   <th className="text-left px-4 py-2.5">Due Date</th>
                   <th className="text-left px-4 py-2.5">Status</th>
+                  <th className="text-left px-4 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-pearl-100">
                 {loading ? (
-                  <tr><td colSpan={5} className="text-center text-ink-300 py-8">Loading…</td></tr>
+                  <tr><td colSpan={6} className="text-center text-ink-300 py-8">Loading…</td></tr>
                 ) : (page?.items.length ?? 0) === 0 ? (
-                  <tr><td colSpan={5} className="text-center text-ink-300 py-8">Nothing needs attention right now.</td></tr>
+                  <tr><td colSpan={6} className="text-center text-ink-300 py-8">Nothing needs attention right now.</td></tr>
                 ) : (
                   page!.items.map((item) => (
                     <tr key={`${item.entityType}-${item.entityID}`} className="hover:bg-pearl-50 transition-colors">
@@ -120,6 +135,20 @@ export default function NeedsAttentionPage() {
                         <span className={clsx('px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap', categoryPillClass(item.category))}>
                           {categoryLabel(item.category)}
                         </span>
+                      </td>
+                      {/* Warranties only. A maintenance is closed by returning the asset,
+                          which is what clears it from this list — there is nothing to
+                          acknowledge here. */}
+                      <td className="px-4 py-2.5">
+                        {item.entityType === 'Warranty' && !isAuditor() && (
+                          <button
+                            type="button"
+                            onClick={() => setStopTracking(item)}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded border bg-navy-50 text-navy-600 border-navy-100 hover:bg-navy-100 transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            Stop Tracking
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -148,6 +177,16 @@ export default function NeedsAttentionPage() {
           </div>
         </div>
       </div>
+
+      {stopTracking && (
+        <StopTrackingWarrantyModal
+          warntID={stopTracking.entityID}
+          warrantyDesc={stopTracking.description ?? 'Warranty'}
+          toDate={stopTracking.toDate}
+          onDone={() => setRefreshKey((k) => k + 1)}
+          onClose={() => setStopTracking(null)}
+        />
+      )}
     </div>
   );
 }

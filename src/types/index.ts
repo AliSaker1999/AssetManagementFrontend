@@ -451,6 +451,12 @@ export interface Warranty {
   fromDate: string;
   toDate: string;
   remark?: string;
+  /** Set once someone decides not to renew: suppresses the daily expiry emails, the bell
+   *  alerts and the Needs Attention entry. Null/absent means still tracked. */
+  notRenewingAt?: string | null;
+  notRenewingByUserID?: number | null;
+  notRenewingByFullName?: string | null;
+  notRenewingReason?: string | null;
 }
 
 export interface Damage {

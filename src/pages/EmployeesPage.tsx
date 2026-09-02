@@ -259,6 +259,19 @@ export default function EmployeesPage() {
     } catch (err) { handleApiError(err, 'Failed to reinstate employee'); }
   }
 
+  function formatCompanyLabel(company: Company) {
+    const countryId = company.countryID?.trim() ?? "";
+    const companyName = company.companyName?.trim() ?? "";
+
+    // Remove trailing comma from country ID
+    const cleanedCountryId = countryId.replace(/,\s*$/, "");
+
+    // Remove leading comma from company name (if it exists)
+    const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+
+    return `${cleanedCountryId} – ${cleanedCompanyName}`;
+  }
+
   return (
     <div>
       {dialog}
@@ -315,7 +328,7 @@ export default function EmployeesPage() {
             >
               <option value="">All Companies</option>
               {companyFilterOptions.map((c) => (
-                <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+                <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
               ))}
             </Select>
           </div>
@@ -343,7 +356,7 @@ export default function EmployeesPage() {
                 >
                   <option value="">Select company…</option>
                   {visibleCompanies.map((c) => (
-                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+                    <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
                   ))}
                 </Select>
               </FormRow>

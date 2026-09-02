@@ -19,6 +19,7 @@ import EmptyState from '../components/ui/EmptyState';
 import AuditTimeline from '../components/ui/AuditTimeline';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import TransferAssetModal from '../components/TransferAssetModal';
+import StopTrackingWarrantyModal from '../components/StopTrackingWarrantyModal';
 import { companyPrmCurrency } from '../utils/currency';
 import { fmtDate, fmtDateTime } from '../utils/date';
 import { addRecentAsset } from '../utils/recentAssets';
@@ -1903,6 +1904,7 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentNames, setAttachmentNames] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
+  const [stopTracking, setStopTracking] = useState<Warranty | null>(null);
 
   useEffect(() => {
     const linkedIds = new Set(
@@ -2003,6 +2005,23 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
     } catch (err) { handleApiError(err, 'Delete failed'); }
   }
 
+  /** Puts a warranty back under the alerts and the Needs Attention list. No reason needed
+   *  on the way back in, so this uses the plain confirm rather than the modal. */
+  async function handleResumeTracking(item: Warranty) {
+    if (readOnly) return;
+    const ok = await confirm(
+      'Expiry reminders and the Needs Attention entry for this warranty will start again.',
+      { title: 'Resume Tracking?', confirmLabel: 'Resume', danger: false }
+    );
+    if (!ok) return;
+    try {
+      const r = await warrantiesApi.setNotRenewing(item.warntID, { notRenewing: false });
+      const updated = r.data as Warranty;
+      onChange(items.map((i) => i.warntID === updated.warntID ? updated : i));
+      toast.success('Tracking resumed');
+    } catch (err) { handleApiError(err, 'Could not resume tracking'); }
+  }
+
   return (
     <>
       {confirmDialog}
@@ -2014,17 +2033,30 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
 
       {items.length === 0 ? <EmptyState message="No warranty records." /> : (
         <div className="bg-white rounded-xl border border-pearl-200 shadow-card overflow-x-auto">
-          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_190px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[840px]">
+          <div className="grid grid-cols-[2fr_1fr_1fr_2fr_190px_auto] gap-4 px-5 py-2.5 bg-pearl-100 border-b border-pearl-200 min-w-[960px]">
             {['Description', 'From Date', 'To Date', 'Remark', 'Attachment', ''].map((h) => (
               <div key={h} className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-300">{h}</div>
             ))}
           </div>
           {items.map((w, i) => (
             <div key={w.warntID} className={clsx(
-              'grid grid-cols-[2fr_1fr_1fr_2fr_190px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[840px]',
+              'grid grid-cols-[2fr_1fr_1fr_2fr_190px_auto] gap-4 px-5 py-3 items-center hover:bg-pearl-50 transition-colors min-w-[960px]',
               i < items.length - 1 && 'border-b border-pearl-200'
             )}>
-              <div className="text-[12px] text-ink-800 font-medium truncate">{w.warrantyDesc}</div>
+              {/* The "Not renewing" badge lives under the description rather than in a column
+                  of its own: it is rarely set, and a 7th column would squeeze Remark and
+                  Attachment on every row for it. */}
+              <div className="min-w-0">
+                <div className="text-[12px] text-ink-800 font-medium truncate">{w.warrantyDesc}</div>
+                {w.notRenewingAt && (
+                  <span
+                    className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-pearl-100 text-ink-400 border border-pearl-200 cursor-help"
+                    title={`Not renewing — marked by ${w.notRenewingByFullName ?? 'unknown'} on ${fmtDateTime(w.notRenewingAt)}${w.notRenewingReason ? ` — ${w.notRenewingReason}` : ''}`}
+                  >
+                    Not renewing
+                  </span>
+                )}
+              </div>
               <div className="text-[12px] text-ink-600">{fmtDate(w.fromDate)}</div>
               <div className="text-[12px] text-ink-600">{fmtDate(w.toDate)}</div>
               <div className="text-[12px] text-ink-400 truncate">{w.remark ?? '—'}</div>
@@ -2038,11 +2070,25 @@ function WarrantyTab({ readOnly, assetId, items, onChange }: { readOnly: boolean
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {!readOnly && <ActionBtn onClick={() => openEdit(w)}>Edit</ActionBtn>}
+                {!readOnly && (w.notRenewingAt
+                  ? <ActionBtn onClick={() => handleResumeTracking(w)}>Resume Tracking</ActionBtn>
+                  : <ActionBtn onClick={() => setStopTracking(w)}>Stop Tracking</ActionBtn>
+                )}
                 {!readOnly && <ActionBtn danger onClick={() => handleDelete(w)}>Delete</ActionBtn>}
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {!readOnly && stopTracking && (
+        <StopTrackingWarrantyModal
+          warntID={stopTracking.warntID}
+          warrantyDesc={stopTracking.warrantyDesc}
+          toDate={stopTracking.toDate}
+          onDone={(updated) => onChange(items.map((i) => i.warntID === updated.warntID ? updated : i))}
+          onClose={() => setStopTracking(null)}
+        />
       )}
 
       {!readOnly && modal && (

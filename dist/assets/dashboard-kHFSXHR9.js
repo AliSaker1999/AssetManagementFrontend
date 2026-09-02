@@ -1,0 +1,1 @@
+import{b as r}from"./index-CITJLU9A.js";const d={getSummary:(t,s=12,a)=>r.get("/dashboard/summary",{params:{...t?{companyId:t}:{},trendMonths:s},signal:a}),getAttentionItems:(t,s,a,e,m,i)=>r.get("/dashboard/attention-items",{params:{pageNumber:t,pageSize:s,...a?{companyId:a}:{},...e?{search:e}:{},...m?{category:m}:{}},signal:i})};export{d};
