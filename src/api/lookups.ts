@@ -50,8 +50,8 @@ export const lookupsApi = {
     }),
   getEmployees: (companyId?: number, countryId?: string) =>
     client.get<Employee[]>('/lookups/employees', { params: { companyId, countryId } }),
-  getEmployeesPaginated: (pageNumber: number = 1, pageSize: number = 10, companyId?: number, countryId?: string) =>
-    client.get<PaginatedResponse<Employee>>('/lookups/employees/paginated', { params: { pageNumber, pageSize, companyId, countryId } }),
+  getEmployeesPaginated: (pageNumber: number = 1, pageSize: number = 10, companyId?: number, countryId?: string, search?: string) =>
+    client.get<PaginatedResponse<Employee>>('/lookups/employees/paginated', { params: { pageNumber, pageSize, companyId, countryId, search } }),
   createEmployee: (data: { empFullName: string; companyID: number }) => client.post<Employee>('/lookups/employees', data),
   updateEmployee: (id: number, data: { empFullName: string; companyID: number }) =>
     client.put(`/lookups/employees/${id}`, data),

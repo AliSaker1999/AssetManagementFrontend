@@ -42,15 +42,6 @@ useEffect(() => {
     .then((r) => {
       const list = r.data as Company[];
       setCompanies(list);
-
-      // const allowedIds = new Set((user?.permissions ?? []).map((p) => p.companyID));
-      // const visible = isAdmin() ? list : list.filter((c) => allowedIds.has(c.companyID));
-
-      // if (activeCompanyId != null) {
-      //   setCompanyId(activeCompanyId);
-      // } else if (visible.length > 0) {
-      //   setCompanyId(visible[0].companyID);
-      // }
     })
     .catch((err) => handleApiError(err, 'Failed to load companies'))
     .finally(() => setLoading(false));

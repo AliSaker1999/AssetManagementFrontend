@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import CommandPalette from './CommandPalette';
 import NotificationBell from './NotificationBell';
 import { lookupsApi } from '../api/lookups';
+import { handleApiError } from '../utils/errors';
 import logoWhite from './GEZAIRI-ICON.png';
 
 
@@ -211,13 +212,6 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const companyDropRef = useRef<HTMLDivElement>(null);
 
-  // Unique companies from permissions
-  // const companies = user?.permissions
-  //   ? [...new Map(user.permissions.map((p) => [p.companyID, { id: p.companyID, name: p.companyName }])).values()]
-  //   : [];
-
-  // const activeCompany = activeCompanyId != null ? companies.find((c) => c.id === activeCompanyId) : null;
-
 const admin = isAdmin();
 
 const permissionCompanies: Company[] = user?.permissions
@@ -237,7 +231,10 @@ useEffect(() => {
       if (cancelled) return;
       setAllCompanies(res.data); // assuming this already returns {companyID, companyName, countryID}[]
     })
-    .catch((err) => console.error('Failed to load companies', err));
+    .catch((err) => {
+      if (cancelled) return;
+      handleApiError(err, 'Failed to load companies');
+    });
 
   return () => { cancelled = true; };
 }, [admin]);

@@ -282,7 +282,7 @@ export default function CompaniesPage() {
       <PageHeader
         title="Companies"
         subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} companies across your organization` : undefined}
-      breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Companies' }]}
+        breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Companies' }]}
         actions={
           canManage && mode === null && (
             <button className="bg-[#9a7c4b] text-white border-none rounded-lg px-4 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors" onClick={startAdd}>
@@ -292,7 +292,7 @@ export default function CompaniesPage() {
         }
       />
 
-  <div className="px-4 sm:px-8 pt-3 pb-8">
+      <div className="px-4 sm:px-8 pt-3 pb-8">
       {canManage && mode !== null && (
         <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)] mb-6">
           <h3 className="text-[15px] font-semibold text-brand mb-4">

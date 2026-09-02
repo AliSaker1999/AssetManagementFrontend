@@ -559,10 +559,6 @@ export default function TransferAssetModal({
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
-//   console.log("Modal render");
-// console.log(open);
-// console.log(asset);
-
   if (!open) return null;
 
   // Disable the form if asset is under inventory (status 10) – optional

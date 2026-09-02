@@ -88,13 +88,14 @@ export default function EmployeesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [search, setSearch] = useState('');
+  // The search is executed in SQL, so the query is debounced rather than fired per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState<number | ''>('');
   const [countryFilter, setCountryFilter] = useState('');
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [allEmployeesCache, setAllEmployeesCache] = useState<Employee[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'add' | 'edit' | null>(null);
@@ -127,9 +128,13 @@ export default function EmployeesPage() {
   }, []);
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
     setPageNumber(1);
-    setAllEmployeesCache(null);
-  }, [search, pageSize, companyFilter, countryFilter]);
+  }, [debouncedSearch, pageSize, companyFilter, countryFilter]);
 
   function handleCountryFilterChange(value: string) {
     setCountryFilter(value);
@@ -148,35 +153,14 @@ export default function EmployeesPage() {
         const companyIdParam = companyFilter || undefined;
         const countryIdParam = countryFilter || undefined;
 
-        if (search.trim() === '') {
-          const r = await lookupsApi.getEmployeesPaginated(pageNumber, pageSize, companyIdParam, countryIdParam);
-          const data = r.data as PaginatedResponse<Employee>;
-          setEmployees(data.data);
-          setTotalPages(data.totalPages);
-          setTotalCount(data.totalCount);
-          setAllEmployeesCache(null);
-          return;
-        }
-
-        // Company/country filters are applied in SQL here too, so the cache stays scoped
-        // to the current filter selection instead of the whole employee table.
-        let allData = allEmployeesCache;
-        if (!allData) {
-          const r = await lookupsApi.getEmployees(companyIdParam, countryIdParam);
-          allData = r.data;
-          setAllEmployeesCache(allData);
-        }
-
-        const q = search.toLowerCase();
-        const filtered = allData.filter((e) =>
-          e.empFullName.toLowerCase().includes(q) ||
-          (e.companyName ?? '').toLowerCase().includes(q)
-        );
-        const newTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-        const start = (pageNumber - 1) * pageSize;
-        setEmployees(filtered.slice(start, start + pageSize));
-        setTotalPages(newTotalPages);
-        setTotalCount(filtered.length);
+        // Filtering, searching and paging all happen in SQL. Fetching the whole table to
+        // filter it here used to time out against the remote server as soon as anyone typed.
+        const r = await lookupsApi.getEmployeesPaginated(
+          pageNumber, pageSize, companyIdParam, countryIdParam, debouncedSearch || undefined);
+        const data = r.data as PaginatedResponse<Employee>;
+        setEmployees(data.data);
+        setTotalPages(data.totalPages);
+        setTotalCount(data.totalCount);
       } catch (err) {
         handleApiError(err, 'Failed to load employees');
       } finally {
@@ -185,10 +169,9 @@ export default function EmployeesPage() {
     };
 
     void load();
-  }, [pageNumber, pageSize, search, reloadKey, companyFilter, countryFilter]);
+  }, [pageNumber, pageSize, debouncedSearch, reloadKey, companyFilter, countryFilter]);
 
   async function reload() {
-    setAllEmployeesCache(null);
     setReloadKey((k) => k + 1);
   }
 

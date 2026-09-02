@@ -213,18 +213,17 @@ export default function UsersPage() {
     }
   }
 
-    function formatCompanyLabel(company: Company) {
-      const countryId = company.countryID?.trim() ?? "";
-      const companyName = company.companyName?.trim() ?? "";
+  function formatCompanyLabel(company: Company) {
+    const countryId = company.countryID?.trim() ?? "";
+    const companyName = company.companyName?.trim() ?? "";
 
-      // Remove trailing comma from country ID
-      const cleanedCountryId = countryId.replace(/,\s*$/, "");
+    // The two fields carry stray commas from the HR-sourced data, so strip a
+    // trailing one off the country and a leading one off the company name.
+    const cleanedCountryId = countryId.replace(/,\s*$/, "");
+    const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
 
-      // Remove leading comma from company name (if it exists)
-      const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
-
-      return `${cleanedCountryId} – ${cleanedCompanyName}`;
-    }
+    return `${cleanedCountryId} – ${cleanedCompanyName}`;
+  }
 
   if (loading) return <div className="p-8">Loading...</div>;
 
@@ -416,7 +415,7 @@ export default function UsersPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
-     </div>
   );
 }

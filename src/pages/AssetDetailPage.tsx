@@ -602,15 +602,21 @@ export default function AssetDetailPage() {
         .then((r) => setAuditLog(r.data as AssetAuditEntry[]))
         .catch((err) => handleApiError(err, 'Failed to load activity'));
     if (tab === 'depreciation' && depHistory.length === 0)
-      assetsApi.getDepreciationHistory(assetId).then((r) => setDepHistory(r.data as DepreciationHistoryItem[]));
+      assetsApi.getDepreciationHistory(assetId)
+        .then((r) => setDepHistory(r.data as DepreciationHistoryItem[]))
+        .catch((err) => handleApiError(err, 'Failed to load depreciation history'));
     if (tab === 'inventory' && invHistory.length === 0)
-      assetsApi.getInventoryHistory(assetId).then((r) => setInvHistory(r.data as InventoryHistoryItem[]));
+      assetsApi.getInventoryHistory(assetId)
+        .then((r) => setInvHistory(r.data as InventoryHistoryItem[]))
+        .catch((err) => handleApiError(err, 'Failed to load inventory history'));
     if (tab === 'status' && statusHistory.length === 0)
       assetsApi.getStatusHistory(assetId)
         .then((r) => setStatusHistory(r.data as StatusHistoryItem[]))
         .catch((err) => handleApiError(err, 'Failed to load status history'));
     if (tab === 'warranty' && warranties.length === 0)
-      warrantiesApi.getByAsset(assetId).then((r) => setWarranties(r.data as Warranty[]));
+      warrantiesApi.getByAsset(assetId)
+        .then((r) => setWarranties(r.data as Warranty[]))
+        .catch((err) => handleApiError(err, 'Failed to load warranties'));
     if (tab === 'damage') {
       if (damages.length === 0)
         damagesApi.getByAsset(assetId)
@@ -619,18 +625,28 @@ export default function AssetDetailPage() {
       // Every damage row's Maintenance button needs this, so it's loaded with the tab
       // rather than lazily per row.
       if (maintenances.length === 0)
-        maintenancesApi.getByAsset(assetId).then((r) => setMaintenances(r.data as Maintenance[]));
+        maintenancesApi.getByAsset(assetId)
+          .then((r) => setMaintenances(r.data as Maintenance[]))
+          .catch((err) => handleApiError(err, 'Failed to load maintenance records'));
       if (!lookupsLoadedRef.current) {
         lookupsLoadedRef.current = true;
         Promise.all([contactsApi.getLookup(), lookupsApi.getCurrencies()])
           .then(([c, cur]) => {
             setContacts(c.data as Contact[]);
             setCurrencies(cur.data as Currency[]);
+          })
+          .catch((err) => {
+            // Clear the guard so reopening the tab retries; otherwise one failure
+            // leaves the damage form without contacts or currencies for the session.
+            lookupsLoadedRef.current = false;
+            handleApiError(err, 'Failed to load contacts and currencies');
           });
       }
     }
     if (tab === 'attachments' && attachments.length === 0)
-      attachmentsApi.getGeneralByAsset(assetId).then((r) => setAttachments(r.data as Attachment[]));
+      attachmentsApi.getGeneralByAsset(assetId)
+        .then((r) => setAttachments(r.data as Attachment[]))
+        .catch((err) => handleApiError(err, 'Failed to load attachments'));
   }, [tab, assetId]);
 
   useEffect(() => {

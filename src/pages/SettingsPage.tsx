@@ -1110,19 +1110,18 @@ function BrandsSection({ onReload }: { onReload: () => Promise<void> }) {
 
     if (!ok) return;
 
-        try {
-        await lookupsApi.deleteBrand(b.brandID);
-        toast.success("Brand deleted");
+    try {
+      await lookupsApi.deleteBrand(b.brandID);
+      toast.success("Brand deleted");
 
-        try {
-            setReloadKey(k => k + 1);
-            await onReload();
-            // or load();
-        } catch (e) {
-            console.error("Reload failed", e);
-        }
+      try {
+        setReloadKey(k => k + 1);
+        await onReload();
+      } catch (e) {
+        handleApiError(e, "Brand deleted, but the list failed to refresh");
+      }
     } catch (err) {
-        handleApiError(err, "Delete failed — brand may be in use");
+      handleApiError(err, "Delete failed — brand may be in use");
     }
   }
 

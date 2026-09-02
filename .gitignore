@@ -1,1 +1,25 @@
 node_modules/
+
+# Local environment. VITE_* values are baked into the bundle at build time, so a
+# committed .env would ship whatever host/keys it holds. dist/ is deliberately NOT
+# ignored — the built SPA is tracked and deployed from this repo.
+.env
+.env.*
+!.env.example
+
+# Build/tool caches
+*.tsbuildinfo
+.vite/
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

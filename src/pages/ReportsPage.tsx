@@ -673,6 +673,8 @@ export default function ReportsPage() {
                 </div>
               </div>
 
+              {/* Every handler below refetches: the server decides what a page contains, so
+                  setPageNumber alone would relabel the pager and leave the old rows on screen. */}
               <div className="px-4 pt-3 border-b border-pearl-100">
                 <TablePagination
                   summary={pd.totalCount > 0
@@ -683,7 +685,7 @@ export default function ReportsPage() {
                   pageSize={pageSize}
                   pageSizeOptions={PAGE_SIZE_OPTIONS}
                   onPageSizeChange={(size) => void preview(1, size)}
-                  onFirst={() => setPageNumber(1)}
+                  onFirst={() => void preview(1, pageSize)}
                   onPrevious={() => void preview(Math.max(1, pageNumber - 1), pageSize)}
                   onNext={() => {
                     const maxPage = Math.max(1, Math.ceil(pd.totalCount / pageSize));
@@ -691,9 +693,9 @@ export default function ReportsPage() {
                   }}
                   onLast={() => {
                     const maxPage = Math.max(1, Math.ceil(pd.totalCount / pageSize));
-                    setPageNumber(maxPage);
+                    void preview(maxPage, pageSize);
                   }}
-                  onGoToPage={(page) => setPageNumber(page)}
+                  onGoToPage={(page) => void preview(page, pageSize)}
                   disabled={previewing}
                 />
               </div>
