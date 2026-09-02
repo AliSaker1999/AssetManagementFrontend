@@ -6,6 +6,7 @@ import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import { useAuth } from '../contexts/AuthContext';
 import type { Company, Country, Currency, HrCompanyProfile, HrSource, PaginatedResponse } from '../types';
+import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
@@ -276,17 +277,22 @@ export default function CompaniesPage() {
   if (initialLoading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="px-4 sm:px-8 py-6 max-w-[1100px] mx-auto">
+    <div>
       {dialog}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-[22px] font-bold text-brand">Companies</h1>
-        {canManage && mode === null && (
-          <button className="px-4 py-2 bg-[#9a7c4b] text-white border-none rounded-lg text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors" onClick={startAdd}>
-            + New Company
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Companies"
+        subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} companies across your organization` : undefined}
+      breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Companies' }]}
+        actions={
+          canManage && mode === null && (
+            <button className="bg-[#9a7c4b] text-white border-none rounded-lg px-4 py-2 text-[13px] font-semibold cursor-pointer hover:bg-[#7d6339] transition-colors" onClick={startAdd}>
+              + New Company
+            </button>
+          )
+        }
+      />
 
+  <div className="px-4 sm:px-8 pt-3 pb-8">
       {canManage && mode !== null && (
         <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)] mb-6">
           <h3 className="text-[15px] font-semibold text-brand mb-4">
@@ -545,6 +551,7 @@ export default function CompaniesPage() {
             onGoToPage={(page) => setPageNumber(page)}
             disabled={loading}
           />
+      </div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { usersApi } from '../api/users';
 import { lookupsApi } from '../api/lookups';
 import { useConfirm } from '../hooks/useConfirm';
 import type { UserListItem, UserPermission, Company } from '../types';
+import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
 import TablePagination from '../components/ui/TablePagination';
 
@@ -212,15 +213,32 @@ export default function UsersPage() {
     }
   }
 
+    function formatCompanyLabel(company: Company) {
+      const countryId = company.countryID?.trim() ?? "";
+      const companyName = company.companyName?.trim() ?? "";
+
+      // Remove trailing comma from country ID
+      const cleanedCountryId = countryId.replace(/,\s*$/, "");
+
+      // Remove leading comma from company name (if it exists)
+      const cleanedCompanyName = companyName.replace(/^\s*,\s*/, "");
+
+      return `${cleanedCountryId} – ${cleanedCompanyName}`;
+    }
+
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="px-4 sm:px-8 py-6 max-w-[900px] mx-auto">
+    <div>
       {dialog}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-[22px] font-bold text-brand">User Management</h1>
-        <button className={btnPrimary} onClick={openCreate}>+ New User</button>
-      </div>
+      <PageHeader
+        title="User Management"
+        subtitle={totalCount > 0 ? `${totalCount.toLocaleString()} users across your organization` : undefined}
+        breadcrumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Users' }]}
+        actions={<button className={btnPrimary} onClick={openCreate}>+ New User</button>}
+      />
+
+      <div className="px-4 sm:px-8 pt-3 pb-8">
 
       {/* User list — full width */}
       <div className="bg-white rounded-xl p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
@@ -301,7 +319,7 @@ export default function UsersPage() {
                 <Select value={grantCompanyID} onChange={e => setGrantCompanyID(e.target.value)}>
                   <option value="">-- Select company --</option>
                   {companies.map(c => (
-                    <option key={c.companyID} value={c.companyID}>{c.companyName}</option>
+                    <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
                   ))}
                 </Select>
               </div>
@@ -383,7 +401,7 @@ export default function UsersPage() {
                           checked={selectedCompanyIDs.has(c.companyID)}
                           onChange={e => toggleCompany(c.companyID, e.target.checked)}
                         />
-                        {c.companyName}
+                        {formatCompanyLabel(c)}
                       </label>
                     ))}
                   </div>
@@ -399,5 +417,6 @@ export default function UsersPage() {
         </div>
       )}
     </div>
+     </div>
   );
 }
