@@ -663,3 +663,12 @@ export interface AppNotification {
   isRead: boolean;
   createdAt: string;
 }
+
+/** Which side of IsRead a notification list asks for. 'all' sends no filter. */
+export type NotificationStatusFilter = 'all' | 'unread' | 'read';
+
+/** One page from GET /notifications. totalCount covers the whole filtered set. */
+export interface NotificationsPage {
+  items: AppNotification[];
+  totalCount: number;
+}

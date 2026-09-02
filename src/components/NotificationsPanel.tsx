@@ -1,40 +1,42 @@
-import { useNavigate } from 'react-router-dom';
-import clsx from 'clsx';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../contexts/NotificationContext';
+import { NotifIcon, timeAgo } from './ui/NotificationDisplay';
+import { handleApiError } from '../utils/errors';
 import type { AppNotification } from '../types';
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
-function NotifIcon({ type }: { type: AppNotification['type'] }) {
-  return type === 'Warranty' ? (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-    </svg>
-  ) : (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-    </svg>
-  );
-}
 
 interface Props { onClose: () => void }
 
+/**
+ * Unread only — the queue of what still needs acting on. Read history lives behind
+ * "View all" on /notifications, which is also where a row can be put back to unread.
+ * Every row here is unread by construction, hence no per-row read/unread styling switch.
+ */
 export default function NotificationsPanel({ onClose }: Props) {
-  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const { unread, unreadCount, markRead, markAllRead } = useNotifications();
   const navigate = useNavigate();
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   async function handleClick(n: AppNotification) {
-    if (!n.isRead) await markRead(n.notifID);
+    try {
+      await markRead(n.notifID);
+    } catch {
+      /* navigate anyway — read state is not worth blocking the click over */
+    }
     navigate(`/assets/${n.assetID}`);
     onClose();
+  }
+
+  /** Mark read in place — the row leaves the list and the panel stays open. */
+  async function handleMarkRead(id: number) {
+    setBusyId(id);
+    try {
+      await markRead(id);
+    } catch (err) {
+      handleApiError(err, 'Failed to mark the notification as read');
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -56,31 +58,60 @@ export default function NotificationsPanel({ onClose }: Props) {
 
       {/* List */}
       <div className="max-h-[70vh] overflow-y-auto">
-        {notifications.length === 0 ? (
-          <p className="px-4 py-8 text-[13px] text-[#9ca3af] text-center">No notifications</p>
+        {unread.length === 0 ? (
+          <p className="px-4 py-8 text-[13px] text-[#9ca3af] text-center">You are all caught up</p>
         ) : (
-          notifications.map(n => (
-            <button
+          unread.map(n => (
+            /* A div, not a button: the row carries its own "mark as read" button, and a
+               button inside a button is invalid markup that browsers resolve by dropping
+               the inner one. role/tabIndex/onKeyDown restore what the <button> gave us. */
+            <div
               key={n.notifID}
+              role="button"
+              tabIndex={0}
               onClick={() => handleClick(n)}
-              className={clsx(
-                'w-full text-left flex items-start gap-3 px-4 py-3 border-b border-[#f3f4f6] cursor-pointer hover:bg-[#f9fafb] transition-colors border-none',
-                !n.isRead && 'bg-[#fffbeb]'
-              )}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void handleClick(n); }
+              }}
+              className="w-full text-left flex items-start gap-3 px-4 py-3 border-b border-[#f3f4f6] cursor-pointer hover:bg-[#f9fafb] transition-colors bg-[#fffbeb]"
             >
               <div className="mt-0.5 shrink-0">
                 <NotifIcon type={n.type} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className={clsx('text-[12px] leading-snug text-[#374151] whitespace-pre-line break-words', !n.isRead && 'font-semibold')}>
+                <p className="text-[12px] leading-snug text-[#374151] whitespace-pre-line break-words font-semibold">
                   {n.message}
                 </p>
                 <p className="mt-0.5 text-[11px] text-[#9ca3af]">{n.type} · {timeAgo(n.createdAt)}</p>
               </div>
-              {!n.isRead && <div className="mt-1.5 w-2 h-2 rounded-full bg-red-500 shrink-0" />}
-            </button>
+              {/* Clears the row without leaving the panel. stopPropagation so the row's own
+                  click does not fire and navigate to the asset underneath it. */}
+              <button
+                type="button"
+                title="Mark as read"
+                aria-label="Mark as read"
+                disabled={busyId === n.notifID}
+                onClick={e => { e.stopPropagation(); void handleMarkRead(n.notifID); }}
+                className="mt-0.5 shrink-0 flex items-center justify-center w-5 h-5 rounded-full text-[#d1d5db] hover:text-[#15803d] hover:bg-[#dcfce7] disabled:opacity-40 transition-colors cursor-pointer border-none bg-transparent"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </button>
+            </div>
           ))
         )}
+      </div>
+
+      {/* Footer — outside the scroll area so it stays put however long the list gets */}
+      <div className="border-t border-[#e5e7eb] px-4 py-2.5 text-center">
+        <Link
+          to="/notifications"
+          onClick={onClose}
+          className="text-[12px] font-medium text-[#9a7c4b] hover:text-[#7d6339] no-underline"
+        >
+          View all
+        </Link>
       </div>
     </div>
   );

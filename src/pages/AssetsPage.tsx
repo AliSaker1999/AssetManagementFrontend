@@ -15,6 +15,7 @@ import TransferAssetModal from '../components/TransferAssetModal';
 import BarcodePrintModal from '../components/BarcodePrintModal';
 import BulkBarcodePrintModal from '../components/BulkBarcodePrintModal';
 import { useAuth } from '../contexts/AuthContext';
+import { useCountUp } from '../hooks/useCountUp';
 import { fmtDate } from '../utils/date';
 
 
@@ -988,6 +989,13 @@ useEffect(() => {
   const activeCount = countForStatus(0);
   const countsLoading = statusCounts === null;
 
+  // Eased, same as the dashboard's tiles. Also softens these four arriving in two waves:
+  // Total comes from the list query, the other three from getStatusCounts.
+  const animatedTotal = useCountUp(totalCount);
+  const animatedActive = useCountUp(activeCount);
+  const animatedMaintenance = useCountUp(maintenanceCount);
+  const animatedInstock = useCountUp(instockCount);
+
   return (
     <div>
       <PageHeader
@@ -1030,28 +1038,28 @@ useEffect(() => {
       <div className="px-4 sm:px-8 pt-3 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard
           label="Total Assets"
-          value={loading ? '—' : totalCount.toLocaleString()}
+          value={loading ? '—' : animatedTotal.toLocaleString()}
           sub="in this view"
           accent="navy"
           icon={<IconMetricBox />}
         />
         <MetricCard
           label="Active"
-          value={countsLoading ? '—' : activeCount.toLocaleString()}
+          value={countsLoading ? '—' : animatedActive.toLocaleString()}
           sub="active status only"
           accent={activeCount > 0 ? 'success' : 'none'}
           icon={<IconMetricTrendUp />}
         />
         <MetricCard
           label="In Maintenance"
-          value={countsLoading ? '—' : maintenanceCount.toLocaleString()}
+          value={countsLoading ? '—' : animatedMaintenance.toLocaleString()}
           sub="currently"
           accent={maintenanceCount > 0 ? 'warning' : 'none'}
           icon={<IconMetricWrench />}
         />
         <MetricCard
           label="In Stock"
-          value={countsLoading ? '—' : instockCount.toLocaleString()}
+          value={countsLoading ? '—' : animatedInstock.toLocaleString()}
           sub="available for use"
           accent={instockCount > 0 ? 'percent' : 'none'}
           icon={<IconMetricPackage />}

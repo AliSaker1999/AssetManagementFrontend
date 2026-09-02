@@ -96,7 +96,7 @@ function ViewAllLink({ to, label = 'View all' }: { to: string; label?: string })
 
 export default function DashboardPage() {
   const { activeCompanyId, isAdmin, allowedCompanies, setActiveCompanyId } = useAuth();
-  const { notifications } = useNotifications();
+  const { unread } = useNotifications();
   const navigate = useNavigate();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [pulse, setPulse] = useState(false);
@@ -124,20 +124,23 @@ export default function DashboardPage() {
   }, [loadSummary]);
 
   useEffect(() => {
-    if (notifications.length === 0) return;
-    const latest = notifications[0];
+    if (unread.length === 0) return;
+    const latest = unread[0];
     if (lastNotifIdRef.current === null) {
       lastNotifIdRef.current = latest.notifID;
       return;
     }
-    if (latest.notifID === lastNotifIdRef.current) return;
+    // Compared with > , not !== : the bell list now drops rows as they are marked read, so
+    // its head moves backwards too. NotifID is an identity column, so only a larger one is
+    // genuinely new — anything else is the list shrinking and must not pulse the dashboard.
+    if (latest.notifID <= lastNotifIdRef.current) return;
     lastNotifIdRef.current = latest.notifID;
 
     setPulse(true);
     void loadSummary();
     if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
     pulseTimeoutRef.current = setTimeout(() => setPulse(false), PULSE_DURATION_MS);
-  }, [notifications, loadSummary]);
+  }, [unread, loadSummary]);
 
   useEffect(() => () => {
     if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);

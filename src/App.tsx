@@ -38,6 +38,7 @@ const InventoriesPage = lazy(() => import('./pages/InventoriesPage'));
 const DepreciationsPage = lazy(() => import('./pages/DepreciationsPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const EmployeesPage = lazy(() => import('./pages/EmployeesPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const CompaniesPage = lazy(() => import('./pages/CompaniesPage'));
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="depreciations" element={<DepreciationsPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="employees" element={<EmployeesPage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="companies" element={<CompaniesPage />} />
             <Route path="users" element={<UsersPage />} />
