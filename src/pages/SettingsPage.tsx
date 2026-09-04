@@ -62,7 +62,7 @@ function RadioGroup({
 
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
-  const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications') || isAdmin());
+  const visibleSections = SECTIONS.filter((s) => (s.key !== 'asset-code' && s.key !== 'notifications' && s.key !== 'hr-sources' && s.key !== 'countries') || isAdmin());
   const [section, setSection] = useState<Section>(() => visibleSections[0]?.key ?? 'groups');
   const [locations, setLocations] = useState<LocationType[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -119,8 +119,8 @@ export default function SettingsPage() {
       {section === 'location-details' && <LocationDetailsSection locations={locations} onReload={reloadLocDetails} />}
       {section === 'brands' && (<BrandsSection onReload={reloadBrands} />)}
       {section === 'currencies' && <CurrenciesSection  onReload={reloadCurrencies} />}
-      {section === 'countries' && <CountriesSection onReload={reloadCountries} />}
-      {section === 'hr-sources' && <HrSourcesSection />}
+      {section === 'countries' && isAdmin() && <CountriesSection onReload={reloadCountries} />}
+      {section === 'hr-sources' && isAdmin() && <HrSourcesSection />}
     </div>
   );
 }
