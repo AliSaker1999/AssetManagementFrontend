@@ -53,7 +53,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // in-memory token here — rather than capturing it once — means a reconnect after a
     // rotation presents the current token instead of the expired one it started with.
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/notifications', {
+      // Relative by default so the Vite dev proxy handles it locally. On a static host
+      // (Cloudflare Pages) the relative path would resolve against the SPA's own origin
+      // instead of the API, so the deployed build supplies an absolute URL here.
+      .withUrl(import.meta.env.VITE_HUB_URL ?? '/hubs/notifications', {
         accessTokenFactory: () => getAccessToken() ?? '',
       })
       .withAutomaticReconnect()
