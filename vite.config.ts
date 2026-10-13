@@ -47,17 +47,14 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-      },
-      // NotificationContext connects to the relative path /hubs/notifications. Without
-      // this entry the SignalR negotiate request hits the dev server instead of the API
-      // and fails, twice — once on connect and again on the automatic reconnect.
-      '/hubs': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        ws: true,
-      },
+    target: 'http://localhost:5000',   // was http://assetapi.gezairi.com 
+    changeOrigin: true,
+  },
+  '/hubs': {
+    target: 'http://localhost:5000',   // was http://assetapi.gezairi.com
+    changeOrigin: true,
+    ws: true,
+  },
     },
   },
 })
