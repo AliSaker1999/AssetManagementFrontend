@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { handleApiError } from '../utils/errors';
 import { confirmEmployeeMatches } from '../utils/employeeMatches';
@@ -9,7 +11,7 @@ import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
 import StatusBadge from '../components/ui/StatusBadge';
 import TablePagination from '../components/ui/TablePagination';
-import type { Company, Country, Employee, PaginatedResponse } from '../types';
+import type { Company, Country, EmployeeListItem, PaginatedResponse } from '../types';
 import { fmtDate } from '../utils/date';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
@@ -84,14 +86,19 @@ function ModalActions({ saving, mode, onCancel }: { saving: boolean; mode: 'add'
 
 export default function EmployeesPage() {
   const { isAdmin, isAuditor, allowedCompanies } = useAuth();
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const navigate = useNavigate();
+  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [search, setSearch] = useState('');
-  // The search is executed in SQL, so the query is debounced rather than fired per keystroke.
+  // The search runs on the server, so the query is debounced rather than fired per keystroke.
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState<number | ''>('');
   const [countryFilter, setCountryFilter] = useState('');
+  // Internal employees live in ATSET.Employees; HR employees come from the external HR
+  // databases and are listed here when the asset system knows them (they hold, or once
+  // held, an asset). HR employees hold the large majority of assets, so 'all' is the default.
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'internal' | 'hr'>('all');
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -102,7 +109,7 @@ export default function EmployeesPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [leaveModalEmp, setLeaveModalEmp] = useState<Employee | null>(null);
+  const [leaveModalEmp, setLeaveModalEmp] = useState<EmployeeListItem | null>(null);
   const [leaveDateInput, setLeaveDateInput] = useState('');
   const [leaveSaving, setLeaveSaving] = useState(false);
   const { confirm, dialog } = useConfirm();
@@ -134,7 +141,7 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     setPageNumber(1);
-  }, [debouncedSearch, pageSize, companyFilter, countryFilter]);
+  }, [debouncedSearch, pageSize, companyFilter, countryFilter, sourceFilter]);
 
   function handleCountryFilterChange(value: string) {
     setCountryFilter(value);
@@ -153,11 +160,18 @@ export default function EmployeesPage() {
         const companyIdParam = companyFilter || undefined;
         const countryIdParam = countryFilter || undefined;
 
-        // Filtering, searching and paging all happen in SQL. Fetching the whole table to
-        // filter it here used to time out against the remote server as soon as anyone typed.
-        const r = await lookupsApi.getEmployeesPaginated(
-          pageNumber, pageSize, companyIdParam, countryIdParam, debouncedSearch || undefined);
-        const data = r.data as PaginatedResponse<Employee>;
+        // Company/country/source filtering and paging happen on the server. The name search
+        // is applied there too — across both sources, which the browser could not do,
+        // because HR names are only known once the server has read the HR databases.
+        const r = await lookupsApi.getEmployeeDirectory({
+          source: sourceFilter,
+          companyId: companyIdParam,
+          countryId: countryIdParam,
+          search: debouncedSearch || undefined,
+          pageNumber,
+          pageSize,
+        });
+        const data = r.data as PaginatedResponse<EmployeeListItem>;
         setEmployees(data.data);
         setTotalPages(data.totalPages);
         setTotalCount(data.totalCount);
@@ -169,7 +183,7 @@ export default function EmployeesPage() {
     };
 
     void load();
-  }, [pageNumber, pageSize, debouncedSearch, reloadKey, companyFilter, countryFilter]);
+  }, [pageNumber, pageSize, debouncedSearch, reloadKey, companyFilter, countryFilter, sourceFilter]);
 
   async function reload() {
     setReloadKey((k) => k + 1);
@@ -182,9 +196,9 @@ export default function EmployeesPage() {
     setMode('add');
   }
 
-  function startEdit(emp: Employee) {
-    if (readOnly) return;
-    setForm({ empFullName: emp.empFullName, companyID: emp.companyID });
+  function startEdit(emp: EmployeeListItem) {
+    if (readOnly || emp.source === "HR" || emp.empIDUsedBy == null) return;
+    setForm({ empFullName: emp.fullName, companyID: emp.companyID });
     setEditId(emp.empIDUsedBy);
     setMode('edit');
   }
@@ -212,19 +226,19 @@ export default function EmployeesPage() {
     finally { setSaving(false); }
   }
 
-  async function handleDelete(emp: Employee) {
-    if (readOnly) return;
-    const ok = await confirm(`Delete "${emp.empFullName}"?`, { title: 'Delete Employee' });
+  async function handleDelete(emp: EmployeeListItem) {
+    if (readOnly || emp.source === "HR" || emp.empIDUsedBy == null) return;
+    const ok = await confirm(`Delete "${emp.fullName}"?`, { title: 'Delete Employee' });
     if (!ok) return;
     try {
       await lookupsApi.deleteEmployee(emp.empIDUsedBy);
-      setEmployees((prev) => prev.filter((e) => e.empIDUsedBy !== emp.empIDUsedBy));
+      setEmployees((prev) => prev.filter((e) => !(e.source === "Internal" && e.empIDUsedBy === emp.empIDUsedBy)));
       toast.success('Employee deleted');
     } catch (err) { handleApiError(err, 'Delete failed — employee may have assets assigned'); }
   }
 
-  function startLeave(emp: Employee) {
-    if (readOnly) return;
+  function startLeave(emp: EmployeeListItem) {
+    if (readOnly || emp.source === "HR" || emp.empIDUsedBy == null) return;
     setLeaveDateInput(emp.leaveDate ?? new Date().toISOString().slice(0, 10));
     setLeaveModalEmp(emp);
   }
@@ -233,7 +247,9 @@ export default function EmployeesPage() {
 
   async function handleLeaveSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!leaveModalEmp) return;
+    // Only internal employees reach this modal — startLeave refuses HR rows, which have no
+    // ATSET.Employees row and whose leave date is owned by the HR system.
+    if (!leaveModalEmp || leaveModalEmp.empIDUsedBy == null) return;
     setLeaveSaving(true);
     try {
       await lookupsApi.setEmployeeLeaveDate(leaveModalEmp.empIDUsedBy, leaveDateInput);
@@ -244,9 +260,9 @@ export default function EmployeesPage() {
     finally { setLeaveSaving(false); }
   }
 
-  async function handleReinstate(emp: Employee) {
-    if (readOnly) return;
-    const ok = await confirm(`Reinstate "${emp.empFullName}"? This clears their leave date.`, {
+  async function handleReinstate(emp: EmployeeListItem) {
+    if (readOnly || emp.source === "HR" || emp.empIDUsedBy == null) return;
+    const ok = await confirm(`Reinstate "${emp.fullName}"? This clears their leave date.`, {
       title: 'Reinstate Employee',
       confirmLabel: 'Reinstate',
       danger: false,
@@ -331,7 +347,20 @@ export default function EmployeesPage() {
                 <option key={c.companyID} value={c.companyID}>{formatCompanyLabel(c)}</option>
               ))}
             </Select>
+            <Select
+              className="w-full max-w-[200px]"
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as 'all' | 'internal' | 'hr')}
+            >
+              <option value="all">All Sources</option>
+              <option value="internal">Internal only</option>
+              <option value="hr">HR only</option>
+            </Select>
           </div>
+          <p className="mt-2.5 text-[11px] text-ink-300">
+            HR employees are listed when the asset system knows them — that is, they hold or
+            once held an asset. Their records live in the HR database and are read-only here.
+          </p>
         </div>
 
         {/* Add / Edit Modal */}
@@ -370,7 +399,7 @@ export default function EmployeesPage() {
           <Modal title="Leave Employee" onClose={closeLeaveModal} width="max-w-md">
             <form onSubmit={handleLeaveSubmit}>
               <p className="text-[13px] text-ink-600 mb-4">
-                Mark <span className="font-semibold text-ink-800">{leaveModalEmp.empFullName}</span> as having left the company.
+                Mark <span className="font-semibold text-ink-800">{leaveModalEmp.fullName}</span> as having left the company.
               </p>
               <FormRow label="Leave Date *">
                 <input
@@ -415,22 +444,52 @@ export default function EmployeesPage() {
             />
 
             <div className="overflow-x-auto rounded-xl border border-pearl-200 shadow-card bg-white mt-3">
-              <table className="w-full border-collapse min-w-[560px]">
+              <table className="w-full border-collapse min-w-[720px]">
                 <thead>
                   <tr>
-                    {['Full Name', 'Company', 'Status', ...(readOnly ? [] : [''])].map((h) => (
+                    {['Source', 'Full Name', 'Company', 'Assets', 'Status', ...(readOnly ? [] : [''])].map((h) => (
                       <th key={h} className="px-3.5 py-2.5 text-left text-xs font-bold text-ink-400 bg-pearl-100 border-b border-pearl-200">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {employees.length === 0 ? (
-                    <tr><td colSpan={readOnly ? 3 : 4} className="p-5 text-center text-ink-300 text-sm">No employees found.</td></tr>
+                    <tr><td colSpan={readOnly ? 5 : 6} className="p-5 text-center text-ink-300 text-sm">No employees found.</td></tr>
                   ) : (
-                    employees.map((emp) => (
-                      <tr key={emp.empIDUsedBy} className="border-b border-pearl-100 hover:bg-pearl-50 transition-colors">
-                        <td className="px-3.5 py-2.5 text-[13px] font-semibold text-ink-800">{emp.empFullName}</td>
+                    employees.map((emp) => {
+                      const isHr = emp.source === 'HR';
+                      return (
+                      <tr
+                        // Keyed on source + company + id: an internal id and an HR id can
+                        // both be "42", and an HR id repeats across company profiles, so
+                        // only the triple is unique.
+                        key={`${emp.source}:${emp.companyID}:${emp.empID}`}
+                        // No `from` state: this page's filters live in React state, not the
+                        // query string, so there is no view to round-trip — back goes to the list.
+                        // An HR employee has no internal id, so they route by company + HR id.
+                        onClick={() => navigate(
+                          isHr
+                            ? `/employees/hr?companyId=${emp.companyID}&empId=${encodeURIComponent(emp.empID)}&name=${encodeURIComponent(emp.fullName)}`
+                            : `/employees/${emp.empID}`
+                        )}
+                        className="border-b border-pearl-100 hover:bg-pearl-50 transition-colors cursor-pointer"
+                      >
+                        <td className="px-3.5 py-2.5 text-[13px]">
+                          <span className={clsx(
+                            'inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold border',
+                            isHr
+                              ? 'bg-navy-50 text-navy-700 border-navy-200'
+                              : 'bg-pearl-100 text-ink-500 border-pearl-200'
+                          )}>
+                            {isHr ? 'HR' : 'Internal'}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-[13px] font-semibold text-ink-800">
+                          {emp.fullName}
+                          {isHr && <span className="ml-1.5 text-[11px] font-normal text-ink-300">{emp.empID}</span>}
+                        </td>
                         <td className="px-3.5 py-2.5 text-[13px] text-ink-600">{emp.companyName ?? '—'}</td>
+                        <td className="px-3.5 py-2.5 text-[13px] text-ink-600">{emp.currentAssetCount}</td>
                         <td className="px-3.5 py-2.5 text-[13px]">
                           <StatusBadge status={emp.leaveDate ? 'inactive' : 'active'} />
                           {emp.leaveDate && (
@@ -438,24 +497,35 @@ export default function EmployeesPage() {
                           )}
                         </td>
                         {!readOnly && (
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <div className="flex gap-1.5">
-                              <button onClick={() => startEdit(emp)} className="bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]">Edit</button>
-                              {emp.leaveDate ? (
-                                <button onClick={() => handleReinstate(emp)} className="px-2.5 py-1 bg-green-50 text-green-700 border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-green-100 transition-colors">
-                                  Reinstate
-                                </button>
-                              ) : (
-                                <button onClick={() => startLeave(emp)} className="px-2.5 py-1 bg-amber-50 text-amber-700 border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-amber-100 transition-colors inline-flex items-center gap-1">
-                                  <IconLogout /> Leave
-                                </button>
-                              )}
-                              <button onClick={() => handleDelete(emp)} className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors">Delete</button>
-                            </div>
+                          /* stopPropagation: the row navigates to the employee now, and an
+                             action click must not also open the detail page behind the modal. */
+                          <td className="px-3 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {isHr ? (
+                              /* HR records belong to the HR system — there is no ATSET.Employees
+                                 row to edit, and LeaveDate is set over there, not here. */
+                              <span className="text-[11px] text-ink-300" title="HR records are managed in the HR system and are read-only here.">
+                                Managed in HR
+                              </span>
+                            ) : (
+                              <div className="flex gap-1.5">
+                                <button onClick={() => startEdit(emp)} className="bg-[#e8f0fe] text-accent border border-[#c5d8fb] rounded-md px-2.5 py-1 text-xs cursor-pointer hover:bg-[#d2e3fc]">Edit</button>
+                                {emp.leaveDate ? (
+                                  <button onClick={() => handleReinstate(emp)} className="px-2.5 py-1 bg-green-50 text-green-700 border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-green-100 transition-colors">
+                                    Reinstate
+                                  </button>
+                                ) : (
+                                  <button onClick={() => startLeave(emp)} className="px-2.5 py-1 bg-amber-50 text-amber-700 border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-amber-100 transition-colors inline-flex items-center gap-1">
+                                    <IconLogout /> Leave
+                                  </button>
+                                )}
+                                <button onClick={() => handleDelete(emp)} className="px-2.5 py-1 bg-[#c0392b] text-white border-none rounded-md text-xs font-semibold cursor-pointer hover:bg-[#a93226] transition-colors">Delete</button>
+                              </div>
+                            )}
                           </td>
                         )}
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>

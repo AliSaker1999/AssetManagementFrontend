@@ -1,5 +1,5 @@
 import client from './client';
-import type { CategoryType, Company, Country, Employee, EmployeePossibleMatches, HrCompanyProfile, HrDatabase, HrSource, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
+import type { CategoryType, Company, Country, Employee, EmployeeListItem, EmployeePossibleMatches, HrCompanyProfile, HrDatabase, HrSource, HrEmployee, LocationDetail, PaginatedResponse,LocationType, GroupType, BrandType } from '../types';
 
 export const lookupsApi = {
   getCompanies: () => client.get('/lookups/companies'),
@@ -52,6 +52,24 @@ export const lookupsApi = {
     client.get<Employee[]>('/lookups/employees', { params: { companyId, countryId } }),
   getEmployeesPaginated: (pageNumber: number = 1, pageSize: number = 10, companyId?: number, countryId?: string, search?: string) =>
     client.get<PaginatedResponse<Employee>>('/lookups/employees/paginated', { params: { pageNumber, pageSize, companyId, countryId, search } }),
+  getEmployee: (id: number) => client.get<Employee>(`/lookups/employees/${id}`),
+  // The Employees page list: internal employees plus the HR employees the asset system
+  // knows about. `source` filters to one side.
+  getEmployeeDirectory: (
+    params: {
+      source?: 'all' | 'internal' | 'hr';
+      companyId?: number;
+      countryId?: string;
+      search?: string;
+      pageNumber?: number;
+      pageSize?: number;
+    },
+    signal?: AbortSignal,
+  ) => client.get<PaginatedResponse<EmployeeListItem>>('/lookups/employees/directory', { params, signal }),
+  // One HR employee, so the HR detail page can resolve its own header rather than depend
+  // on a name passed in the query string (a refresh or a pasted link does not carry one).
+  getHrEmployee: (companyId: number, empId: string) =>
+    client.get<HrEmployee>('/lookups/hr-employees/one', { params: { companyId, empId } }),
   createEmployee: (data: { empFullName: string; companyID: number }) => client.post<Employee>('/lookups/employees', data),
   updateEmployee: (id: number, data: { empFullName: string; companyID: number }) =>
     client.put(`/lookups/employees/${id}`, data),

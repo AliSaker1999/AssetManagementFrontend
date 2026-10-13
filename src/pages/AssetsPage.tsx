@@ -462,28 +462,46 @@ function LeaveProcessModal({
                   ) : (
                     <div className="border border-pearl-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto divide-y divide-pearl-100">
                       {leftEmployees.map((row) => (
-                        <button
-                          type="button"
+                        <div
                           key={`${row.source}-${row.companyID}-${row.empID}`}
-                          onClick={() => selectEmployee({
-                            name: row.fullName,
-                            empId: row.empID,
-                            assetCount: row.assets.length,
-                            source: row.source === 'Internal' ? 'internal' : 'hr',
-                            leaveDate: row.leaveDate ?? null,
-                          })}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-pearl-50 transition-colors text-left"
+                          className="w-full flex items-center gap-2 pr-2 hover:bg-pearl-50 transition-colors"
                         >
-                          <span className="min-w-0">
-                            <span className="text-[13px] font-medium text-ink-700 truncate block">{row.fullName}</span>
-                            <span className="text-[11px] text-ink-400">
-                              {row.companyAbbreviation ?? `Company ${row.companyID}`} · Left {row.leaveDate ?? '—'}
+                          <button
+                            type="button"
+                            onClick={() => selectEmployee({
+                              name: row.fullName,
+                              empId: row.empID,
+                              assetCount: row.assets.length,
+                              source: row.source === 'Internal' ? 'internal' : 'hr',
+                              leaveDate: row.leaveDate ?? null,
+                            })}
+                            className="flex-1 min-w-0 flex items-center justify-between gap-3 px-4 py-2.5 text-left bg-transparent border-none cursor-pointer"
+                          >
+                            <span className="min-w-0">
+                              <span className="text-[13px] font-medium text-ink-700 truncate block">{row.fullName}</span>
+                              <span className="text-[11px] text-ink-400">
+                                {row.companyAbbreviation ?? `Company ${row.companyID}`} · Left {row.leaveDate ?? '—'}
+                              </span>
                             </span>
-                          </span>
-                          <span className="text-[11px] text-ink-300 shrink-0">
-                            {row.assets.length} asset{row.assets.length !== 1 ? 's' : ''}
-                          </span>
-                        </button>
+                            <span className="text-[11px] text-ink-300 shrink-0">
+                              {row.assets.length} asset{row.assets.length !== 1 ? 's' : ''}
+                            </span>
+                          </button>
+                          {/* A sibling of the button, not nested inside it — an anchor within
+                              a button is invalid markup and swallows the row's own click.
+                              An HR employee has no internal id, so they route by company + HR
+                              id, which is the only pair that identifies them uniquely. */}
+                          <Link
+                            to={row.source === 'Internal'
+                              ? `/employees/${row.empID}`
+                              : `/employees/hr?companyId=${row.companyID}&empId=${encodeURIComponent(row.empID)}&name=${encodeURIComponent(row.fullName)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 text-[11px] text-accent hover:underline no-underline px-2 py-1"
+                            title="View this employee's current and past assets"
+                          >
+                            History
+                          </Link>
+                        </div>
                       ))}
                     </div>
                   )}

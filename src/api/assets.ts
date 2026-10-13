@@ -1,5 +1,5 @@
 import client from './client';
-import type { AssetAuditEntry, AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, AssetStatusCount, LeftEmployeeAsset } from '../types';
+import type { AssetAuditEntry, AssetCreateRequest, AssetReportFilter, PaginatedResponse, AssetListItem, AssetStatusCount, LeftEmployeeAsset, EmployeeAsset } from '../types';
 import { downloadBlob } from '../utils/downloadBlob';
 
 export const assetsApi = {
@@ -22,6 +22,21 @@ export const assetsApi = {
     ),
   getLeftEmployees: (companyId?: number) =>
     client.get<LeftEmployeeAsset[]>('/assets/left-employees', { params: companyId ? { companyId } : {} }),
+  // Every asset an employee holds or once held. Identify them with EITHER empIdUsedBy
+  // (internal) OR hrEmpId + companyId — an HR id repeats across company profiles, so it
+  // means nothing on its own. Paged in SQL; `scope` picks the Current or History tab.
+  getByEmployee: (
+    params: {
+      empIdUsedBy?: number;
+      hrEmpId?: string;
+      companyId?: number;
+      scope?: 'all' | 'current' | 'past';
+      pageNumber?: number;
+      pageSize?: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    client.get<PaginatedResponse<EmployeeAsset>>('/assets/by-employee', { params, signal }),
   // search and statusIds are applied in SQL. Passing them means the page no longer
   // has to download every asset to filter locally. Omit them and behaviour is unchanged.
   // `signal` lets the caller cancel an in-flight page request. Without it, a response for

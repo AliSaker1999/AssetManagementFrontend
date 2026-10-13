@@ -38,6 +38,7 @@ const InventoriesPage = lazy(() => import('./pages/InventoriesPage'));
 const DepreciationsPage = lazy(() => import('./pages/DepreciationsPage'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const EmployeesPage = lazy(() => import('./pages/EmployeesPage'));
+const EmployeeDetailPage = lazy(() => import('./pages/EmployeeDetailPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -76,6 +77,10 @@ export default function App() {
             <Route path="depreciations" element={<DepreciationsPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="employees" element={<EmployeesPage />} />
+            {/* HR route first: an HR employee has no internal id, so "hr" is a literal
+                segment that must not be swallowed by the :id pattern below. */}
+            <Route path="employees/hr" element={<EmployeeDetailPage />} />
+            <Route path="employees/:id" element={<EmployeeDetailPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="companies" element={<CompaniesPage />} />

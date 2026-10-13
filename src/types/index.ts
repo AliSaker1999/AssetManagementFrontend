@@ -212,6 +212,57 @@ export interface Employee {
   leaveDate?: string | null;
 }
 
+/**
+ * One asset an employee holds or once held — a span from AT.AssetCustody.
+ * `toDate` null means they still hold it.
+ */
+export interface EmployeeAsset {
+  assetID: number;
+  assetCode: string;
+  assetDesc: string;
+  category?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  companyID: number;
+  companyAbbreviation?: string | null;
+  location?: string | null;
+  statusID?: number | null;
+  status?: string | null;
+  fromDate: string;
+  toDate?: string | null;
+  isCurrent: boolean;
+  /** Who received it next. Null when it was released to nobody. */
+  nextHolderName?: string | null;
+  /**
+   * 'Transfer' | 'Edit' | 'Create'. 'Create' means `fromDate` is the asset's creation
+   * date rather than a recorded handover — the UI marks those as approximate.
+   */
+  startedBySource: string;
+}
+
+/**
+ * One row of the Employees page, which lists internal employees and the HR employees the
+ * asset system knows about side by side.
+ *
+ * `empID` is stringified for both sources so the UI has one key, but an HR identity is only
+ * unique as (`hrEmpID`, `companyID`) — HR ids repeat across company profiles. Key rows and
+ * route by the pair, never by `empID` alone.
+ */
+export interface EmployeeListItem {
+  source: 'Internal' | 'HR';
+  empID: string;
+  empIDUsedBy?: number | null;   // internal only
+  hrEmpID?: string | null;       // HR only
+  fullName: string;
+  companyID: number;
+  companyName?: string | null;
+  companyAbbreviation?: string | null;
+  leaveDate?: string | null;
+  /** Assets held right now. */
+  currentAssetCount: number;
+}
+
 export interface EmployeePossibleMatches {
   countryID?: string | null;
   hrMatches: HrEmployee[];

@@ -12,12 +12,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { fmtDate } from '../utils/date';
 import type {
   Company, LocationType, LocationDetail, CategoryType, GroupType,
-  Depreciation, InventoryListItem,
+  Depreciation, InventoryListItem, Employee,
 } from '../types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ReportType = 'assets-list' | 'assets-list-inventory' | 'depreciation' | 'assets-not-depreciated' | 'status-history';
+type ReportType = 'assets-list' | 'assets-list-inventory' | 'depreciation' | 'assets-not-depreciated' | 'status-history' | 'employee-asset-history';
 type ListType = 'ALL' | 'NotAvailable' | 'Relocated';
 type Format = 'pdf' | 'excel';
 
@@ -27,6 +27,13 @@ const REPORT_TYPES: { key: ReportType; label: string }[] = [
   { key: 'depreciation',             label: 'Depreciation' },
   { key: 'assets-not-depreciated',   label: 'Assets Not Depreciated' },
   { key: 'status-history',           label: 'Status History' },
+  { key: 'employee-asset-history',   label: 'Employee Asset History' },
+];
+/** Scopes for the Employee Asset History report — which spans to print. */
+const EMPLOYEE_SCOPES: { key: 'all' | 'current' | 'past'; label: string }[] = [
+  { key: 'all',     label: 'Current and past' },
+  { key: 'current', label: 'Currently held' },
+  { key: 'past',    label: 'Previously held' },
 ];
 const PAGE_SIZE_OPTIONS: number[] = [10, 20, 30];
 
@@ -210,6 +217,12 @@ export default function ReportsPage() {
   const [additionalDetail,  setAdditionalDetail]   = useState(true);
   const [accountingExclusion, setAccountingExclusion] = useState(true);
   const [totalOnly,         setTotalOnly]          = useState(false);
+  // Employee Asset History only. Internal employees (ATSET.Employees) are the ones this
+  // report can offer in a picker; an HR employee is reachable from their detail page,
+  // which already knows the company + HR id pair that identifies them.
+  const [employees,         setEmployees]          = useState<Employee[]>([]);
+  const [empIdUsedBy,       setEmpIdUsedBy]        = useState<number>(0);
+  const [employeeScope,     setEmployeeScope]      = useState<'all' | 'current' | 'past'>('all');
 
   // Load all lookups once
   useEffect(() => {
@@ -283,8 +296,19 @@ export default function ReportsPage() {
     }
   }, [companyId]);
 
+  // The employee list for the picker, reloaded whenever the company changes.
+  useEffect(() => {
+    if (reportType !== 'employee-asset-history') return;
+    setEmpIdUsedBy(0);
+    if (!companyId) { setEmployees([]); return; }
+    lookupsApi.getEmployees(companyId)
+      .then((r) => setEmployees(r.data as Employee[]))
+      .catch(() => {/* non-critical */});
+  }, [reportType, companyId]);
+
   const canDownload = (): boolean => {
     if (reportType === 'status-history') return true;
+    if (reportType === 'employee-asset-history') return companyId > 0 && empIdUsedBy > 0;
     if (!companyId) return false;
     if (reportType === 'depreciation') return depId > 0;
     if (reportType === 'assets-list-inventory') return inventoryId > 0;
@@ -309,6 +333,16 @@ export default function ReportsPage() {
       return { ...base, inventoryID: inventoryId, listType, totalOnly };
     if (reportType === 'depreciation')
       return { format, depID: depId };
+    if (reportType === 'employee-asset-history')
+      return {
+        format,
+        companyID:   companyId || -1,
+        empIDUsedBy: empIdUsedBy,
+        hrEmpID:     null,
+        scope:       employeeScope,
+        pageNumber:  previewPageNumber,
+        pageSize:    previewPageSize,
+      };
     if (reportType === 'status-history')
       return {
         format,
@@ -326,6 +360,7 @@ export default function ReportsPage() {
   async function preview(previewPageNumber: number = pageNumber, previewPageSize: number = pageSize) {
     if (!canDownload()) {
       if (!companyId) toast.error('Select a company first');
+      else if (reportType === 'employee-asset-history') toast.error('Select an employee first');
       else toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
       return;
     }
@@ -337,6 +372,7 @@ export default function ReportsPage() {
       else if (reportType === 'assets-list-inventory') res = await reportsApi.previewAssetsListInventory(payload);
       else if (reportType === 'depreciation')       res = await reportsApi.previewDepreciation(payload);
       else if (reportType === 'status-history')     res = await reportsApi.previewStatusHistory(payload);
+      else if (reportType === 'employee-asset-history') res = await reportsApi.previewEmployeeAssetHistory(payload);
       else                                          res = await reportsApi.previewAssetsNotDepreciated(payload);
       setPreviewData(res.data);
       setPageNumber(previewPageNumber);
@@ -352,6 +388,7 @@ export default function ReportsPage() {
   async function download(format: Format) {
     if (!canDownload()) {
       if (!companyId) toast.error('Select a company first');
+      else if (reportType === 'employee-asset-history') toast.error('Select an employee first');
       else toast.error(reportType === 'depreciation' ? 'Select a depreciation run first' : 'Select an inventory first');
       return;
     }
@@ -362,6 +399,7 @@ export default function ReportsPage() {
       else if (reportType === 'assets-list-inventory') await reportsApi.downloadAssetsListInventory(payload);
       else if (reportType === 'depreciation')          await reportsApi.downloadDepreciation(payload);
       else if (reportType === 'status-history')        await reportsApi.downloadStatusHistory(payload);
+      else if (reportType === 'employee-asset-history') await reportsApi.downloadEmployeeAssetHistory(payload);
       else                                             await reportsApi.downloadAssetsNotDepreciated(payload);
       toast.success(`${format.toUpperCase()} downloaded`);
     } catch (err) {
@@ -382,9 +420,12 @@ export default function ReportsPage() {
   const isDepreciation   = reportType === 'depreciation';
   const isNotDepreciated = reportType === 'assets-not-depreciated';
   const isStatusHistory  = reportType === 'status-history';
+  const isEmployeeHistory = reportType === 'employee-asset-history';
   const companyNotSelected = !companyId;
   const selectedCompanyCountryId = companies.find((c) => c.companyID === companyId)?.countryID?.trim() ?? '';
-  const filtersDisabled  = isNotDepreciated || (companyNotSelected && !isStatusHistory);
+  // Employee Asset History is scoped by employee, not by location/category/group — those
+  // filters have no meaning for it, so they grey out the same way they do for depreciation.
+  const filtersDisabled  = isNotDepreciated || isEmployeeHistory || (companyNotSelected && !isStatusHistory);
   const busy             = downloading || previewing;
   const pd               = previewData; // local const for TS narrowing
 
@@ -508,6 +549,33 @@ export default function ReportsPage() {
                     <option key={c.companyID} value={c.companyID}>
                       {formatCompanyLabel(c)}
                     </option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Employee" disabled={!isEmployeeHistory || companyNotSelected}>
+                <SelectField
+                  value={empIdUsedBy}
+                  onChange={(v) => setEmpIdUsedBy(Number(v))}
+                  disabled={!isEmployeeHistory || companyNotSelected}
+                  placeholder="Select employee…"
+                >
+                  {employees.map((e) => (
+                    <option key={e.empIDUsedBy} value={e.empIDUsedBy}>
+                      {e.empFullName}{e.leaveDate ? ' (left)' : ''}
+                    </option>
+                  ))}
+                </SelectField>
+              </OptionRow>
+
+              <OptionRow label="Assets Shown" disabled={!isEmployeeHistory}>
+                <SelectField
+                  value={employeeScope}
+                  onChange={(v) => setEmployeeScope(v as 'all' | 'current' | 'past')}
+                  disabled={!isEmployeeHistory}
+                >
+                  {EMPLOYEE_SCOPES.map((s) => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
                 </SelectField>
               </OptionRow>

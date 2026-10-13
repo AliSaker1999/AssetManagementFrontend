@@ -41,6 +41,11 @@ export const reportsApi = {
       client.post('/reports/status-history', data, { responseType: 'arraybuffer' }) as any,
       'StatusHistoryReport.pdf'
     ),
+  downloadEmployeeAssetHistory: (data: object) =>
+    downloadBlob(
+      client.post('/reports/employee-asset-history', data, { responseType: 'arraybuffer' }) as any,
+      'EmployeeAssetHistoryReport.pdf'
+    ),
   downloadCompaniesBreakdown: (data: object) =>
     downloadBlob(
       client.post('/reports/companies-breakdown', data, { responseType: 'arraybuffer' }) as any,
@@ -68,4 +73,6 @@ export const reportsApi = {
     client.post<ReportPreview>('/reports/assets-not-depreciated/preview', data),
   previewStatusHistory: (data: object & PreviewPagingRequest) =>
     client.post<ReportPreview>('/reports/status-history/preview', data),
+  previewEmployeeAssetHistory: (data: object & PreviewPagingRequest) =>
+    client.post<ReportPreview>('/reports/employee-asset-history/preview', data),
 };
